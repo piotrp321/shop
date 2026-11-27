@@ -1,0 +1,48 @@
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ze%' LIMIT 10001) bounded
+
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=30.564..30.568 rows=1.00 loops=1)
+  Buffers: shared hit=39302 read=1899
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.466..30.238 rows=10001.00 loops=1)
+        Buffers: shared hit=39302 read=1899
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.465..29.824 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 36589
+              Heap Fetches: 1505
+              Index Searches: 1
+              Buffers: shared hit=39302 read=1899
+Planning:
+  Buffers: shared hit=447 read=13
+Planning Time: 6.228 ms
+Execution Time: 30.605 ms
+
+=====
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=22.153..22.156 rows=1.00 loops=1)
+  Buffers: shared hit=41201
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.021..21.895 rows=10001.00 loops=1)
+        Buffers: shared hit=41201
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.021..21.539 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 36589
+              Heap Fetches: 1505
+              Index Searches: 1
+              Buffers: shared hit=41201
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.763 ms
+Execution Time: 22.180 ms
+
+=====
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=21.646..21.648 rows=1.00 loops=1)
+  Buffers: shared hit=41201
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.021..21.388 rows=10001.00 loops=1)
+        Buffers: shared hit=41201
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.021..21.037 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 36589
+              Heap Fetches: 1505
+              Index Searches: 1
+              Buffers: shared hit=41201
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.806 ms
+Execution Time: 21.674 ms

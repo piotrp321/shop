@@ -177,9 +177,7 @@ final readonly class PhraseSearch
             .'SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT '.($cap + 1).') c'
             ." ORDER BY c.{$column} {$direction}, c.id {$direction} LIMIT {$limit}";
         $rows = $this->bitmapScansOnly(fn (): mixed => $this->connection->fetchAllAssociative($sql, $values + ('' === $route->candidateCondition() ? [] : ['term' => $term])));
-        \assert(\is_array($rows));
 
-        /** @var list<array<string, mixed>> $rows */
         $found = [] === $rows ? 0 : $rows[0]['candidates'];
         \assert(\is_int($found));
 

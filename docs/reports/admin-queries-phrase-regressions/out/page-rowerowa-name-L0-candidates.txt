@@ -1,0 +1,100 @@
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%') SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT 10001) c ORDER BY c.name ASC, c.id ASC LIMIT 26
+
+Limit  (cost=156013.72..156013.79 rows=26 width=532) (actual time=164.188..164.191 rows=26.00 loops=1)
+  Buffers: shared hit=1000 read=10623
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2530.03..155403.64 rows=60571 width=71) (actual time=125.123..156.043 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%rowerowa%'::text)
+          Heap Blocks: exact=9918
+          Buffers: shared hit=994 read=10623
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2514.89 rows=60571 width=0) (actual time=120.349..120.350 rows=64106.00 loops=1)
+                Index Cond: ((name)::text ~~* '%rowerowa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=569 read=1099
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=161.094..161.094 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=1000 read=10623
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=159.420..159.978 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1093kB
+              Buffers: shared hit=994 read=10623
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=125.128..158.331 rows=10001.00 loops=1)
+                    Buffers: shared hit=994 read=10623
+                    ->  CTE Scan on m  (cost=0.00..1211.42 rows=60571 width=524) (actual time=125.125..157.808 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1093kB
+                          Buffers: shared hit=994 read=10623
+Planning:
+  Buffers: shared hit=470 read=2
+Planning Time: 0.953 ms
+JIT:
+  Functions: 8
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.212 ms (Deform 0.107 ms), Inlining 0.000 ms, Optimization 0.199 ms, Emission 2.925 ms, Total 3.337 ms
+Execution Time: 173.140 ms
+=====
+Limit  (cost=156013.72..156013.79 rows=26 width=532) (actual time=43.442..43.444 rows=26.00 loops=1)
+  Buffers: shared hit=11592 read=1
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2530.03..155403.64 rows=60571 width=71) (actual time=24.960..36.908 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%rowerowa%'::text)
+          Heap Blocks: exact=9918
+          Buffers: shared hit=11586 read=1
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2514.89 rows=60571 width=0) (actual time=20.413..20.413 rows=64106.00 loops=1)
+                Index Cond: ((name)::text ~~* '%rowerowa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1668
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=40.890..40.891 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=11592 read=1
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=39.208..39.791 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1093kB
+              Buffers: shared hit=11586 read=1
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=24.964..38.483 rows=10001.00 loops=1)
+                    Buffers: shared hit=11586 read=1
+                    ->  CTE Scan on m  (cost=0.00..1211.42 rows=60571 width=524) (actual time=24.962..38.144 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1093kB
+                          Buffers: shared hit=11586 read=1
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.766 ms
+JIT:
+  Functions: 8
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.180 ms (Deform 0.096 ms), Inlining 0.000 ms, Optimization 0.179 ms, Emission 2.383 ms, Total 2.743 ms
+Execution Time: 51.481 ms
+=====
+Limit  (cost=156013.72..156013.79 rows=26 width=532) (actual time=43.491..43.494 rows=26.00 loops=1)
+  Buffers: shared hit=11593
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2530.03..155403.64 rows=60571 width=71) (actual time=25.008..36.844 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%rowerowa%'::text)
+          Heap Blocks: exact=9918
+          Buffers: shared hit=11587
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2514.89 rows=60571 width=0) (actual time=20.445..20.445 rows=64106.00 loops=1)
+                Index Cond: ((name)::text ~~* '%rowerowa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1668
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=40.916..40.917 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=11593
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=39.123..39.721 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1093kB
+              Buffers: shared hit=11587
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=25.012..38.415 rows=10001.00 loops=1)
+                    Buffers: shared hit=11587
+                    ->  CTE Scan on m  (cost=0.00..1211.42 rows=60571 width=524) (actual time=25.009..38.078 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1093kB
+                          Buffers: shared hit=11587
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.732 ms
+JIT:
+  Functions: 8
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.178 ms (Deform 0.094 ms), Inlining 0.000 ms, Optimization 0.153 ms, Emission 2.432 ms, Total 2.763 ms
+Execution Time: 51.191 ms

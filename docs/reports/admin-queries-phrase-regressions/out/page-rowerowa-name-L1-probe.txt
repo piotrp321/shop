@@ -1,0 +1,42 @@
+SELECT count(*) FROM (SELECT 1 FROM catalog_product w0 ORDER BY w0.name ASC, w0.id ASC LIMIT 200000) e
+
+Aggregate  (cost=26920.90..26920.91 rows=1 width=8) (actual time=35.373..35.376 rows=1.00 loops=1)
+  Buffers: shared hit=176947
+  ->  Limit  (cost=0.42..24420.90 rows=200000 width=58) (actual time=0.011..30.608 rows=200000.00 loops=1)
+        Buffers: shared hit=176947
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.011..23.695 rows=200000.00 loops=1)
+              Heap Fetches: 6331
+              Index Searches: 1
+              Buffers: shared hit=176947
+Planning:
+  Buffers: shared hit=472 read=1
+Planning Time: 0.500 ms
+Execution Time: 35.389 ms
+
+=====
+Aggregate  (cost=26920.90..26920.91 rows=1 width=8) (actual time=34.714..34.718 rows=1.00 loops=1)
+  Buffers: shared hit=176947
+  ->  Limit  (cost=0.42..24420.90 rows=200000 width=58) (actual time=0.011..29.906 rows=200000.00 loops=1)
+        Buffers: shared hit=176947
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.011..23.027 rows=200000.00 loops=1)
+              Heap Fetches: 6331
+              Index Searches: 1
+              Buffers: shared hit=176947
+Planning:
+  Buffers: shared hit=473
+Planning Time: 0.511 ms
+Execution Time: 34.733 ms
+
+=====
+Aggregate  (cost=26920.90..26920.91 rows=1 width=8) (actual time=36.256..36.260 rows=1.00 loops=1)
+  Buffers: shared hit=176947
+  ->  Limit  (cost=0.42..24420.90 rows=200000 width=58) (actual time=0.015..31.241 rows=200000.00 loops=1)
+        Buffers: shared hit=176947
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.014..24.052 rows=200000.00 loops=1)
+              Heap Fetches: 6331
+              Index Searches: 1
+              Buffers: shared hit=176947
+Planning:
+  Buffers: shared hit=473
+Planning Time: 0.635 ms
+Execution Time: 36.279 ms

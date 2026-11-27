@@ -1,0 +1,39 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' ORDER BY p.updated_at ASC, p.id ASC LIMIT 26
+
+Limit  (cost=0.42..185.46 rows=26 width=71) (actual time=0.028..0.352 rows=26.00 loops=1)
+  Buffers: shared hit=144 read=75
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=121141 width=71) (actual time=0.027..0.348 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pro%'::text)
+        Rows Removed by Filter: 191
+        Index Searches: 1
+        Buffers: shared hit=144 read=75
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.838 ms
+Execution Time: 0.361 ms
+
+=====
+Limit  (cost=0.42..185.46 rows=26 width=71) (actual time=0.013..0.240 rows=26.00 loops=1)
+  Buffers: shared hit=219
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=121141 width=71) (actual time=0.012..0.236 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pro%'::text)
+        Rows Removed by Filter: 191
+        Index Searches: 1
+        Buffers: shared hit=219
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.848 ms
+Execution Time: 0.248 ms
+
+=====
+Limit  (cost=0.42..185.46 rows=26 width=71) (actual time=0.013..0.223 rows=26.00 loops=1)
+  Buffers: shared hit=219
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=121141 width=71) (actual time=0.013..0.219 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pro%'::text)
+        Rows Removed by Filter: 191
+        Index Searches: 1
+        Buffers: shared hit=219
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.894 ms
+Execution Time: 0.232 ms

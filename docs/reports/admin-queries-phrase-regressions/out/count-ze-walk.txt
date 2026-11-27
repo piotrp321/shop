@@ -1,0 +1,60 @@
+SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT 20000) w WHERE w.name ILIKE '%ze%' LIMIT 10001) bounded
+
+Aggregate  (cost=2722.77..2722.78 rows=1 width=8) (actual time=57.088..57.093 rows=1.00 loops=1)
+  Buffers: shared hit=17046 read=707
+  ->  Limit  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.366..57.022 rows=1576.00 loops=1)
+        Buffers: shared hit=17046 read=707
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.365..56.954 rows=1576.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 18424
+              Buffers: shared hit=17046 read=707
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.354..48.986 rows=20000.00 loops=1)
+                    Buffers: shared hit=17046 read=707
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.354..48.222 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17046 read=707
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.569 ms
+Execution Time: 57.119 ms
+
+=====
+Aggregate  (cost=2722.77..2722.78 rows=1 width=8) (actual time=12.444..12.447 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.021..12.402 rows=1576.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.021..12.348 rows=1576.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 18424
+              Buffers: shared hit=17753
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.012..4.031 rows=20000.00 loops=1)
+                    Buffers: shared hit=17753
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.012..3.350 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.601 ms
+Execution Time: 12.467 ms
+
+=====
+Aggregate  (cost=2722.77..2722.78 rows=1 width=8) (actual time=11.035..11.037 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.024..10.991 rows=1576.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=2424 width=4) (actual time=0.023..10.934 rows=1576.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ze%'::text)
+              Rows Removed by Filter: 18424
+              Buffers: shared hit=17753
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.014..3.871 rows=20000.00 loops=1)
+                    Buffers: shared hit=17753
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.014..3.180 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.564 ms
+Execution Time: 11.057 ms

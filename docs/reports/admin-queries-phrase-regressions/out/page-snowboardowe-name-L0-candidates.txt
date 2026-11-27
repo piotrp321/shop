@@ -1,0 +1,88 @@
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%snowboardowe%') SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT 10001) c ORDER BY c.name ASC, c.id ASC LIMIT 26
+
+Limit  (cost=37915.05..37915.12 rows=26 width=532) (actual time=51.428..51.431 rows=26.00 loops=1)
+  Buffers: shared hit=852 read=10485
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2692.07..37304.97 rows=10095 width=71) (actual time=10.579..45.568 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Heap Blocks: exact=10091
+          Buffers: shared hit=846 read=10485
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=9.606..9.606 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=387 read=836
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=51.428..51.429 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=852 read=10485
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=49.204..49.729 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1111kB
+              Buffers: shared hit=846 read=10485
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=10.581..48.013 rows=10001.00 loops=1)
+                    Buffers: shared hit=846 read=10485
+                    ->  CTE Scan on m  (cost=0.00..201.90 rows=10095 width=524) (actual time=10.581..47.467 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1111kB
+                          Buffers: shared hit=846 read=10485
+Planning:
+  Buffers: shared hit=470 read=2
+Planning Time: 0.807 ms
+Execution Time: 51.611 ms
+=====
+Limit  (cost=37915.05..37915.12 rows=26 width=532) (actual time=25.632..25.635 rows=26.00 loops=1)
+  Buffers: shared hit=11313 read=8
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2692.07..37304.97 rows=10095 width=71) (actual time=8.813..20.961 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Heap Blocks: exact=10091
+          Buffers: shared hit=11307 read=8
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=7.927..7.927 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1223
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=25.632..25.633 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=11313 read=8
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=23.358..23.911 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1111kB
+              Buffers: shared hit=11307 read=8
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=8.814..22.584 rows=10001.00 loops=1)
+                    Buffers: shared hit=11307 read=8
+                    ->  CTE Scan on m  (cost=0.00..201.90 rows=10095 width=524) (actual time=8.814..22.242 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1111kB
+                          Buffers: shared hit=11307 read=8
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.741 ms
+Execution Time: 25.777 ms
+=====
+Limit  (cost=37915.05..37915.12 rows=26 width=532) (actual time=24.893..24.896 rows=26.00 loops=1)
+  Buffers: shared hit=11321
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2692.07..37304.97 rows=10095 width=71) (actual time=8.583..20.232 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Heap Blocks: exact=10091
+          Buffers: shared hit=11315
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=7.736..7.736 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1223
+  ->  Sort  (cost=610.08..635.09 rows=10001 width=532) (actual time=24.893..24.894 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=11321
+        ->  WindowAgg  (cost=325.00..325.03 rows=10001 width=532) (actual time=22.609..23.165 rows=10001.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1111kB
+              Buffers: shared hit=11315
+              ->  Limit  (cost=0.00..200.02 rows=10001 width=524) (actual time=8.585..21.857 rows=10001.00 loops=1)
+                    Buffers: shared hit=11315
+                    ->  CTE Scan on m  (cost=0.00..201.90 rows=10095 width=524) (actual time=8.584..21.519 rows=10001.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1111kB
+                          Buffers: shared hit=11315
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.796 ms
+Execution Time: 25.052 ms

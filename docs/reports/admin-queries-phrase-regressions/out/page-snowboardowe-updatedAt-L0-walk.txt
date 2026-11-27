@@ -1,0 +1,69 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name, w0.updated_at FROM catalog_product w0 ORDER BY w0.updated_at ASC, w0.id ASC LIMIT 20000) w JOIN catalog_product p ON p.id = w.id WHERE w.name ILIKE '%snowboardowe%' ORDER BY w.updated_at ASC, w.id ASC LIMIT 26
+
+Limit  (cost=0.85..2465.70 rows=26 width=95) (actual time=0.524..7.658 rows=26.00 loops=1)
+  Buffers: shared hit=1600 read=34
+  ->  Nested Loop  (cost=0.85..19150.81 rows=202 width=95) (actual time=0.523..7.651 rows=26.00 loops=1)
+        Buffers: shared hit=1600 read=34
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=202 width=24) (actual time=0.063..2.395 rows=26.00 loops=1)
+              Filter: ((w.name)::text ~~* '%snowboardowe%'::text)
+              Rows Removed by Filter: 1498
+              Buffers: shared hit=1530
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.019..1.656 rows=1524.00 loops=1)
+                    Buffers: shared hit=1530
+                    ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.019..1.597 rows=1524.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=1530
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.201..0.201 rows=1.00 loops=26)
+              Index Cond: (id = w.id)
+              Index Searches: 26
+              Buffers: shared hit=70 read=34
+Planning:
+  Buffers: shared hit=520
+Planning Time: 0.837 ms
+Execution Time: 7.687 ms
+
+=====
+Limit  (cost=0.85..2465.70 rows=26 width=95) (actual time=0.061..1.952 rows=26.00 loops=1)
+  Buffers: shared hit=1634
+  ->  Nested Loop  (cost=0.85..19150.81 rows=202 width=95) (actual time=0.060..1.948 rows=26.00 loops=1)
+        Buffers: shared hit=1634
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=202 width=24) (actual time=0.051..1.868 rows=26.00 loops=1)
+              Filter: ((w.name)::text ~~* '%snowboardowe%'::text)
+              Rows Removed by Filter: 1498
+              Buffers: shared hit=1530
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.016..1.255 rows=1524.00 loops=1)
+                    Buffers: shared hit=1530
+                    ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.016..1.204 rows=1524.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=1530
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.003..0.003 rows=1.00 loops=26)
+              Index Cond: (id = w.id)
+              Index Searches: 26
+              Buffers: shared hit=104
+Planning:
+  Buffers: shared hit=520
+Planning Time: 0.692 ms
+Execution Time: 1.974 ms
+
+=====
+Limit  (cost=0.85..2465.70 rows=26 width=95) (actual time=0.063..1.952 rows=26.00 loops=1)
+  Buffers: shared hit=1634
+  ->  Nested Loop  (cost=0.85..19150.81 rows=202 width=95) (actual time=0.062..1.948 rows=26.00 loops=1)
+        Buffers: shared hit=1634
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=202 width=24) (actual time=0.053..1.869 rows=26.00 loops=1)
+              Filter: ((w.name)::text ~~* '%snowboardowe%'::text)
+              Rows Removed by Filter: 1498
+              Buffers: shared hit=1530
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.017..1.268 rows=1524.00 loops=1)
+                    Buffers: shared hit=1530
+                    ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.017..1.217 rows=1524.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=1530
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.003..0.003 rows=1.00 loops=26)
+              Index Cond: (id = w.id)
+              Index Searches: 26
+              Buffers: shared hit=104
+Planning:
+  Buffers: shared hit=520
+Planning Time: 0.706 ms
+Execution Time: 1.971 ms
