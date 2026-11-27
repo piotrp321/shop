@@ -100,8 +100,7 @@ programu nie pokazuje PERF-7 jako spełnionego.
 Mieszanka panelu do W7 jest generowana z danych i zapisana z wynikiem: listy domyślne we wszystkich sortowaniach,
 strony głębokie, frazy według częstości (słowa z nazw, marki, bigramy rzadkie i częste, brak trafień), kategorie
 według rozmiaru i pozycji typu w alfabecie, kombinacje z filtrami, Ceny, Stany, zamówienia, klienci, kody rabatowe,
-dashboard. Tempo panelu: propozycja 5 żądań na sekundę (kilkanaście osób pracujących naraz); wartość zatwierdza
-właściciel razem z W1–W20 po PERF-0.
+dashboard. Tempo panelu: 5 żądań na sekundę (kilkanaście osób pracujących naraz; decyzja D4).
 
 ### Macierz przypadków
 
@@ -251,6 +250,7 @@ Podjęte przez właściciela:
 | D1 | Model odczytu kategorii (K2, K3) tylko wtedy, gdy zadanie 1 pokaże, że K0 i K1 nie spełniają P2; porównanie obejmuje koszt zapisu, WAL, współbieżność i spójność. Wybrany wariant zatwierdza właściciel przed falą 2. |
 | D2 | Semantyka wyszukiwania zamówień i klientów bez zmian; wariant według kosztu (Z0, Z1). |
 | D3 | Histogram dopuszczalny wyłącznie jako optymalizacja; gwarancje G1–G3 obowiązują w każdym wariancie. |
+| D4 | Tempo mieszanki panelu do W7: 5 żądań na sekundę. |
 
 Po zadaniu 1 właściciel zatwierdza wybrane warianty K, F, Z i M z liczbami albo decyduje o przypadkach, których
 żaden wariant nie spełnia (wyjątek W7 z liczbami albo dalsza praca).

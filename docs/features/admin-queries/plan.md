@@ -9,7 +9,7 @@ ukończeniu epiku usuń go.
 Start dopiero po raporcie PERF-0 i zatwierdzeniu W1–W20 (specyfikacja, „Wymagane przed startem”).
 
 **Bramka po zadaniu 1.** Fala 2 rusza dopiero, gdy właściciel zatwierdzi w rozmowie warianty K, F, Z i M wybrane
-w raporcie zadania 1 (specyfikacja, „Warianty”, „Decyzje”). Zadania 2–5 implementują wyłącznie zatwierdzony wariant;
+w raporcie zadania 1 (specyfikacja, „Warianty”, „Decyzje”). PERF-7-6 nie zależy od wyboru wariantów i idzie w fali 1. Zadania 2–5 implementują wyłącznie zatwierdzony wariant;
 zadanie, którego obszar zostaje bez zmian (np. Z0), odpada, a jego przypadki mierzy zadanie 7.
 
 **Pominięte zadanie.** Sesja orkiestrująca w tym samym commicie co zapis bramki: oznacza zadanie w „Statusie” jako
@@ -21,8 +21,8 @@ walidatorem planera przed zleceniem fali 2.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-7-1, bramka właściciela | w toku |
-| 2 | PERF-7-2, PERF-7-4, PERF-7-5, PERF-7-6 | |
+| 1 | PERF-7-1, PERF-7-6, bramka właściciela | w toku |
+| 2 | PERF-7-2, PERF-7-4, PERF-7-5 | |
 | 3 | PERF-7-3 | |
 | 4 | PERF-7-7 | |
 
@@ -57,7 +57,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
       ],
       "risk": "STANDARD",
       "depends_on": [],
-      "parallel_with": [],
+      "parallel_with": ["PERF-7-6"],
       "paths": ["load/", "docs/reports/"]
     },
     {
@@ -89,7 +89,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
       ],
       "risk": "CRITICAL",
       "depends_on": ["PERF-7-2"],
-      "parallel_with": [],
+      "parallel_with": ["PERF-7-6"],
       "paths": ["apps/api/src/Catalog/", "apps/api/src/DemoData/", "apps/api/migrations/", "apps/api/tests/"]
     },
     {
@@ -131,8 +131,8 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
         "`make -C apps/admin check` i `make -C apps/admin test` przechodzą."
       ],
       "risk": "STANDARD",
-      "depends_on": ["PERF-7-1"],
-      "parallel_with": ["PERF-7-2", "PERF-7-4", "PERF-7-5"],
+      "depends_on": [],
+      "parallel_with": ["PERF-7-1", "PERF-7-2", "PERF-7-3", "PERF-7-4", "PERF-7-5"],
       "paths": ["apps/admin/src/", "docs/features/admin-design/spec.md"]
     },
     {
