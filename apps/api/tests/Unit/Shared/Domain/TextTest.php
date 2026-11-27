@@ -36,6 +36,29 @@ final class TextTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
+    public static function theSeparatorsOfTheSearchIndex(): iterable
+    {
+        yield 'U+001E' => ["\u{1E}"];
+        yield 'U+001F' => ["\u{1F}"];
+    }
+
+    #[DataProvider('theSeparatorsOfTheSearchIndex')]
+    public function testASeparatorOfTheSearchIndexIsForbiddenAnywhereAndNotTrimmedAway(string $separator): void
+    {
+        // The facet tokens of the search index join an axis and a value with these characters (spec search, M1).
+        foreach (['Ko'.$separator.'lor', $separator.'Kolor', 'Kolor'.$separator, $separator, ' '.$separator.' '] as $text) {
+            self::assertTrue(Text::hasForbiddenCharacters($text), json_encode($text, \JSON_THROW_ON_ERROR));
+        }
+        // Trimming leaves them at the ends of a text that has other characters, so a check after it finds them too.
+        foreach ([$separator.'Kolor', 'Kolor'.$separator, ' Kolor'.$separator.' '] as $text) {
+            self::assertTrue(Text::hasForbiddenCharacters(Text::normalize($text)), json_encode($text, \JSON_THROW_ON_ERROR));
+        }
+        self::assertTrue(Text::hasForbiddenCharacters('Kolor'.$separator, "\t\n\r"));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
     public static function invalidUtf8Texts(): iterable
     {
         yield from InputValues::invalidUtf8Texts();

@@ -81,9 +81,10 @@ final class FacetFixtures
     }
 
     /**
-     * 10 products with one variant carrying the axes A01..A10 (10 products and 10 pairs per axis) and 5 products with
-     * four variants each carrying the axis "Zeta" (5 products, but 20 pairs). By products Zeta is the eleventh axis and
-     * is cut off, by the count of nested pairs it would be the first and push A10 out.
+     * 10 products with five variants each (two axes per variant, a variant has two options at most) carrying the axes
+     * A01..A10 (10 products and 10 pairs per axis) and 5 products with four variants each carrying the axis "Zeta"
+     * (5 products, but 20 pairs). By products Zeta is the eleventh axis and is cut off, by the count of nested pairs it
+     * would be the first and push A10 out.
      *
      * @return list<ProductDocument>
      */
@@ -91,11 +92,14 @@ final class FacetFixtures
     {
         $products = [];
         for ($p = 1; $p <= 10; ++$p) {
-            $options = [];
-            for ($axis = 1; $axis <= 10; ++$axis) {
-                $options[\sprintf('A%02d', $axis)] = \sprintf('a%d', $p);
+            $variants = [];
+            for ($pair = 0; $pair < 5; ++$pair) {
+                $variants[] = self::variant([
+                    \sprintf('A%02d', 2 * $pair + 1) => \sprintf('a%d', $p),
+                    \sprintf('A%02d', 2 * $pair + 2) => \sprintf('a%d', $p),
+                ], 1000, true);
             }
-            $products[] = self::product(\sprintf('a%02d', $p), [self::variant($options, 1000, true)]);
+            $products[] = self::product(\sprintf('a%02d', $p), $variants);
         }
         for ($p = 1; $p <= 5; ++$p) {
             $variants = [];
@@ -110,8 +114,9 @@ final class FacetFixtures
 
     /**
      * One axis "Rozmiar" with 31 values "v01".."v31" on two products each (one variant per product) and the value
-     * "zzz" on one product with three variants (1 product, 3 pairs). By products "zzz" is the last of 32 values and is
-     * cut off (with "v31"), by the count of nested pairs it would be the first and push "v30" out.
+     * "zzz" on one product with three variants (1 product, 3 pairs; the variants differ in a second axis "Wersja", the
+     * options of the variants of a product are different). By products "zzz" is the last of 32 values and is cut off
+     * (with "v31"), by the count of nested pairs it would be the first and push "v30" out.
      *
      * @return list<ProductDocument>
      */
@@ -121,14 +126,16 @@ final class FacetFixtures
         for ($p = 0; $p < 62; ++$p) {
             $products[] = self::product(\sprintf('v%02d', $p), [self::variant(['Rozmiar' => \sprintf('v%02d', intdiv($p, 2) + 1)], 1000, true)]);
         }
-        $products[] = self::product('zzz', array_map(static fn (): VariantDocument => self::variant(['Rozmiar' => 'zzz'], 1000, true), [1, 2, 3]));
+        $products[] = self::product('zzz', array_map(static fn (int $version): VariantDocument => self::variant(['Rozmiar' => 'zzz', 'Wersja' => 'w'.$version], 1000, true), [1, 2, 3]));
 
         return $products;
     }
 
     /**
-     * A skewed random set: 10 axes with 45 values each (common values first), products with 3-5 axes and 1-6 variants
-     * of 2-4 axis values, a price on 90% of the variants, 60% of the priced ones buyable.
+     * A skewed random set: 10 axes with 45 values each (common values first), products with 3-5 axes (all have Kolor and
+     * Rozmiar) and 1-6 variants of 1-2 axis values (6 in 10 with Kolor and Rozmiar; a variant has two options at most, the
+     * options of the variants of a product are different), a price on 90% of the variants, 60% of the priced ones
+     * buyable.
      *
      * @return list<ProductDocument>
      */
@@ -140,17 +147,28 @@ final class FacetFixtures
 
         $products = [];
         for ($p = 0; $p < $count; ++$p) {
-            $own = $axes;
-            shuffle($own);
-            $own = \array_slice($own, 0, mt_rand(3, 5));
+            // Every product has Kolor and Rozmiar, so conditions on two axes (with a price and availability) have matches.
+            $others = \array_slice($axes, 2);
+            shuffle($others);
+            $own = ['Kolor', 'Rozmiar', ...\array_slice($others, 0, mt_rand(1, 3))];
             $variants = [];
+            $tuples = [];
             for ($v = mt_rand(1, 6); $v > 0; --$v) {
-                $chosen = $own;
-                shuffle($chosen);
+                if (mt_rand(1, 10) <= 6) {
+                    $chosen = ['Kolor', 'Rozmiar'];
+                } else {
+                    $chosen = $own;
+                    shuffle($chosen);
+                    $chosen = \array_slice($chosen, 0, mt_rand(1, 2));
+                }
                 $options = [];
-                foreach (\array_slice($chosen, 0, mt_rand(2, min(4, \count($own)))) as $axis) {
+                foreach ($chosen as $axis) {
                     $options[$axis] = $value($axis);
                 }
+                if (isset($tuples[json_encode($options, \JSON_THROW_ON_ERROR)])) {
+                    continue;
+                }
+                $tuples[json_encode($options, \JSON_THROW_ON_ERROR)] = true;
                 $priced = mt_rand(1, 10) > 1;
                 $variants[] = self::variant($options, $priced ? mt_rand(50, 300) * 100 : null, $priced && mt_rand(1, 10) <= 6);
             }

@@ -76,7 +76,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
 
         $source = $this->stored($productId);
         self::assertSame(7_900, $source['from_gross']);
-        self::assertSame([['gross' => 7_900, 'purchasable' => true, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['gross' => 7_900, 'purchasable' => true, 'options' => [], 'axes' => [], 'pairs' => []]], $source['variants']);
 
         $this->connection()->executeStatement('UPDATE inventory_stock_item SET physical = 0 WHERE variant_id = ?', [$variantId]);
         $this->publisher()->publish(new StockLevelChanged($variantId, AvailabilityLevel::OutOfStock, StockChangeSource::Staff, new \DateTimeImmutable()));
@@ -84,7 +84,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
 
         $source = $this->stored($productId);
         self::assertArrayNotHasKey('from_gross', $source);
-        self::assertSame([['gross' => 7_900, 'purchasable' => false, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['gross' => 7_900, 'purchasable' => false, 'options' => [], 'axes' => [], 'pairs' => []]], $source['variants']);
         self::assertSame(0, $this->rows('failed'));
     }
 
