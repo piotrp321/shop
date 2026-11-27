@@ -22,7 +22,7 @@
 //   CHECK_TIMEOUT_SECONDS (120)        how long the consistency check may wait for the index to show the expected states
 //   CHECK_POLL_SECONDS (2)             the pause between two rounds of the check
 //   WRITE_TIMEOUT_SECONDS (60)         a write without an answer this long is unanswered (it may have been saved or not)
-//   WRITE_SEND_TOLERANCE_MS (1000 / WRITE_RATE)  a write of the open model sent later than this after its time is late
+//   WRITE_SEND_TOLERANCE_MS (1000)     a write of the open model sent later than this after its time is late
 //   WRITES_RESULT                     the file of the result (JSON), e.g. /out/writes.json
 //   API_URL, API_HOST, KEYCLOAK_URL, KEYCLOAK_HOST, ADMIN_REFRESH_TOKEN   lib/admin.js
 //
@@ -74,7 +74,7 @@ const settings = {
   writeTimeoutSeconds: Math.max(1, number('WRITE_TIMEOUT_SECONDS', 60)),
 };
 const toleranceSetting = text('WRITE_SEND_TOLERANCE_MS', '');
-settings.sendToleranceMs = settings.rate > 0 ? sendTolerance(settings.rate, toleranceSetting === '' ? undefined : number('WRITE_SEND_TOLERANCE_MS')) : null;
+settings.sendToleranceMs = settings.rate > 0 ? sendTolerance(toleranceSetting === '' ? undefined : number('WRITE_SEND_TOLERANCE_MS')) : null;
 const tolerance = settings.sendToleranceMs;
 settings.discoverProducts = Math.floor(number('WRITE_DISCOVER_PRODUCTS', Math.max(60, 3 * settings.size)));
 const resultFile = text('WRITES_RESULT', '');
