@@ -1,9 +1,10 @@
 // The API (public and panel) and the panel session of the writes scenario (writes.js). The session is the one of a staff member
 // logged in to the panel: its refresh token (public client `admin` of the realm backoffice) comes in ADMIN_REFRESH_TOKEN, and the
-// script exchanges it for access tokens at the token endpoint of Keycloak, again before every access token expires. No account
+// script exchanges it for access tokens at the token endpoint of Keycloak, in the background before every access token expires. No account
 // or client of its own (load/README.md, "Token").
 import http from 'k6/http';
 import { text } from './env.js';
+import { RENEW_BEFORE_MS, tokenAction } from './write-state.js';
 
 const trimmed = (url) => url.replace(/\/+$/, '');
 
@@ -14,8 +15,8 @@ const apiHost = text('API_HOST', '');
 const keycloakUrl = trimmed(text('KEYCLOAK_URL'));
 const keycloakHost = text('KEYCLOAK_HOST', '');
 const TOKEN_PATH = '/realms/backoffice/protocol/openid-connect/token';
-// An access token is renewed this long before it expires.
-const RENEW_BEFORE_MS = 60 * 1000;
+// After a failed renewal in the background, the next one starts no sooner than this.
+const BACKGROUND_RETRY_MS = 5 * 1000;
 
 function headersFor(host, extra) {
   return host === '' ? { ...extra } : { Host: host, ...extra };
@@ -70,6 +71,7 @@ export class PanelSession {
     this.refreshToken = refreshToken.trim();
     this.tokens = null;
     this.renewing = null;
+    this.retryAt = 0;
   }
 
   keep(tokens) {
@@ -88,25 +90,39 @@ export class PanelSession {
     return `Bearer ${this.tokens.access}`;
   }
 
-  // The Authorization header for a request of the run; one renewal at a time.
+  // One renewal at a time, shared by every request that waits for it.
+  renew() {
+    if (this.renewing === null) {
+      const [url, form, params] = refreshRequest(this.refreshToken);
+      this.renewing = http
+        .asyncRequest('POST', url, form, params)
+        .then((res) => this.keep(tokensOf(res)))
+        .then(
+          () => {
+            this.renewing = null;
+          },
+          (error) => {
+            this.renewing = null;
+            throw error;
+          },
+        );
+    }
+    return this.renewing;
+  }
+
+  // The Authorization header for a request of the run (lib/write-state.js, tokenAction): a token valid for longer than
+  // VALID_MARGIN_MS is used at once, and in the last RENEW_BEFORE_MS it is renewed in the background, so no write waits for
+  // Keycloak while the token is valid. A failed renewal in the background is tried again after BACKGROUND_RETRY_MS; once the token
+  // is about to expire, the request waits for the renewal and its error is thrown.
   async authorization() {
-    if (this.tokens === null || this.tokens.expiresAt - Date.now() < RENEW_BEFORE_MS) {
-      if (this.renewing === null) {
-        const [url, form, params] = refreshRequest(this.refreshToken);
-        this.renewing = http
-          .asyncRequest('POST', url, form, params)
-          .then((res) => this.keep(tokensOf(res)))
-          .then(
-            () => {
-              this.renewing = null;
-            },
-            (error) => {
-              this.renewing = null;
-              throw error;
-            },
-          );
-      }
-      await this.renewing;
+    const now = Date.now();
+    const action = tokenAction(this.tokens === null ? null : this.tokens.expiresAt, now);
+    if (action === 'wait') {
+      await this.renew();
+    } else if (action === 'use_and_renew' && this.renewing === null && now >= this.retryAt) {
+      this.renew().catch(() => {
+        this.retryAt = Date.now() + BACKGROUND_RETRY_MS;
+      });
     }
     return `Bearer ${this.tokens.access}`;
   }

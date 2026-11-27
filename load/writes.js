@@ -22,6 +22,7 @@
 //   CHECK_TIMEOUT_SECONDS (120)        how long the consistency check may wait for the index to show the expected states
 //   CHECK_POLL_SECONDS (2)             the pause between two rounds of the check
 //   WRITE_TIMEOUT_SECONDS (60)         a write without an answer this long is unanswered (it may have been saved or not)
+//   WRITE_SEND_TOLERANCE_MS (1000 / WRITE_RATE)  a write of the open model sent later than this after its time is late
 //   WRITES_RESULT                     the file of the result (JSON), e.g. /out/writes.json
 //   API_URL, API_HOST, KEYCLOAK_URL, KEYCLOAK_HOST, ADMIN_REFRESH_TOKEN   lib/admin.js
 //
@@ -42,8 +43,10 @@ import {
   allowedPrices,
   expectedStates,
   matchesIndex,
+  isLate,
   nextPrice,
   runVerdict,
+  sendTolerance,
   startRecord,
   writeOutcome,
 } from './lib/write-state.js';
@@ -70,6 +73,9 @@ const settings = {
   checkPollSeconds: number('CHECK_POLL_SECONDS', 2),
   writeTimeoutSeconds: Math.max(1, number('WRITE_TIMEOUT_SECONDS', 60)),
 };
+const toleranceSetting = text('WRITE_SEND_TOLERANCE_MS', '');
+settings.sendToleranceMs = settings.rate > 0 ? sendTolerance(settings.rate, toleranceSetting === '' ? undefined : number('WRITE_SEND_TOLERANCE_MS')) : null;
+const tolerance = settings.sendToleranceMs;
 settings.discoverProducts = Math.floor(number('WRITE_DISCOVER_PRODUCTS', Math.max(60, 3 * settings.size)));
 const resultFile = text('WRITES_RESULT', '');
 
@@ -78,6 +84,8 @@ const changes = new Counter('changes_made');
 const refused = new Counter('writes_refused');
 const unanswered = new Counter('writes_unanswered');
 const dropped = new Counter('writes_dropped');
+const late = new Counter('writes_late');
+const sendLag = new Trend('send_lag', true);
 const freshnessPrice = new Trend('freshness_price', true);
 const freshnessAvailability = new Trend('freshness_availability', true);
 const freshnessTimeouts = new Counter('freshness_timeouts');
@@ -101,6 +109,7 @@ export const options = {
   // only after the consistency check, so a check cut off by maxDuration fails too.
   thresholds: {
     writes_dropped: ['count==0'],
+    writes_late: ['count==0'],
     writes_unanswered: ['count==0'],
     freshness_timeouts: ['count==0'],
     writes_refused: ['count==0'],
@@ -199,8 +208,21 @@ class Run {
     return outcome;
   }
 
+  // A write of the open model leaves now: its lag behind the time it was due (`due`, ms) goes to send_lag, and a lag above the
+  // tolerance (lib/write-state.js, sendTolerance) counts it late. The probes have no due time.
+  sending(due) {
+    if (due === undefined) {
+      return;
+    }
+    const now = Date.now();
+    sendLag.add(now - due);
+    if (isLate(due, now, tolerance)) {
+      late.add(1);
+    }
+  }
+
   // The variant is busy from the call on (before any await), so no second price change of it starts before this one has its answer.
-  async changePrice(variant, price, part) {
+  async changePrice(variant, price, part, due) {
     const id = variant.variantId;
     this.busy.add(id);
     const authorization = await this.authorization();
@@ -208,6 +230,7 @@ class Run {
       this.busy.delete(id);
       return null;
     }
+    this.sending(due);
     sent.add(1, { action: 'price', part });
     const body = JSON.stringify({ gross: price, version: this.versions.get(id) });
     const res = await http.asyncRequest(
@@ -226,13 +249,14 @@ class Run {
     return { outcome, at };
   }
 
-  async receive(variant, part) {
+  async receive(variant, part, due) {
     const authorization = await this.authorization();
     if (authorization === null) {
       return null;
     }
     const id = variant.variantId;
     this.keys += 1;
+    this.sending(due);
     sent.add(1, { action: 'receipt', part });
     const res = await http.asyncRequest(
       'POST',
@@ -307,7 +331,7 @@ class Run {
   }
 
   // One write of the open model: a price change of a bulk variant without a write in flight, or a receipt of a purchasable one.
-  write() {
+  write(due) {
     const usable = (variant) => !this.records.get(variant.variantId).uncertain;
     if (Math.random() < settings.priceShare) {
       const free = this.data.variants.filter((variant) => variant.part === 'bulk' && usable(variant) && !this.busy.has(variant.variantId));
@@ -317,14 +341,14 @@ class Run {
       }
       const variant = free[Math.floor(Math.random() * free.length)];
       const record = this.records.get(variant.variantId);
-      return this.changePrice(variant, nextPrice(record.initialPrice, record.prices[0], Math.random()), 'open');
+      return this.changePrice(variant, nextPrice(record.initialPrice, record.prices[0], Math.random()), 'open', due);
     }
     const stocked = this.data.variants.filter((variant) => variant.part !== 'unstocked' && usable(variant));
     if (stocked.length === 0) {
       dropped.add(1, { reason: 'no_free_variant' });
       return Promise.resolve();
     }
-    return this.receive(stocked[Math.floor(Math.random() * stocked.length)], 'open');
+    return this.receive(stocked[Math.floor(Math.random() * stocked.length)], 'open', due);
   }
 
   async openModel(start) {
@@ -342,7 +366,7 @@ class Run {
         dropped.add(1, { reason: 'in_flight' });
         continue;
       }
-      const write = this.write().then(
+      const write = this.write(due).then(
         () => inFlight.delete(write),
         (error) => {
           inFlight.delete(write);
@@ -498,6 +522,9 @@ export function handleSummary(summary) {
       refused: countOf(summary, 'writes_refused'),
       unanswered: countOf(summary, 'writes_unanswered'),
       dropped: countOf(summary, 'writes_dropped'),
+      late: countOf(summary, 'writes_late'),
+      send_lag: trendOf(summary, 'send_lag'),
+      send_tolerance_ms: settings.sendToleranceMs,
       duration: { price_change: trendOf(summary, 'http_req_duration{name:price_change}'), receipt: trendOf(summary, 'http_req_duration{name:receipt}') },
     },
     freshness: {
@@ -524,6 +551,7 @@ export function handleSummary(summary) {
   result.verdict = runVerdict({
     finished: result.finished,
     dropped: c.dropped,
+    late: c.late,
     unanswered: c.unanswered,
     freshnessTimeouts: f.timeouts.price + f.timeouts.availability,
     refused: c.refused,
@@ -535,7 +563,8 @@ export function handleSummary(summary) {
     `\nWrites: ${result.finished ? 'finished' : 'NOT finished (interrupted or stopped before the end of the check)'}\n` +
     `verdict: ${result.verdict.passed ? 'a measurement at the rate, the index consistent' : `NO MEASUREMENT: ${result.verdict.reasons.join('; ')}`}\n` +
     (indexDiffered > 0 ? `WARNING: ${indexDiffered} candidates left out because the index differed from the offer at the start (W13; a previous run?)\n` : '') +
-    `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}\n` +
+    `sample ${result.sample.size} variants; changes made ${c.made} (${c.prices} prices, ${c.receipts} receipts, ${c.per_second}/s), sent ${c.sent}, refused ${c.refused}, unanswered ${c.unanswered}, dropped ${c.dropped}, late ${c.late}\n` +
+    `send lag of the open model: p50 ${c.send_lag.p50_ms} ms, p95 ${c.send_lag.p95_ms} ms, p99 ${c.send_lag.p99_ms} ms, max ${c.send_lag.max_ms} ms (tolerance ${c.send_tolerance_ms} ms)\n` +
     `freshness${f.percentiles_valid ? '' : ' (NOT a result of W16: changes not seen within the timeout are left out)'}:\n` +
     `freshness of the price: ${f.price.count} samples, p50 ${f.price.p50_ms} ms, p95 ${f.price.p95_ms} ms, p99 ${f.price.p99_ms} ms, max ${f.price.max_ms} ms, timeouts ${f.timeouts.price}\n` +
     `freshness of the availability: ${f.availability.count} samples, p50 ${f.availability.p50_ms} ms, p95 ${f.availability.p95_ms} ms, max ${f.availability.max_ms} ms, timeouts ${f.timeouts.availability}\n` +
