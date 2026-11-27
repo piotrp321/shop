@@ -31,7 +31,14 @@ final readonly class ProductFacetTokens
 {
     public const string PAIR_SEPARATOR = "\u{1E}";
     public const string PURCHASABLE = '$';
+    // The kinds of a token read by read().
+    public const string READ_OPTION = 'option';
+    public const string READ_CATEGORY = 'category';
+    public const string READ_AXIS = 'axis';
+    public const string READ_PURCHASABLE = 'purchasable';
     private const string CATEGORY = '#';
+    // Any text without U+001F, in a regular expression of Lucene: the rest of an axis token, never an option.
+    private const string ANY_BUT_OPTION_SEPARATOR = '[^\\'.VariantDocument::OPTION_SEPARATOR.']*';
     private const string AXIS = '@';
 
     /**
@@ -193,6 +200,74 @@ final readonly class ProductFacetTokens
     public static function pairPartnersPattern(string $axis, string $value): string
     {
         return self::escapeForRegexp(self::pairToken(self::optionToken($axis, $value), '')).'.*';
+    }
+
+    /**
+     * The `include` that selects the axis tokens (`@<axis>`) from `facets` or `buy_facets`: not the options of an axis
+     * whose name begins with `@`.
+     */
+    public static function axesPattern(): string
+    {
+        return self::escapeForRegexp(self::AXIS).self::ANY_BUT_OPTION_SEPARATOR;
+    }
+
+    /**
+     * The `include` that selects the tokens of `pair_*` that pair one option with an axis (`x` U+001E `@<axis>`): the
+     * axes on the variants with the option, not the options of an axis whose name begins with `@`.
+     */
+    public static function pairAxesPattern(string $axis, string $value): string
+    {
+        return self::escapeForRegexp(self::pairAxisToken(self::optionToken($axis, $value), '')).self::ANY_BUT_OPTION_SEPARATOR;
+    }
+
+    /**
+     * The `include` that selects the tokens of `pair_*` that pair one option with the options of another axis
+     * (`x` U+001E `<other axis>` U+001F …): the values of that axis on the variants with the option.
+     */
+    public static function pairOptionsOfAxisPattern(string $axis, string $value, string $otherAxis): string
+    {
+        return self::escapeForRegexp(self::pairToken(self::optionToken($axis, $value), self::optionToken($otherAxis, ''))).'.*';
+    }
+
+    /**
+     * Reads a token of `facets` or `buy_facets`, or the part of a pair token after its first option: it contains
+     * U+001F, so an option; else `#` a category, `@` an axis, `$` the availability.
+     *
+     * @return array{self::READ_OPTION, string, string}|array{self::READ_CATEGORY|self::READ_AXIS|self::READ_PURCHASABLE, string, ''} the kind, then the axis and the value of an option, the id of a category, the name of an axis
+     *
+     * @throws SearchIndexError when the token is of no kind
+     */
+    public static function read(string $token): array
+    {
+        if (str_contains($token, VariantDocument::OPTION_SEPARATOR)) {
+            [$axis, $value] = explode(VariantDocument::OPTION_SEPARATOR, $token, 2);
+
+            return [self::READ_OPTION, $axis, $value];
+        }
+
+        return match (true) {
+            self::PURCHASABLE === $token => [self::READ_PURCHASABLE, '', ''],
+            str_starts_with($token, self::CATEGORY) => [self::READ_CATEGORY, substr($token, \strlen(self::CATEGORY)), ''],
+            str_starts_with($token, self::AXIS) => [self::READ_AXIS, substr($token, \strlen(self::AXIS)), ''],
+            default => throw new SearchIndexError('Elasticsearch returned a facet token of no known kind.'),
+        };
+    }
+
+    /**
+     * Reads a token of `pair_*` that begins with the given option ({@see read()} of the rest).
+     *
+     * @return array{self::READ_OPTION, string, string}|array{self::READ_CATEGORY|self::READ_AXIS|self::READ_PURCHASABLE, string, ''}
+     *
+     * @throws SearchIndexError when the token does not begin with the option
+     */
+    public static function readPairPartner(string $token, string $axis, string $value): array
+    {
+        $prefix = self::pairToken(self::optionToken($axis, $value), '');
+        if (!str_starts_with($token, $prefix)) {
+            throw new SearchIndexError('Elasticsearch returned a pair token of another option.');
+        }
+
+        return self::read(substr($token, \strlen($prefix)));
     }
 
     /**

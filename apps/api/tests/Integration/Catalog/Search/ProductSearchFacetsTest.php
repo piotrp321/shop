@@ -10,6 +10,7 @@ use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchFacets;
 use App\Catalog\Application\Search\SearchResult;
+use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -150,10 +151,46 @@ final class ProductSearchFacetsTest extends TestCase
         yield 'three axes, price, available' => [new ProductSearchCriteria(1, 24, availableOnly: true, priceMin: 8000, priceMax: 20000, options: ['Kolor' => ['Kolor 01', 'Kolor 02'], 'Rozmiar' => ['Rozmiar 01'], 'Materiał' => ['Materiał 01', 'Materiał 03']])];
         yield 'available' => [new ProductSearchCriteria(1, 24, availableOnly: true)];
         yield 'price from' => [new ProductSearchCriteria(1, 24, priceMin: 15000)];
-        yield 'price to with an axis' => [new ProductSearchCriteria(1, 24, priceMax: 12000, options: ['Wzór' => ['Wzór 02']])];
+        // Kolor 03 is on 45 products, 10 of them with a buyable variant of it up to 120 zł.
+        yield 'price to with an axis' => [new ProductSearchCriteria(1, 24, priceMax: 12000, options: ['Kolor' => ['Kolor 03']])];
         yield 'rare value' => [new ProductSearchCriteria(1, 24, options: ['Kolor' => ['Kolor 45']])];
-        yield 'a value beyond the thirtieth' => [new ProductSearchCriteria(1, 24, options: ['Waga' => ['Waga 40', 'Waga 41', 'Waga 42']])];
+        // Kolor has 45 values on the generated set (every product has the axis), 40 to 42 beyond the thirtieth.
+        yield 'a value beyond the thirtieth' => [new ProductSearchCriteria(1, 24, options: ['Kolor' => ['Kolor 40', 'Kolor 41', 'Kolor 42']])];
         yield 'absent axis' => [new ProductSearchCriteria(1, 24, options: ['Nieistnieje' => ['x'], 'Sezon' => ['Sezon 01']])];
+    }
+
+    /**
+     * The criteria named after a case of the facets meet that case on the generated set, or their comparison with the
+     * brute-force model proves nothing about it.
+     */
+    public function testTheCriteriaOfTheGeneratedSetMeetTheirCase(): void
+    {
+        $documents = FacetFixtures::random();
+        $criteria = array_map(static fn (array $one): ProductSearchCriteria => $one[0], iterator_to_array(self::criteria()));
+
+        // A selected value beyond the thirtieth: the axis has more than thirty values and one selected value comes
+        // after them.
+        $beyond = $criteria['a value beyond the thirtieth'];
+        $axis = (string) array_key_first($beyond->options);
+        $values = array_column(array_column(FacetFixtures::expected($documents, $beyond)['options'], 1, 0)[$axis], 0);
+        self::assertGreaterThan(30, \count($values), $axis.' has thirty values or fewer.');
+        self::assertNotSame([], array_intersect(\array_slice($values, 30), $beyond->options[$axis]), 'No selected value of '.$axis.' is beyond the thirtieth.');
+
+        // A rare value: some products have it, and it is among the five least common values of its axis.
+        $rare = $criteria['rare value'];
+        $rareAxis = (string) array_key_first($rare->options);
+        $rareValue = $rare->options[$rareAxis][0];
+        $products = self::productsPerValue($documents, $rareAxis);
+        asort($products);
+        self::assertGreaterThan(0, FacetFixtures::expected($documents, $rare)['total']);
+        self::assertContains($rareValue, \array_slice(array_map(strval(...), array_keys($products)), 0, 5), $rareValue.' is not rare.');
+
+        // A price with an axis: the price range keeps some products of the value and drops others.
+        $priced = $criteria['price to with an axis'];
+        $withPrice = FacetFixtures::expected($documents, $priced)['total'];
+        $withoutPrice = FacetFixtures::expected($documents, new ProductSearchCriteria(1, 24, options: $priced->options))['total'];
+        self::assertGreaterThan(0, $withPrice);
+        self::assertLessThan($withoutPrice, $withPrice);
     }
 
     #[DataProvider('criteria')]
@@ -251,6 +288,32 @@ final class ProductSearchFacetsTest extends TestCase
             FacetFixtures::product('p3', [FacetFixtures::variant(['Kolor' => 'biały', 'Rozmiar' => '42'], 20000, true)]),
             FacetFixtures::product('p4', [FacetFixtures::variant(['Kolor' => 'zielone', 'Rozmiar' => '44'], null, false)]),
         ];
+    }
+
+    /**
+     * @param list<ProductDocument> $documents
+     *
+     * @return array<string, int> value => products with a variant of the value of the axis
+     */
+    private static function productsPerValue(array $documents, string $axis): array
+    {
+        $products = [];
+        foreach ($documents as $document) {
+            $values = [];
+            foreach ($document->variants as $variant) {
+                foreach ($variant->options as $option) {
+                    [$optionAxis, $value] = explode(VariantDocument::OPTION_SEPARATOR, $option, 2);
+                    if ($optionAxis === $axis) {
+                        $values[$value] = true;
+                    }
+                }
+            }
+            foreach (array_keys($values) as $value) {
+                $products[(string) $value] = ($products[(string) $value] ?? 0) + 1;
+            }
+        }
+
+        return $products;
     }
 
     /**

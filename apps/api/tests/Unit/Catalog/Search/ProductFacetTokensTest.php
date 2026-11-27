@@ -387,6 +387,88 @@ final class ProductFacetTokensTest extends TestCase
         self::assertSame(0, preg_match($pattern, $black));
     }
 
+    public function testTheAxesPatternMatchesTheAxisTokensOnly(): void
+    {
+        $pattern = '/\A'.ProductFacetTokens::axesPattern().'\z/su';
+
+        self::assertSame(1, preg_match($pattern, ProductFacetTokens::axisToken('Kolor')));
+        self::assertSame(1, preg_match($pattern, ProductFacetTokens::axisToken('#@$ .*')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::optionToken('Kolor', 'czarne')));
+        // An option of an axis whose name begins with "@" is an option, not an axis.
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::optionToken('@x', 'y')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::categoryToken('c')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::PURCHASABLE));
+    }
+
+    public function testThePairAxesPatternMatchesTheAxesPairedWithOneOptionOnly(): void
+    {
+        $pattern = '/\A'.ProductFacetTokens::pairAxesPattern('Wym.*(cm)', '50.*').'\z/su';
+        $option = ProductFacetTokens::optionToken('Wym.*(cm)', '50.*');
+
+        self::assertSame(1, preg_match($pattern, ProductFacetTokens::pairAxisToken($option, 'Rozmiar')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairToken($option, ProductFacetTokens::optionToken('Rozmiar', '42'))));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairToken($option, ProductFacetTokens::optionToken('@x', '42'))));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairAxisToken(ProductFacetTokens::optionToken('Wym.*(cm)', '50x'), 'Rozmiar')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairAxisToken(ProductFacetTokens::optionToken('Wymx(cm)', '50.*'), 'Rozmiar')));
+    }
+
+    public function testThePairOptionsOfAxisPatternMatchesTheValuesOfOneAxisPairedWithOneOptionOnly(): void
+    {
+        $pattern = '/\A'.ProductFacetTokens::pairOptionsOfAxisPattern('Kolor', 'czarne', 'Kolor').'\z/su';
+        $black = ProductFacetTokens::optionToken('Kolor', 'czarne');
+
+        self::assertSame(1, preg_match($pattern, ProductFacetTokens::pairToken($black, ProductFacetTokens::optionToken('Kolor', 'x'))));
+        // Another axis with the axis as its prefix, the axis token, another first option.
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairToken($black, ProductFacetTokens::optionToken('Kolor ramy', 'x'))));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairAxisToken($black, 'Kolor')));
+        self::assertSame(0, preg_match($pattern, ProductFacetTokens::pairToken(ProductFacetTokens::optionToken('Kolor', 'czarne2'), ProductFacetTokens::optionToken('Kolor', 'x'))));
+    }
+
+    /**
+     * @return iterable<string, array{string, array{string, string, string}}>
+     */
+    public static function tokensToRead(): iterable
+    {
+        yield 'option' => [ProductFacetTokens::optionToken('Kolor', 'czarne'), [ProductFacetTokens::READ_OPTION, 'Kolor', 'czarne']];
+        yield 'option of an axis with syntax characters' => [ProductFacetTokens::optionToken('#@$', '@x'), [ProductFacetTokens::READ_OPTION, '#@$', '@x']];
+        yield 'option of a numeric axis' => [ProductFacetTokens::optionToken('2024', '42'), [ProductFacetTokens::READ_OPTION, '2024', '42']];
+        yield 'category' => [ProductFacetTokens::categoryToken('0198a1f0'), [ProductFacetTokens::READ_CATEGORY, '0198a1f0', '']];
+        yield 'axis' => [ProductFacetTokens::axisToken('Kolor ramy'), [ProductFacetTokens::READ_AXIS, 'Kolor ramy', '']];
+        yield 'axis named with a dollar' => [ProductFacetTokens::axisToken('$'), [ProductFacetTokens::READ_AXIS, '$', '']];
+        yield 'availability' => [ProductFacetTokens::PURCHASABLE, [ProductFacetTokens::READ_PURCHASABLE, '', '']];
+    }
+
+    /**
+     * @param array{string, string, string} $expected
+     */
+    #[DataProvider('tokensToRead')]
+    public function testATokenIsReadAsTheKindItWasBuiltAs(string $token, array $expected): void
+    {
+        self::assertSame($expected, ProductFacetTokens::read($token));
+    }
+
+    public function testATokenOfNoKindIsAnError(): void
+    {
+        $this->expectException(SearchIndexError::class);
+
+        ProductFacetTokens::read('Kolor');
+    }
+
+    public function testThePartnerOfAPairTokenIsReadAfterItsOption(): void
+    {
+        $black = ProductFacetTokens::optionToken('Kolor', 'czarne');
+
+        self::assertSame([ProductFacetTokens::READ_OPTION, 'Rozmiar', '42'], ProductFacetTokens::readPairPartner(ProductFacetTokens::pairToken($black, ProductFacetTokens::optionToken('Rozmiar', '42')), 'Kolor', 'czarne'));
+        self::assertSame([ProductFacetTokens::READ_AXIS, 'Rozmiar', ''], ProductFacetTokens::readPairPartner(ProductFacetTokens::pairAxisToken($black, 'Rozmiar'), 'Kolor', 'czarne'));
+    }
+
+    public function testAPairTokenOfAnotherOptionIsAnError(): void
+    {
+        $this->expectException(SearchIndexError::class);
+
+        ProductFacetTokens::readPairPartner(ProductFacetTokens::pairAxisToken(ProductFacetTokens::optionToken('Kolor', 'czarne2'), 'Rozmiar'), 'Kolor', 'czarne');
+    }
+
     /**
      * @param list<VariantDocument> $variants
      * @param list<string>          $categoryAncestorIds

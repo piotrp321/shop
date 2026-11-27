@@ -42,12 +42,15 @@ final class ProductIndexSourceTest extends TestCase
         self::assertSame(['Kolor', 'Rozmiar'], self::at($source, 'variants', 1, 'axes'));
     }
 
-    public function testTheFieldsOfTheModelBeforeItStayInTheSource(): void
+    public function testTheVariantsKeepTheirOptionsWithoutNestedPairs(): void
     {
         $source = ProductIndexDefinition::source(self::document());
 
         self::assertSame(['Kolor'.self::US.'czarne', 'Rozmiar'.self::US.'42'], self::at($source, 'variants', 0, 'options'));
-        self::assertSame([['axis' => 'Kolor', 'value' => 'czarne'], ['axis' => 'Rozmiar', 'value' => '42']], self::at($source, 'variants', 0, 'pairs'));
+        // The pairs of a product are its tokens (pair_any, pair_buy); a variant has no nested pairs.
+        $variant = self::at($source, 'variants', 0);
+        self::assertIsArray($variant);
+        self::assertSame(['gross', 'purchasable', 'options', 'axes'], array_keys($variant));
         self::assertSame(['p', 'c'], $source['category_ancestor_ids']);
         self::assertSame('p/c', $source['sort_path']);
     }
