@@ -20,10 +20,11 @@ use Doctrine\DBAL\Connection;
  *  1. the walk: the first B(i) rows of the index of the sort (after the cursor) are checked for the phrase, in the order
  *     of the sort, and the walk stops at the page. It reads at most B(i) rows from the index, whatever the table size,
  *     and finds the page when the hits are dense in the prefix of the order (a phrase in many names);
- *  2. when the page is not full, the candidates: the names that the GIN index of the route gives for the phrase (the
- *     trigrams, or for a phrase without a word of three characters the bigrams), sorted, cut at C(i) = B(i) / 2 rows.
- *     When they are fewer than that, they are all the hits and the page is their start: the cost is linear in the hits.
- *     Otherwise the hits are many, and the step i + 1 walks ten times as far.
+ *  2. when the page is not full and the walk did not reach the end of the order (it read B(i) rows: a probe of the
+ *     index tells, with no phrase to check), the candidates: the names that the GIN index of the route gives for the
+ *     phrase (the trigrams, or for a phrase without a word of three characters the bigrams), sorted, cut at
+ *     C(i) = B(i) / 2 rows. When they are fewer than that, they are all the hits and the page is their start: the cost is
+ *     linear in the hits. Otherwise the hits are many, and the step i + 1 walks ten times as far.
  * So the work is about the smaller of the position of the page in the order of the sort (a frequent phrase whose hits
  * are scattered, or start early in the order) and the number of the hits (a rare phrase, or one that lies at the end of
  * the order), up to a factor that does not depend on the size of the table. It ends because a walk longer than the table
@@ -31,20 +32,44 @@ use Doctrine\DBAL\Connection;
  * the rows of the walk and of the candidates, and does not change the way.
  *
  * The count of the first page walks the first budget (a phrase in more than half of the names has the limit within it),
- * and otherwise counts the candidates of the route up to the limit.
+ * and otherwise counts the candidates of the route up to the limit. It is not a BoundedCounter: that one has a single
+ * statement, and the count follows the way of the page.
+ *
+ * The planner is steered in one place, the two statements of the candidates (the page and the count), under the
+ * exception D10 of docs/features/admin-queries/spec.md: they are read with only bitmap scans allowed
+ * (enable_seqscan, enable_indexscan and enable_indexonlyscan off), so that the GIN index is the way to them. The
+ * candidates are a MATERIALIZED CTE read lazily up to a cap. The planner plans the CTE for all its rows and takes a phrase
+ * for a dense one (the estimate of an ILIKE knows neither the frequency of the phrase nor where its hits lie in the heap),
+ * so it chooses a sequential scan, which reads the table up to the cap-th hit: the table whole, when the hits are
+ * at the end of the heap (observed in the plan test on 100 000 products: a Seq Scan estimated at 22 222 rows for a
+ * phrase whose hits lie after the first 60% of the table, 229 809 rows read by a page against the bound of 115 406
+ * rows). What was considered:
+ *  - another form of the CTE (not materialized, a subquery with the LIMIT inside): the planner then plans for the LIMIT,
+ *    taking the same estimate of the density as true, and stops after the cap-th hit only if the hits are where the
+ *    estimate puts them (not run: it rests on the same estimate);
+ *  - the choice by the estimate (EXPLAIN first, or the statistics): the same flawed estimate, and a trip more;
+ *  - the candidates by the construction of the statement (a join, ctid, a function): GIN can be made the only access
+ *    path by hiding the condition from the other indexes (the bigrams route does it for the trigram index, see
+ *    candidateConditions()), but nothing in a statement hides a table from a sequential scan (not run);
+ *  - plan_cache_mode: it chooses between the custom and the generic plan of a prepared statement and leaves the cost
+ *    model, so the estimate, as it is (reasoning, not run);
+ *  - a function with a SET clause that runs the statement (one trip, the settings restored by PostgreSQL): it needs a
+ *    function of dynamic SQL in the schema that returns rows of any shape, kept in step with the text of the statement
+ *    (not run, judged worse than the trips below).
+ * The settings are local: they are set with set_config(…, true) (the effect of SET LOCAL) inside a transaction of their
+ * own, a savepoint when the caller has a transaction, which is rolled back whatever happens (nothing is written), and
+ * PostgreSQL takes the settings back with it, in the caller's transaction too. Four trips: begin, the settings (one
+ * statement), the read, the rollback. They cannot be fewer: the planner reads the settings when it plans, so they cannot
+ * be in the statement that they are for (nor can a transaction block be opened and the read sent in one statement with
+ * bound parameters: the extended protocol runs a single statement). Nothing of the configuration of the planner of the
+ * server and no timeout is changed.
  */
 final readonly class PhraseSearch
 {
     /** Rows of the index of the sort that the first walk reads; the pace of the candidates (their cap is half of it) is the one of the cost per row measured in PERF-7-1 (about 0,7 µs a row of a walk, 5 µs a candidate). */
     public const int FIRST_BUDGET = 20_000;
     private const int GROWTH = 10;
-    /**
-     * The settings (SET LOCAL, in a transaction that is rolled back) under which the candidates are read: only bitmap scans, so
-     * the GIN index is the way to them. The candidates are read lazily up to a cap, and a sequential scan or a walk of an
-     * index that the planner prefers for a phrase it takes for a dense one (it does not know where the hits lie in the heap)
-     * reads the table up to the cap-th hit, which is the table whole for hits that lie at its end.
-     */
-    public const array BITMAP_SCANS_ONLY = ['SET LOCAL enable_seqscan = off', 'SET LOCAL enable_indexscan = off', 'SET LOCAL enable_indexonlyscan = off'];
+    private const string BITMAP_SCANS_ONLY = "SELECT set_config('enable_seqscan', 'off', true), set_config('enable_indexscan', 'off', true), set_config('enable_indexonlyscan', 'off', true)";
 
     public function __construct(private Connection $connection, private int $firstBudget = self::FIRST_BUDGET)
     {
@@ -72,6 +97,10 @@ final readonly class PhraseSearch
         for ($budget = $this->firstBudget;; $budget *= self::GROWTH) {
             $products = $this->walk($conditions, $values, $keyset['w0'][0] ?? null, $sort, $limit, $budget);
             if (\count($products) >= $limit) {
+                return $products;
+            }
+            // A walk that read all that is left of the order has found all the hits.
+            if ($this->readAllThatIsLeft($keyset['w0'] ?? null, $sort, $budget)) {
                 return $products;
             }
 
@@ -138,6 +167,26 @@ final readonly class PhraseSearch
     }
 
     /**
+     * Whether the rows of the order after the cursor are fewer than the budget, that is whether a walk of the budget reached
+     * the end of it. Only the index is read (no phrase to check, no table), as far as the walk was.
+     *
+     * @param array{string, array{after_value: string, after_id: string}}|null $keyset the condition on `w0` and its values
+     */
+    private function readAllThatIsLeft(?array $keyset, ProductSort $sort, int $budget): bool
+    {
+        $column = $sort->byUpdatedAt() ? 'updated_at' : 'name';
+        $direction = $sort->isDescending() ? 'DESC' : 'ASC';
+        $read = $this->connection->fetchOne(
+            'SELECT count(*) FROM (SELECT 1 FROM catalog_product w0'.(null === $keyset ? '' : ' WHERE '.$keyset[0])
+            ." ORDER BY w0.{$column} {$direction}, w0.id {$direction} LIMIT {$budget}) e",
+            null === $keyset ? [] : $keyset[1],
+        );
+        \assert(\is_int($read));
+
+        return $read < $budget;
+    }
+
+    /**
      * @param list<string>         $conditions
      * @param array<string, mixed> $values
      *
@@ -163,21 +212,33 @@ final readonly class PhraseSearch
     }
 
     /**
-     * Runs a read under BITMAP_SCANS_ONLY. The transaction is a savepoint when there is one already, and it is rolled back
-     * either way (nothing is written), which also takes the settings back.
+     * Runs a read with only bitmap scans allowed, and only for it: in a transaction of its own (a savepoint inside the
+     * caller's), rolled back whatever the read does, which takes the settings back (see the class comment).
+     *
+     * @template T
+     *
+     * @param callable(): T $read
+     *
+     * @return T
      */
     private function bitmapScansOnly(callable $read): mixed
     {
         $this->connection->beginTransaction();
         try {
-            foreach (self::BITMAP_SCANS_ONLY as $setting) {
-                $this->connection->executeStatement($setting);
+            $this->connection->executeStatement(self::BITMAP_SCANS_ONLY);
+            $result = $read();
+        } catch (\Throwable $failure) {
+            try {
+                $this->connection->rollBack();
+            } catch (\Throwable) {
+                // The connection is gone or the transaction already is: the failure of the read is the one to report.
             }
 
-            return $read();
-        } finally {
-            $this->connection->rollBack();
+            throw $failure;
         }
+        $this->connection->rollBack();
+
+        return $result;
     }
 
     /**

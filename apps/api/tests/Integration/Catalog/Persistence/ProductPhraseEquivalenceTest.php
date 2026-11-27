@@ -22,8 +22,9 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * P7 for the phrase of the product list: the pages (rows, order, cursors) and the counts of DbalBackofficeProductSource
  * are the same as the ones of the statement it had before the phrase got its own way of choosing the plan (the reference
  * below is that statement, unchanged), for every sort, with and without the other filters, walking the pages by the
- * cursor to the end. The source runs with its default budget and with a budget so small that every way the phrase can
- * take (the walk, the candidates of the index, the growing of the budget) is taken on this small catalog.
+ * cursor to the end. The source runs with its default budget and with budgets of 1 to 100 rows, so that every way the phrase can
+ * take (the walk, the candidates of the index, the growing of the budget, the end of the order reached by the walk) is taken on
+ * this small catalog, and the result does not depend on the budget.
  *
  * The catalog has names with Polish characters and capitals, the characters of the pattern (`%`, `_`, `\`), phrases of
  * two characters and of punctuation only, equal names and equal moments (so the id decides), products of the main and
@@ -65,7 +66,9 @@ final class ProductPhraseEquivalenceTest extends KernelTestCase
     #[DataProvider('phrases')]
     public function testPagesAndCountsAreTheSameWhenEveryWayOfThePhraseIsTaken(string $term): void
     {
-        foreach ([2, 5] as $budget) {
+        // 1 row to 13 rows: every step of the budget is a short one on about 70 products; 100 rows: the walk reaches the end of the order
+        // (also on the pages after a cursor, which return fewer rows than the budget), so the candidates are left out.
+        foreach ([1, 2, 3, 5, 7, 13, 100] as $budget) {
             $source = new DbalBackofficeProductSource($this->connection, new BoundedCounter($this->connection), phraseBudget: $budget);
 
             $this->assertEquivalent($term, $source, 'budget '.$budget);

@@ -32,9 +32,12 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // order of the sort the hits lie: PhraseSearch chooses the way by the work (a walk of the index of the sort with a
     // budget that grows by steps, then the candidates of a GIN index, the trigrams or, for a phrase without a word of
     // three characters, the bigrams of catalog_name_bigrams(name)), and the count of the first page goes the same way.
-    // Without a term the filters stay with the planner, and so does a term together with the drafts or the products
-    // without images: the partial indexes of both hold only those few products, so the walk of the index with the term
-    // as a filter reads at most all of them. The category filter stays the condition below, for a phrase too.
+    // Without a term the filters stay with the planner, and so does a term together with the drafts or the products without
+    // images, each of which has a partial index that holds only those few products: the drafts in the order of the sorts
+    // ((name, id) and (updated_at, id) WHERE status = 'draft'), so the walk of it with the term as a filter reads at most all
+    // the drafts; the products without images by id (WHERE images = '[]'), so the planner reads those few products from it
+    // and sorts them, which costs by their number, not by the table (ProductsWithoutImagesPlanTest). The category filter
+    // stays the condition below, for a phrase too.
     private const string TERM = 'p.name ILIKE :pattern';
     // The exact predicate of the partial index catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb, which keeps
     // the few products without images cheap to find, count and page among millions.

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Persistence;
 
 use App\Catalog\Application\Query\ProductSort;
-use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\PhraseSearch;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalBackofficeProductSource;
 use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Support\RecordingConnection;
@@ -19,7 +18,10 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * The phrase of the product list on 100 000 products, with the plans the planner chooses on its own statistics (after
- * ANALYZE), not steered by switches. The work of every statement of a page and of a count is measured as the rows it
+ * ANALYZE) for the statements as the source sends them: the test adds no switch of its own. The only steering is the
+ * one the source does itself for its two statements of candidates (decision D10 of the specification), and the test
+ * replays exactly the statements the source sent before each of them (RecordingConnection::$statementsOfQueries), so a
+ * source that did not steer would be planned without. The work of every statement of a page and of a count is measured as the rows it
  * reads from the table (rows returned by a scan node plus the rows it removed by the filter and the recheck, times
  * the loops), and bounded by the variable of the class of the phrase: the budget of the walk of the index of the sort,
  * the number of hits of the candidates, never the size of the table.
@@ -92,12 +94,13 @@ final class ProductPhrasePlanTest extends KernelTestCase
         $source = $this->source(self::DEFAULT_BUDGET);
 
         foreach ([ProductSort::Name, ProductSort::UpdatedAtDescending] as $sort) {
-            $this->recording->queries = [];
+            $this->recording->forget();
             $page = $source->page($term, null, null, null, $sort, self::PAGE);
 
             self::assertNotSame([], $page, $term);
             $read = $this->rowsRead();
-            $bound = 'budget' === $variable ? self::DEFAULT_BUDGET + self::SLACK : self::DEFAULT_BUDGET + 3 * $hits + self::SLACK;
+            // The walk and the probe that tells whether it reached the end of the order (the index only), then the candidates.
+            $bound = 'budget' === $variable ? self::DEFAULT_BUDGET + self::SLACK : 2 * self::DEFAULT_BUDGET + 3 * $hits + self::SLACK;
             self::assertLessThanOrEqual($bound, $read, \sprintf("page of '%s' by %s read %d rows of %d (class bound %d)\n%s", $term, $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
         }
     }
@@ -107,7 +110,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
     {
         $source = $this->source(self::DEFAULT_BUDGET);
 
-        $this->recording->queries = [];
+        $this->recording->forget();
         $count = $source->count($term, null, null);
 
         self::assertGreaterThan(0, $count->value, $term);
@@ -122,10 +125,10 @@ final class ProductPhrasePlanTest extends KernelTestCase
         $index = $this->indexWith('catalog_name_bigrams');
         $source = $this->source(self::DEFAULT_BUDGET);
 
-        $this->recording->queries = [];
+        $this->recording->forget();
         $source->page($term, null, null, null, ProductSort::Name, self::PAGE);
         $page = $this->plans();
-        $this->recording->queries = [];
+        $this->recording->forget();
         $source->count($term, null, null);
         $count = $this->plans();
 
@@ -149,7 +152,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
         $bigrams = $this->indexWith('catalog_name_bigrams');
         $source = $this->source(self::DEFAULT_BUDGET);
 
-        $this->recording->queries = [];
+        $this->recording->forget();
         $source->page('termosx', null, null, null, ProductSort::Name, self::PAGE);
         $plans = $this->plans();
 
@@ -167,7 +170,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
         $source = $this->source($budget);
 
         foreach ([ProductSort::Name, ProductSort::UpdatedAtDescending] as $sort) {
-            $this->recording->queries = [];
+            $this->recording->forget();
             $page = $source->page('korelowany', null, null, null, $sort, self::PAGE);
 
             self::assertCount(self::PAGE, $page);
@@ -177,7 +180,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
             // (48 000) or walking the whole next budget (20 000) is more than that.
             $position = ProductSort::Name === $sort ? 3_100 : 100;
             $read = $this->rowsRead();
-            $bound = $budget + 3 * (intdiv($budget, 2) + 1) + $position + self::SLACK;
+            $bound = 2 * $budget + 3 * (intdiv($budget, 2) + 1) + $position + self::SLACK;
             self::assertLessThanOrEqual($bound, $read, \sprintf("page by %s read %d rows (class bound %d)\n%s", $sort->value, $read, $bound, $this->plans()));
             if (ProductSort::UpdatedAtDescending === $sort) {
                 self::assertLessThanOrEqual($budget + self::SLACK, $read, 'the first walk fills the page');
@@ -252,8 +255,8 @@ final class ProductPhrasePlanTest extends KernelTestCase
     private function analyzedPlans(): array
     {
         $plans = [];
-        foreach ($this->recording->queries as [$sql, $params, $types]) {
-            $json = $this->explained('EXPLAIN (ANALYZE, FORMAT JSON) ', $sql, $params, $types)[0];
+        foreach ($this->recording->queries as $i => [$sql, $params, $types]) {
+            $json = $this->explained('EXPLAIN (ANALYZE, FORMAT JSON) ', $i, $sql, $params, $types)[0];
             \assert(\is_string($json));
             $decoded = json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
             \assert(\is_array($decoded) && \is_array($decoded[0] ?? null) && \is_array($decoded[0]['Plan'] ?? null));
@@ -264,27 +267,27 @@ final class ProductPhrasePlanTest extends KernelTestCase
     }
 
     /**
-     * The plan of a recorded statement, planned under the settings the source reads it with: the candidates are read with
-     * only bitmap scans allowed (PhraseSearch::BITMAP_SCANS_ONLY), the other statements as they are.
+     * The plan of the recorded query number $i, planned under the settings the source had sent before it in its transaction (a
+     * savepoint rolled back afterwards, like the source's own), whatever they were; nothing is added.
      *
      * @param array<int<0, max>|string, mixed>                                        $params
      * @param array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string> $types
      *
      * @return list<mixed> the first column of the rows of the plan
      */
-    private function explained(string $explain, string $sql, array $params, array $types): array
+    private function explained(string $explain, int $i, string $sql, array $params, array $types): array
     {
-        $steered = str_starts_with($sql, 'WITH m AS MATERIALIZED');
-        if ($steered) {
+        $before = $this->recording->statementsOfQueries[$i];
+        if ([] !== $before) {
             $this->connection->beginTransaction();
-            foreach (PhraseSearch::BITMAP_SCANS_ONLY as $setting) {
-                $this->connection->executeStatement($setting);
+            foreach ($before as [$statement, $statementParams, $statementTypes]) {
+                $this->connection->executeStatement($statement, $statementParams, $statementTypes);
             }
         }
         try {
             return $this->connection->executeQuery($explain.$sql, $params, $types)->fetchFirstColumn();
         } finally {
-            if ($steered) {
+            if ([] !== $before) {
                 $this->connection->rollBack();
             }
         }
@@ -296,8 +299,8 @@ final class ProductPhrasePlanTest extends KernelTestCase
     private function plans(): string
     {
         $text = [];
-        foreach ($this->recording->queries as [$sql, $params, $types]) {
-            $lines = $this->explained('EXPLAIN (ANALYZE) ', $sql, $params, $types);
+        foreach ($this->recording->queries as $i => [$sql, $params, $types]) {
+            $lines = $this->explained('EXPLAIN (ANALYZE) ', $i, $sql, $params, $types);
             $text[] = $sql."\n".implode("\n", array_map(static fn (mixed $line): string => \is_string($line) ? $line : '', $lines));
         }
 
