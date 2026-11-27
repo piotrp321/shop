@@ -455,6 +455,12 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     w module, pole `null` według votera);
   - liczba produktów nigdy nie jest `count(*)`: to szacunek `pg_class.reltuples`, więc po masowym wstawieniu produktów
     trzeba `ANALYZE catalog_product`.
+- Limity czasu bazy (`statement_timeout` 3 s dla żądania HTTP, inne dla workera, migracji i konsoli): ustawia je
+  middleware DBAL `Shared\Infrastructure\Persistence\Timeout` na sesji, według profilu procesu
+  (`docs/features/runtime-config/spec.md`, „Limity czasu w bazie”). Nowy endpoint, którego zapytanie czyta całą tabelę
+  albo ma koszt rosnący z jej rozmiarem (skan, agregat bez limitu), dopisuje się do `app.database_timeouts.long_routes`
+  w `config/services.yaml` (jedyne miejsce wyjątków) i do inwentarza w specyfikacji; zapytanie ograniczone limitem albo
+  indeksem nie. Zapytanie przerwane limitem (`57014`) to 503 z `Retry-After`, nigdy 500.
 - Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją).
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
