@@ -199,8 +199,8 @@ Potwierdzone:
    weryfikacja `demo-data:verify` > 6,8 h (przerwana limitem Joba).
 
 Przyczynę kosztu zapytań ES ustalono w §11 (potwierdzone pomiarem). Pozostają hipotezy: kolejność kolejek w sklepie w
-skoku; przyczyna wolniejszego reindeksu (390 vs 880 dok./s), przy czym §12 pokazuje, że nic nie było wtedy nasycone
-(pętla szeregowa).
+skoku; przyczyna wolniejszego reindeksu (390 vs 880 dok./s), przy czym §12 pokazuje niskie średnie zużycie
+CPU i I/O w tym czasie; przyczyny z tego nie wnioskujemy (hipoteza: pętla szeregowa lub opóźnienia, niesprawdzona).
 
 ## 8. Co jest poza tym raportem
 
@@ -220,6 +220,10 @@ nie zostały obiekty `perf-measure`, a reguła `shop-closed` działa. Wyniki w k
 - `run1-single-burst/`, `run2-open/`: przebiegi 1 i 2 (§4–§6);
 - `repeat-1/`, `repeat-2/`, `repeat-3/`: trzy powtórzenia całego zestawu (§10; `*.txt` = raporty, `top.log` = zasoby co 15 s,
   `measure.log`), `raw-repeats.tgz` = próbki JSONL;
+- Odtwarzalność: przebiegi 1–3 tego raportu powstały przed dodaniem `run-parameters.txt`; seedów i list adresów
+  (`*.urls.json`) nie zapisano osobno, adresy każdego żądania są w próbkach JSONL (pole `path`), a rewizja narzędzia to commit PR
+  mechanizmu z tego dnia. Kolejne przebiegi `make measure` zapisują `run-parameters.txt` (rewizja, skróty plików, obrazy,
+  zmienne, seed), `<etap>.urls.json` i `<etap>.jsonl.meta.json`.
 - `diagnostics/`: skrypty i notatki analizy Elasticsearcha i Grafany (§11–§12);
 - `generator/samples.log`, `raw-samples.tgz` (przebiegi 1 i 2).
 
@@ -325,10 +329,10 @@ Profil strony głównej (shard 0, `profile`, całość 7,7 s z narzutem profilu)
 
 1. Koszt rośnie z liczbą dopasowanych dokumentów i z agregacjami po zagnieżdżonych wariantach i parach. Strona główna
    (9,8 mln trafień) jest 4–5 razy droższa niż liść; sama agregacja `free` (facet opcji) to ok. 2/3 jej czasu.
-2. Każdy zimny listing czyta z urządzenia 1–4 GiB (tabela). Dane Lucene nie mieszczą się w cache plików: cgroup
+2. Każdy zimny listing czyta z urządzenia 1–4 GiB (tabela; potwierdzone pomiarem `fs.io_stats`). **Wniosek, nie pomiar:** dane Lucene nie mieszczą się w cache plików; przesłanka: cgroup
    Elasticsearcha ma limit 4 GiB, z czego heap to 2 GiB, a cache plików zajmuje resztę (zużycie 4 290 830 336 B z limitu
    4 294 967 296 B, wolne 3 MiB węzła) przy indeksie 9,6 GB.
-3. Silnik nie jest przeciążony kolejką: pula `search` 13 wątków, kolejka 0, odrzuconych 0 (19 593 ukończonych), cache
+3. Zrzut `_nodes/stats` z 2026-11-27, wykonany **po** benchmarkach, jest chwilowy i skumulowany od startu węzła: pula `search` 13 wątków, kolejka 0 w chwili odczytu, odrzuconych 0 (19 593 ukończonych); nie dowodzi braku kolejkowania ani odrzuceń podczas poszczególnych testów (tego nie rejestrowano). Cache
    zapytań 156 MB (trafienia 14 223, chybienia 626 452, 0 usunięć), request cache 0 trafień / 8 chybień, GC: 653 młodych
    (6,3 s) i 0 starych, 29–30 segmentów na shard.
 4. **503 to nie „sam timeout”:** timeout klienta w API (ok. 2 s) odcina zapytania, których koszt (powyżej) przekracza
@@ -358,8 +362,10 @@ PostgreSQL ani `node_disk_*` i dławienia CFS (dostępne: `container_*`, `node_c
 | bench 1 (20:43–21:13) | – | – | ES CPU 2,92 / 3,20, dysk ES odczyt 1383 / 1573 MB/s, iowait 0,05 |
 | bench 2 (21:21–21:36) | – | – | ES CPU 0,64 / 0,97, dysk ES odczyt 606 / 827 MB/s |
 
-- **Potwierdzone:** w czasie reindeksu (7,25 h) nic nie było nasycone: Postgres 0,3 rdzenia, ES 0,14, generator 0,11,
-  iowait 0,06. To szeregowa pętla (390 dok./s), a nie zasób; ma to znaczenie dla PERF-6 (W19).
+- **Potwierdzone (pomiar):** w czasie reindeksu (7,25 h) średnie (po 5 min) zużycie było niskie: Postgres 0,3 rdzenia, ES
+  0,14 (maksimum 0,52), generator 0,11, iowait węzła 0,06. **Hipoteza (niesprawdzona):** reindeks ogranicza szeregowa pętla
+  (jedno żądanie na raz) albo opóźnienia pojedynczych zapisów; niskie CPU samo tego nie dowodzi (nie mierzono opóźnień
+  `_bulk`, dławienia CFS ani metryk JVM i Postgresa). PERF-6 powinien to zmierzyć przed wyborem rozwiązania (W19).
 - **Potwierdzone:** zamówienia były ograniczone odczytem dysku bazy (180–209 MB/s), produkty zapisem (do 405 MB/s).
 - **Potwierdzone:** w teście listingów ES czytał z dysku ok. 1,4–1,6 GB/s (§11, cache plików nie mieści indeksu).
 - Wartość `iowait` węzła w testach (0,05) jest niska, bo czytanie z urządzenia nie blokuje rdzeni, tylko wydłuża zapytania.
@@ -455,7 +461,7 @@ nowych epików: każda z poniższych luk jest już w zakresie istniejącego etap
    były ograniczone I/O (§2).
 3. Po wdrożeniu 1: **ponowny pomiar na worf.pl tym samym `make measure`** (§9), potem **PERF-3 (izolacja)**: 503 nie
    cache'owane, błąd ES nie powinien dawać 500 strony ani spowalniać stron produktów (skok 100: sklep p50 6–7 s).
-4. **PERF-6 (async, reindeks)**: reindeks 7,25 h przy braku nasycenia zasobów (§12), czyli problem pętli szeregowej;
+4. **PERF-6 (async, reindeks)**: reindeks 7,25 h przy niskim zużyciu CPU i I/O (§12); przyczyna do ustalenia pomiarem w tym etapie (hipoteza: pętla szeregowa);
    W19 i W20.
 5. **PERF-4, PERF-8, PERF-5** według planu, pomiar zapisów lokalnie (§13).
 6. **PERF-9** (odbiór): komplet W1–W20 po zakończeniu powyższych.
