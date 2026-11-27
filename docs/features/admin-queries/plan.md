@@ -21,7 +21,7 @@ walidatorem planera przed zleceniem fali 2.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-7-1, PERF-7-6, bramka właściciela | w toku |
+| 1 | PERF-7-1, PERF-7-6, bramka właściciela | PERF-7-6 zmergowane (0f44b652); PERF-7-1 w toku |
 | 2 | PERF-7-2, PERF-7-4, PERF-7-5 | |
 | 3 | PERF-7-3 | |
 | 4 | PERF-7-7 | |
