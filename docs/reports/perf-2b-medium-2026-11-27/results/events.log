@@ -58,3 +58,12 @@
 2026-11-27T22:33:36Z up after (f889ee4f)
 2026-11-27T22:33:41Z up after: ready (setup output in /var/folders/5z/mmc4635s5sn7wjx6m7h57zl00000gn/T//PERF-2B-8/setup-after.log)
 2026-11-27T22:34:51Z down (volumes kept)
+2026-11-27T23:16:26Z build-prod: docker build --target prod of apps/api at 17fe9983
+2026-11-27T23:16:35Z build-prod: perf2b-8-api:prod built
+2026-11-27T23:16:40Z prod-up: make up with the production image
+2026-11-27T23:16:59Z prod-up: ready
+2026-11-27T23:17:10Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
+2026-11-27T23:22:46Z writes lag50: exit 0 (expected 99)
+2026-11-27T23:23:22Z writes lag50: start (WRITE_RATE=50 WRITE_SECONDS=320 WRITE_SAMPLE=40 WRITE_UNSTOCKED_SHARE=0 WRITE_PRICE_PROBES=2 WRITE_PRICE_SHARE=0 WRITE_MAX_IN_FLIGHT=2000 CHECK_TIMEOUT_SECONDS=180)
+2026-11-27T23:28:51Z writes lag50: exit 0 (expected 99)
+2026-11-27T23:29:14Z down (volumes kept)

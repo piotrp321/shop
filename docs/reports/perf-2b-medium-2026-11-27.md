@@ -308,27 +308,75 @@ zapytania DBAL, 16% Stopwatch.
 - Odchylenie procesowe: raz uruchomiłem `php -l` na hoście (sprawdzenie składni sondy), wbrew zasadzie „PHP tylko w Dockerze”;
   nic nie zmieniło, ale pomiary i sondy działały wyłącznie w kontenerze API.
 
-## 9. Przygotowany przebieg `lag50` w trybie prod (NIE uruchomiony)
+## 9. `lag50` w trybie prod (API i oba workery na obrazie produkcyjnym)
 
-Do uruchomienia w osobnym oknie hosta (po ok. 01:00 UTC wg ustaleń). API i oba workery na obrazie produkcyjnym zbudowanym
-z rewizji worktree (`perf2b-8-api:prod`, zbudowany; `build-prod` buduje go ponownie), reszta stosu jak w sekcji 4a, ten sam indeks
-i dane. Zweryfikowane próbą: `prod-up` startuje stos (`api`, `worker`, `worker-commands` mają `APP_ENV=prod`, `APP_DEBUG=0`,
-bez `phpunit`), 20-sekundowy przebieg `writes.sh` przy 5/s kończy się kodem 0 z zgodnym indeksem, `failed` 0. Sam `lag50` nie był
-uruchamiany w prod.
+Rewizja: merge `origin/feat/perf-2b` `70ed29a2` (`17fe9983` w worktree zadania), obraz `perf2b-8-api:prod` zbudowany z niej
+(`build-prod`), ten sam indeks i dane co w sekcji 4a (po przebiegach zapisów z sekcji 4 i 4a; indeks w bieżącej definicji, `setup`
+nie wymagał przebudowy; z indeksu usunąłem dwa osierocone indeksy po przerwanych sondach z sekcji 8 przed przebiegiem). Reszta stosu
+(Postgres, ES z heapem 2 GiB, `refresh_interval` 5 s, RabbitMQ, Keycloak, Varnish, store) bez zmian; `.env` bez `SEARCH_SHARDS`.
+`prod-up` potwierdził `APP_ENV=prod`, `APP_DEBUG=0` i brak `phpunit` w `api`, `worker` i `worker-commands` (`results/prod-env.txt`).
+Dwa kolejne przebiegi tego samego scenariusza (`lag50`: 50/s, 320 s, próba 40 wariantów, tylko przyjęcia, do 2000 w locie).
+Wyniki: `results/writes-prod/run1/lag50/` i `results/writes-prod/lag50/` (przebieg 2), `host-*.txt`, `hoststats.txt`, `queues.txt`.
+
+| | przebieg 1 (23:17 UTC) | przebieg 2 (23:23 UTC) |
+|---|---:|---:|
+| kod wyjścia | 0 | 0 |
+| werdykt | pomiar przy zadanym tempie, indeks zgodny | pomiar przy zadanym tempie, indeks zgodny |
+| zmiany zrobione | 16 130 (130 cen, 16 000 przyjęć), 50,4/s | 16 128 (128 cen, 16 000 przyjęć), 50,4/s |
+| `late` / `dropped` / `unanswered` / `refused` | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| `rate.windows` (320 okien 1 s, pasmo 45–55) | min = p5 = p50 = p95 = max = 50, poniżej 0, powyżej 0 | to samo |
+| `catch_up` | 0 zapisów, max w oknie 0 | 0 zapisów, max w oknie 0 |
+| `send_lag` p50 / p95 / p99 / p99,9 / max | 1 / 3 / 4 / 5 / 6 ms | 1 / 2 / 4 / 6 / 6 ms |
+| `send_lag_histogram` le_1 / le_5 / le_20 / le_100 / le_1000 / gt_1000 | 13 505 / 2482 / 13 / 0 / 0 / 0 | 13 596 / 2385 / 19 / 0 / 0 / 0 |
+| czas odpowiedzi przyjęcia p50 / p95 / p99 / max | 8 / 9 / 10 / 114 ms | 8 / 9 / 10 / 16 ms |
+| czas odpowiedzi zmiany ceny p50 / p99 / max | 9 / 20 / 23 ms | 9 / 13 / 14 ms |
+| świeżość ceny p50 / p95 / p99 / p99,9 / max (próbek) | 5,0 / 5,3 / 5,3 / 5,3 / 5,3 s (130) | 5,0 / 5,2 / 5,3 / 5,3 / 5,3 s (128) |
+| timeouty świeżości | 0 | 0 |
+| zgodność indeksu z bazą | 0 niezgodności, zgodny po 0,8 s | 0 niezgodności, zgodny po 0,5 s |
+| `messenger:failed:show` przed, po, po wyczekaniu kolejki, na końcu | 0, 0, 0 (pusta 0 s po końcu), 0 | 0, 0, 0 (pusta 0 s po końcu), 0 |
+
+- **W prod 50 zapisów na sekundę jest utrzymane w obu przebiegach**, bez jednego pominiętego ani bez odpowiedzi; W16 w tym stanie
+  lokalnym: świeżość p95 5,3 s i p99 5,3 s przy celu p95 10 s, p99 60 s (to pomiar lokalny na `medium`, przy `refresh_interval` 5 s;
+  wynik na worf.pl przy 10 mln produktów pozostaje do zmierzenia i nie jest tym wynikiem).
+- **Gdzie stoi czas** (docker stats co 10 s, 27 próbek w przebiegu 1 i 25 w przebiegu 2; średnia i maksimum CPU w % jednego rdzenia):
+
+  | usługa | przebieg 1 średnia / max | przebieg 2 średnia / max |
+  |---|---:|---:|
+  | api | 43 / 57 | 40 / 50 |
+  | postgres | 25 / 31 | 25 / 29 |
+  | elasticsearch | 19 / 108 | 7 / 12 |
+  | rabbitmq | 9 / 86 | 10 / 85 |
+  | worker (zdarzenia) | 0,3 / 1,0 | to samo rzędu |
+  | worker-commands | 0,1 / 0,9 | to samo rzędu |
+
+  Żadna usługa nie jest blisko nasycenia; przyjęcie kończy się w 8–10 ms, a kolejki RabbitMQ miały 0 wiadomości we wszystkich 24
+  próbkach `rabbitmqctl list_queues` (co 20 s, `queues.txt`), więc workery nadążają, a świeżość 5 s to `refresh_interval`. Krótkie
+  skoki ES (108%) w przebiegu 1 i RabbitMQ (85%) w obu to pojedyncze próbki, bez wpływu na czasy odpowiedzi.
+- **Obciążenie hosta jako dowód braku równoległej pracy** (`host-before.txt`, `host-after.txt`, `hoststats.txt`): load average 2,6 / 3,0
+  / 3,9 przed i 2,2 / 2,5 / 3,1 po (w sekcji 8 było 21–27). W 56 próbkach `docker stats` z całego okna (oba przebiegi i przerwa
+  między nimi) 40 kontenerów innych projektów miało łącznie średnio 31% jednego rdzenia, bez RabbitMQ i eksportera metryk 11%
+  (maksimum 28%); pojedyncze próbki do 171% to RabbitMQ innych stosów (`perf7-rabbitmq-1`, `async-idx-m1-rabbitmq-1`, 74–83%, tak jak
+  RabbitMQ naszego stosu), czyli tło brokera, nie zadanie. Procesy hosta: najbardziej obciążony jest wirtualizator Dockera (nasz
+  stos), dalej przeglądarka (kilkanaście procent) i `sysmond`. To dowód, że żaden stos innej sesji nie wykonywał testów ani
+  pomiarów w tym czasie, ale nie izolacja: 16-rdzeniowy host miał ok. 0,3 rdzenia obcego tła.
+- **Porównanie z dev (sekcja 4a) bez przypisywania przyczyny:** ten sam indeks, dane, tempo i próba wariantów, kod aplikacji różni się tylko o FIX1 epiku (6 plików: definicja indeksu, `setup`, `SEARCH_SHARDS`; bez ścieżki zapisu, bez `load/`); w dev ta sama próba
+  dała 692 pominięte i 247 bez odpowiedzi, przyjęcie p50 30,5 s, a w prod 0 / 0 i 8 ms. Poza tym różni się tryb kontenerów API
+  i workerów (obraz dev z debugowaniem i SPX, opcache z kontrolą znaczników czasu, vs obraz prod). **Nie rozłożyłem tej różnicy
+  na składniki** (kolektory debugowania z sekcji 8, SPX, opcache, FrankenPHP): CPU API w dev nie było wtedy zapisywane, więc nie
+  stwierdzam, który z nich ją tłumaczy, tylko że tryb prod utrzymuje 50/s, a dev nie. Przebiegi dev i prod nie są pomiarem
+  z jednego dnia stanu bazy (po drodze zapisy z innych przebiegów), co jest drugim, niezbadanym czynnikiem.
+- **Zgodność i nowe wiadomości w `failed`:** 0 po obu przebiegach, także po wyczekaniu na kolejkę.
+
+Polecenia (po `build-prod`; wykonane w tej kolejności, hoststats w tle):
 
 ```sh
 export PERF2B8_WINDOW=start
 R=docs/reports/perf-2b-medium-2026-11-27/run.sh
-sh $R build-prod                       # tylko gdy rewizja się zmieniła: docker build --target prod -t perf2b-8-api:prod apps/api
-sh $R down                             # bez -v
-MODE=prod sh $R prod-up                # make up z prod.override.yaml, sprawdza APP_ENV api i obu workerów (results/prod-env.txt)
-MODE=prod sh $R writes lag50           # results/writes-prod/lag50/, cache-writes-lag50-prod-*.txt, failed-lag50-prod-*.txt
-MODE=prod sh $R drain lag50-prod       # odczekanie na opróżnienie kolejek RabbitMQ
-MODE=prod sh $R failed final-prod      # messenger:failed:show po przebiegu
-sh $R down
+sh $R build-prod
+sh docs/reports/perf-2b-medium-2026-11-27/hoststats.sh <plik> <plik-stop> 10 &     # obciążenie hosta
+MODE=prod sh $R prod-up
+MODE=prod sh $R writes lag50                 # results/writes-prod/lag50/, cache-writes-lag50-prod-*, failed-lag50-prod-*
+MODE=prod sh $R drain lag50-prod
+MODE=prod sh $R failed final-prod
+sh $R down                                   # bez -v
 ```
-
-Do porównania z sekcją 4a (to samo `lag50`: 50/s, 320 s, próba 40, tylko przyjęcia): okna 1 s i pasmo 45–55, `catch_up`,
-histogram i p99,9 `send_lag`, `unanswered` i `dropped`, świeżość, zgodność, `failed`, request cache i cache plików. Różnica obu
-przebiegów to tryb kontenerów API i workerów (prod zamiast dev z kolektorami debugowania), nie dane ani indeks.
-

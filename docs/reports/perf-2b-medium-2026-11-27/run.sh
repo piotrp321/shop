@@ -116,7 +116,6 @@ KEYCLOAK_PORT=$((port_base + 3))
 IMGPROXY_PORT=$((port_base + 4))
 MAILPIT_PORT=$((port_base + 5))
 RABBITMQ_MANAGEMENT_PORT=$((port_base + 6))
-SEARCH_SHARDS=1
 SEARCH_REFRESH_INTERVAL=$refresh
 COMPOSE_FILE=compose.yaml:$here/es.override.yaml
 ENV
