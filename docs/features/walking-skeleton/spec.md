@@ -427,8 +427,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   odrzucona jako przestarzała, ale odczyt rozpoczęty po znaczniku widzi co najmniej dane zatwierdzone przed nim,
   więc stan końcowy jest aktualny. Ta sama wersja zapisuje się ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
   naprawia następna zmiana produktu albo przebudowa.
-- Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
-  o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.
+- Pojedynczy zapis (`ProductIndexer`) to jeden bulk z dwiema pozycjami z `require_alias=true` (więc nigdy nie utworzy
+  indeksu o nazwie aliasu): najpierw do aliasu przebudowy `<alias>-rebuild`, potem do aliasu
+  (`docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Zapis paczki przy przebudowie idzie bulkiem
+  bezpośrednio do wskazanego indeksu fizycznego.
 - Wynik bulka jest sprawdzany pozycja po pozycji: zapisany, przestarzały, błąd przejściowy albo błąd trwały.
 - Zapisy nie wymuszają odświeżenia indeksu.
 
@@ -468,15 +470,18 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
    przy awarii procesu). Gdy blokada jest zajęta, kończy się kodem 1, nic nie zmieniając. Tej samej blokady
    używa `setup`.
 2. Odczytuje aktualny cel aliasu. Musi to być dokładnie jeden indeks.
-3. Tworzy nowy indeks fizyczny z aktualną definicją.
+3. Zdejmuje alias przebudowy `<alias>-rebuild` z każdego indeksu (zostawia go przebudowa przerwana awarią procesu)
+   i tworzy nowy indeks fizyczny z aktualną definicją razem z tym aliasem, przez który trafiają do niego zapisy
+   pojedyncze w trakcie przebudowy.
 4. Czyta produkty paczkami (`ProductSearchSource::page`, domyślnie po 500, z parametru i opcji
    `--batch-size`), pobiera fakty ofert produktów paczki (`ProductOfferFacts`) i zapisuje każdą paczkę bulkiem.
    Wersja dokumentów paczki to znacznik czasu pobrany przed jej odczytem (jak w `ProductIndexing`). Pierwszy błąd
-   przejściowy, trwały, błąd faktów ofert (`OfferFactsUnavailable`) albo wynik „przestarzały” (w nowym indeksie nie
-   powinien wystąpić) przerywa przebudowę.
+   przejściowy (po wyczerpaniu ponowień), trwały albo błąd faktów ofert (`OfferFactsUnavailable`) przerywa przebudowę.
+   Wynik „przestarzały” jest poprawny: zapis pojedynczy przez alias przebudowy był nowszy.
 5. Weryfikuje: odświeżenie, liczba dokumentów równa liczbie zapisanych, `definition_hash` zgodny, indeks
    istnieje i ma zdrowe shardy. Liczba dokumentów to dodatkowy test, a nie dowód pełnej spójności.
-6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true` i `add` nowego.
+6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true`, `add` nowego i `remove`
+   aliasu przebudowy z nowego indeksu.
    Elasticsearch nie ma porównania i zamiany aliasu, więc poprawność zapewniają razem: blokada przebudowy,
    sprawdzenie dokładnego celu przed żądaniem, atomowość akcji w jednym żądaniu (`remove` nie przejdzie, gdy
    alias nie wskazuje już starego celu) i sprawdzenie po żądaniu, że alias wskazuje dokładnie nowy indeks.
@@ -487,7 +492,7 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 8. Po udanym przepięciu usuwa stary indeks. Nieudane usunięcie to ostrzeżenie, a nie porażka przebudowy:
    stary indeks zostaje na liście osieroconych w `setup`.
 9. Po nieudanej przebudowie, czyli błąd w krokach 3–5 albo przepięcie, które się nie udało, usuwa nowy indeks
-   i kończy się kodem 1. Alias zostaje przy starym indeksie.
+   (razem z aliasem przebudowy) i kończy się kodem 1. Alias zostaje przy starym indeksie.
 10. Przy stanie nieznanym niczego nie usuwa i kończy się kodem 2 z nazwami obu indeksów.
 
 Usunięcie indeksu zawsze najpierw sprawdza, że alias na niego nie wskazuje, i odmawia w przeciwnym razie.
@@ -499,13 +504,12 @@ i usuwa stary, tak jak przebudowa, tylko bez zasilania. Alias nie znika ani na c
 
 To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rzędu 10 mln produktów:
 
-- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct` i reindeksacja po zmianie
-  ceny albo poziomu stanu, `ProductIndexing`) trafiają przez alias do starego indeksu i znikają po przepięciu aliasu.
-  Produkt, którego katalog, cena albo stan zmieniły się po tym, jak przebudowa minęła jego pozycję, ma w nowym
-  indeksie stary stan aż do następnej zmiany produktu. Poprawny wynik wymaga braku równoległych zmian (`make seed`
-  uruchamia przebudowę po wszystkich seedach).
 - Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
-  procesu zostaje i jest wypisywany przez `setup`.
+  procesu zostaje i jest wypisywany przez `setup`; do kolejnej przebudowy ma alias przebudowy, więc zapisy pojedyncze
+  trafiają też do niego (bez szkody).
+- Produkt utworzony w trakcie przebudowy z identyfikatorem mniejszym niż kursor odczytu paczek trafia do nowego indeksu
+  tylko przez alias przebudowy, więc indeks ma więcej dokumentów, niż zapisały paczki: weryfikacja (krok 5) kończy
+  przebudowę błędem, alias zostaje na starym indeksie, a przebudowę się ponawia.
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
 
 Port odczytu paczkami (`page(afterId, limit)`), zapis paczki do wskazanego indeksu z wynikiem każdej pozycji

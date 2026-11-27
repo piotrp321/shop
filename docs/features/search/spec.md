@@ -197,10 +197,14 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   reindeksację (zdarzenie po zatwierdzeniu), której zapis trafia do obu indeksów. Kolejność zapisu paczki i zapisu
   pojedynczego rozstrzyga wersja (jak w „Zapis i kolejność”), więc nowszy odczyt wygrywa w obu indeksach.
 - Zapis pojedynczy w chwili przepięcia aliasu. Przepięcie (`_aliases`) jest atomowe, a `_bulk` rozwiązuje aliasy
-  pozycji przed zapisem na shardach. Zapis jest bezpieczny, gdy pozycje rozwiązuje się w jednym stanie klastra albo
-  w kolejności żądania; który z tych przypadków zachodzi w Elasticsearch 9.4.0, PERF-2B-5 potwierdza w kodzie
-  Elasticsearcha i wpisuje tu źródło. Gdy żaden nie zachodzi, zadanie zatrzymuje się z pytaniem do właściciela.
-  Przypadki:
+  wszystkich pozycji w jednym stanie klastra, przed zapisem na shardach. Źródło (Elasticsearch 9.4.0, tag `v9.4.0`):
+  `server/src/main/java/org/elasticsearch/action/bulk/BulkOperation.java`, `doRun()` (l. 189–196) pobiera stan klastra
+  raz i przekazuje go do `groupRequestsByShards` (l. 293–322), które z jednego `ProjectMetadata` sprawdza
+  `require_alias` (l. 316, 766–776) i rozwiązuje alias każdej pozycji; ponowienie przy blokadzie klastra (l. 723–764)
+  przelicza całe żądanie od nowa. Pozycja z `require_alias` nigdy nie tworzy indeksu (`TransportBulkAction.java`,
+  l. 323–330). Indeks usunięty po rozwiązaniu aliasu daje 404 `index_not_found_exception` z nazwą tego indeksu
+  (`TransportReplicationAction.java`, l. 900–924), a brak aliasu z `require_alias` ten sam typ z nazwą aliasu, więc
+  pozycja główna odróżnia błąd przejściowy od trwałego po nazwie w błędzie. Przypadki:
   - Oba aliasy rozwiązane przed przepięciem: dokument trafia do nowego indeksu po jego nazwie, a do starego tylko
     przez pozycję główną.
   - Oba po przepięciu: pozycja przebudowy dostaje 404 i jest pominięta, a główna trafia do nowego indeksu.
