@@ -203,7 +203,9 @@ Gwarancje, niezależne od wybranego wariantu i od statystyk:
   i każda porcja do `row_limit`.
 - **G3, zmiany po cięciu:** porcja, która między cięciem a odczytem urosła ponad `row_limit`, jest dziś obcinana
   z ostrzeżeniem w logu do następnego cięcia (do godziny). Po zmianie takie przepełnienie dodatkowo unieważnia
-  wpis granic w `cache.sitemap`, więc następne pobranie indeksu mapy tnie od nowa. Test: przepełnienie po dodaniu
+  wpis granic w `cache.sitemap`, ale tylko gdy porcja jest porcją zapisanego cięcia (`from` i `to` to kolejne wpisy
+  zapisanych granic albo otwarte końce); klucz ręczny albo ze starszego cięcia ich nie usuwa, więc skan dalej biegnie
+  najwyżej raz na godzinę. Następne pobranie indeksu mapy tnie od nowa. Test: przepełnienie po dodaniu
   produktów do jednej porcji, potem pełna mapa bez braków.
 
 Sprawdzenie G2 czyta wszystkie klucze, więc każdy poprawny wariant ma koszt liniowy w liczbie produktów (indeks

@@ -32,6 +32,7 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 | `saturate.js` | tempo iteracji rośnie schodkami (`RAMP_*`) aż p95 odpowiedzi schodka przekroczy 2 s albo błędy 5xx i sieci 1%; wynik: `ramp.json` i `steady-rate` (70% przepustowości) |
 | `steady.js` | stałe tempo odczytu i koszyka (`STEADY_RATE`) oraz checkout o stałej, ograniczonej równoległości (`CHECKOUT_VUS`); wynik: `steady.json` |
 | `baseline.py` | pomiar zimnej i ciepłej ścieżki katalogu samymi GET (program wydajności, PERF-0: W1–W4, W8), także na worf.pl: mieszanka adresów z danych, tryby pojedynczy, otwarty (stałe tempo) i skok; czasy klienta, szacunek sieci, nagłówki cache, kontrakt odpowiedzi; dowodem zimnej ścieżki są tylko wiersze raportu `cache=miss` (chybienie warstwy własnego celu). Python i curl na hoście; użycie i kody wyjścia w nagłówku |
+| `sitemap-cold-cut.sh` | czas zimnego obliczenia granic mapy strony (`DbalSitemapProductSource::boundaries`, bez HTTP i cache): kilka przebiegów i skrót identyfikatorów do porównania przed i po zmianie cięcia (PERF-7, budżet 2000 ms); `COMPOSE_PROJECT_NAME=<projekt> sh load/sitemap-cold-cut.sh` |
 | `panel.sh` | `make load-panel`: jedno polecenie dla W7 i P4: token administratora, mieszanka z danych, k6, trzy przebiegi, raport |
 | `panel.js` | scenariusz k6 panelu (mieszanka w modelu otwartym, wątki najgorszych przypadków, odczyt granic mapy strony, ruch sklepu dla P4) |
 | `panel_token.py` | token administratora bez przeglądarki (kod autoryzacyjny z PKCE, hasło i TOTP konta demo), z tokenem odświeżania |
