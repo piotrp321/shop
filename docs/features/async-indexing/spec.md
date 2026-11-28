@@ -6,8 +6,9 @@ serwerze demo (profil `server`, 10 mln produktów, pomiar z 2026-11-26) szła z 
 (RabbitMQ): przebudowę dzieli na paczki o konfigurowalnym rozmiarze, które obsługuje dowolna liczba workerów
 równolegle, a alias przełącza dopiero po ostatniej udanej paczce.
 
-Status: **szkic do akceptacji**. Użytkownik zaakceptował rekomendacje D1–D5 pod warunkami: rozwiązanie jest możliwie
-proste, tryb synchroniczny i asynchroniczny dzielą logikę indeksowania, a logika domenowa Catalog nie trafia do `Shared`.
+Status: **zaimplementowana** (zadania 2–6), pomiar po wdrożeniu (zadanie 7) czeka. D1–D5 zaakceptowane pod warunkami:
+rozwiązanie jest możliwie proste, tryb synchroniczny i asynchroniczny dzielą logikę indeksowania, a logika domenowa
+Catalog nie trafia do `Shared`.
 
 Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml`, `infra/k8s`, `apps/api/bin/generate-demo`,
 `docs/features/search/spec.md`, `docs/features/demo-scale/spec.md`, `apps/api/CLAUDE.md`.
@@ -93,8 +94,9 @@ tylko to, kto ją tworzy.
 
 ### D5. Granice modułów
 
-W `Shared` tylko cienka, ogólna warstwa: wiadomość `IndexDocuments`, port `DocumentIndexer`, rejestr `DocumentIndexers`
-i `IndexDocumentsHandler`, który wybiera indeksator po kluczu i oddaje mu wiadomość. Wszystko, co jest wiedzą o indeksie
+W `Shared\Infrastructure\Indexing` tylko cienka, ogólna warstwa: wiadomość `IndexDocuments`, port `DocumentIndexer`
+(tag z interfejsu) i `IndexDocumentsHandler`, który jest zarazem rejestrem typów: wybiera indeksator po kluczu i oddaje mu
+wiadomość, a nieznany klucz to `UnknownDocumentType` jako błąd trwały. Wszystko, co jest wiedzą o indeksie
 wyszukiwania i produkcie, zostaje w Catalog: dokument, budowanie dokumentu, zapis, przebieg przebudowy
 (`SearchRebuildRun`), jego rejestr w Postgresie, finalizacja i przełączenie aliasu. `Shared` nie zna Elasticsearcha,
 produktu ani przebiegu; implementacja `DocumentIndexer` dla klucza `product` jest w Catalog i sama rozlicza paczkę
@@ -106,7 +108,7 @@ przejść reguły bez edycji `deptrac.yaml`; gdy się nie da, zadanie wraca do u
 Tryb synchroniczny i asynchroniczny używają tego samego kodu zapisu i przełączenia; asynchroniczność zmienia tylko to, kto
 woła go i kiedy:
 
-- `ProductBatchIndexer::write(string $index, list<ProductSearchSnapshot>): int` (Catalog Application): fakty ofert
+- `ProductBatchIndexer::write(string $index, list<ProductSearchSnapshot>, int $version): int` (Catalog Application): fakty ofert
   (`ProductOfferFacts::of`), wersja dokumentu (czas przed odczytem), budowa dokumentów, zapis jednym bulkiem
   i sprawdzenie `allIndexed()` (błąd, gdy cokolwiek się nie zapisało). To dzisiejsza treść pętli `fill`; `fill` woła ją
   na stronie z `page`, handler paczki woła ją na wyniku `findMany(ids)`.
@@ -154,7 +156,7 @@ IndexDocuments {
   `app.search.batch_size`), dostępna dla wszystkich kontenerów z kodem API (compose, chart). Wartość spoza `1..5000` kończy
   start komendy błędem z nazwą zmiennej (jak `SEARCH_REFRESH_INTERVAL`).
 - Opcja `--batch-size` komendy nadpisuje domyślną dla jednego przebiegu i jest zapisana w przebiegu; zmiana zmiennej
-  w trakcie przebiegu go nie zmienia.
+  w trakcie przebiegu go nie zmienia. Ten sam parametr i ten sam zakres obowiązują przebudowę synchroniczną.
 - To liczba elementów jednej **wiadomości**; jedna wiadomość to jeden bulk do Elasticsearcha. Podział na mniejsze bulki
   w ramach wiadomości jest poza zakresem, dopóki pomiar go nie uzasadni.
 
@@ -186,16 +188,17 @@ IndexDocuments {
   (`verify` z `refresh` i liczeniem dokumentów oraz usunięcie indeksu 10 mln dokumentów trwają minuty, a przy błędach dłużej)
   wstrzymałaby webhooki symulatora płatności, wygaszanie zamówień i granice promocji. Na `worker-indexing` finalizacja
   nie blokuje niczego poza paczkami tej samej przebudowy, które w tym czasie już się skończyły. Obsługuje ją handler
-  na `indexing.bus`: nadawca wysyła ją przez `command.bus` z jawnym `BusNameStamp('indexing.bus')`,
-  więc wiadomość powstaje w transakcji nadawcy, a po stronie workera trafia na szynę bez transakcji. Zadanie 3 zaczyna od
-  testu tego mechanizmu (wiadomość w wycofanej transakcji nie istnieje, w zatwierdzonej istnieje i jest obsłużona na
-  `indexing.bus`); jeśli `BusNameStamp` tak nie działa, handler finalizacji zostaje na `command.bus` i wykonuje ES poza
-  transakcją przez wydzieloną komendę (decyzja zapisana w specyfikacji po teście).
+  na `indexing.bus`: `DbalSearchRebuildRuns` wysyła ją przez `indexing.bus` w jawnej transakcji DBAL przejścia do
+  `finalizing`; transport Doctrine zapisuje wiersz na tym samym połączeniu, więc wiadomość istnieje dokładnie wtedy, gdy
+  przejście jest zatwierdzone, a `BusNameStamp('indexing.bus')` kieruje ją u workera na szynę bez transakcji
+  (`FinalizationTransactionTest`).
 
 ### Przebieg (`SearchRebuildRun`) i rejestr
 
 Tabela `catalog_search_rebuild_run` (jeden wiersz na przebieg) i `catalog_search_rebuild_batch` (jeden wiersz na wykonaną
-paczkę, klucz główny `(run_id, batch)`):
+paczkę, klucz główny `(run_id, batch)`). Przebieg nie ma agregatu ORM: stan i przejścia zmienia `DbalSearchRebuildRuns`
+warunkowymi `UPDATE` (rekordy tylko definiują schemat), statusy są w `SearchRebuildStatus`. Przebieg aktywny to wiersz bez
+`finished_at` (ustawiany przy statusie końcowym); unikalny indeks częściowy na `document_type` `WHERE finished_at IS NULL`:
 
 | Pole przebiegu | Znaczenie |
 |---|---|
@@ -260,8 +263,8 @@ krótką transakcją, a każdy etap jest idempotentny, więc ponowienie wiadomo�
 |---|---|---|
 | `finalizing` | `verify(target, documents)` (przywraca `refresh_interval`, `refresh`, zdrowie, liczbę dokumentów, skrót definicji; idempotentne), potem status `verified` | powtórzony `verify`; niepowodzenie weryfikacji to `failed`, nowy indeks usunięty (nie wskazuje go alias), alias bez zmian |
 | `verified` | status `activating` (zapis przed wysłaniem żądania) | bez zmiany aliasu |
-| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią). Inny albo nieczytelny: `failed`, oba indeksy zachowane, jak dziś kod wyjścia 2 | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
-| `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się jako usunięty (wymaga testu i ewentualnej poprawki `deleteIndex`) |
+| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias; nadal `previous_index`: `failed`, nowy indeks usunięty. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią albo zrobił to drugi handler). Inny: `failed`, oba indeksy zachowane, kod wyjścia 2. Nieczytelny: błąd przejściowy, ponowienie wiadomości od tego etapu | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
+| `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się w `deleteIndex` jako usunięty |
 | `succeeded`, `failed`, `aborted` | koniec bez skutku | — |
 
 **Dwie wiadomości finalizacji naraz.** Zdarza się to przy zwykłym użyciu: `redeliver_timeout` minął, a pierwszy handler
@@ -299,9 +302,8 @@ transakcji; 0 zmienionych wierszy (przebieg już `aborted`, `failed` albo `final
 
 - **Abort w trakcie zapisu paczki.** Paczka zapisana już po usunięciu `target_index` może w Elasticsearchu (domyślne
   `action.auto_create_index`, repo go nie zmienia) odtworzyć pusty indeks o tej nazwie z dynamicznym mapowaniem. To indeks
-  bez aliasu, którego nikt nie czyta; `catalog:reindex --async` i `setup` wykrywają indeksy bez aliasu jako osierocone, a start
-  przebiegu usuwa je przed budową nowego (`docs/features/demo-scale/spec.md`, Z5). Ryzyko: tymczasowy osierocony indeks
-  do następnego startu; nie wpływa na sklep.
+  bez aliasu, którego nikt nie czyta; `setup` wypisuje go jako osierocony, a usuwa go operator. Ryzyko: osierocony indeks
+  do jego usunięcia; nie wpływa na sklep.
 - **Paczka w trakcie zapisu, gdy rusza finalizacja.** Finalizacja startuje dopiero po rozliczeniu wszystkich paczek, więc
   w trakcie zapisu może być tylko **kopia już rozliczonej paczki** (redelivery po restarcie albo ponowieniu). Taka kopia
   czyta aktualny stan produktów, zapisuje te same identyfikatory z nowszą wersją (`external_gte`), więc nie zmienia liczby
@@ -315,14 +317,16 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 ### Przebieg komendy
 
 1. **Start** (`catalog:reindex --async [--batch-size N] [--wait]`): blokada i sprawdzenie aktywnego przebiegu (wyżej),
-   `activeIndex`, usunięcie osieroconych indeksów jak dziś (`docs/features/demo-scale/spec.md`, Z5), `createIndex`, zapis
-   przebiegu `producing`, zwolnienie blokady, produkcja.
+   `activeIndex`, `createIndex` (z aliasem przebudowy), zapis
+   przebiegu `producing`, zwolnienie blokady, produkcja. Indeks osierocony po przerwanym przebiegu wypisuje `setup`; nowy
+   start zdejmuje z niego alias przebudowy (jak przebudowa synchroniczna).
 2. **Produkcja** jak wyżej; producent odświeża `heartbeat_at` co kilkadziesiąt paczek i co kilkanaście sekund. Błąd publikacji
    do RabbitMQ (potwierdzenie) kończy przebieg jako `failed` (warunkowy `UPDATE`), usuwa nowy indeks i zwraca błąd.
    Producent zabity w trakcie zostawia przebieg `producing` bez heartbeatu: martwy po limicie, usuwa go `abort`.
 3. **`--wait`** odpytuje wiersz przebiegu aż do stanu końcowego i wypisuje postęp (paczki, dokumenty, tempo); kończy się
-   błędem, gdy `heartbeat_at` nie rusza dłużej niż limit (np. brak workera). Kody wyjścia jak dziś: 0 alias na nowym
-   indeksie, 1 alias bez zmian, 2 stan aliasu nieznany.
+   błędem, gdy `heartbeat_at` nie rusza dłużej niż limit (`app.search.rebuild_stall_seconds`, 30 minut; ten sam limit
+   uznaje przebieg za martwy w `abort`), np. bez workera. Kody wyjścia jak dziś według stanu aliasu po końcu albo po
+   limicie: 0 alias na nowym indeksie, 1 alias bez zmian (także odmowa startu), 2 stan aliasu nieznany.
 4. Bez `--async` komenda działa jak dziś (D4), z tą różnicą, że przy aktywnym przebiegu odmawia.
 
 ### Integracje i pomiar
