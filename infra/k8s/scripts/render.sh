@@ -49,6 +49,8 @@ render() {
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
   render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
   # The way back to the first step of the generator on the server (tests/test_demo_data.py): the profile medium, its time limit.
+  # The four replicas of worker-indexing of the criterion of the rebuild: the node still fits them (tests/test_workloads.py, tests/test_indexing.py).
+  render prod-indexing prod --set image.tag=$rev1 $digests --set workers.indexing.replicas=4
   render prod-demo-data-medium prod --set image.tag=$rev1 $digests --set demoData.profile=medium
 }
 # Argo CD renders prod from the two values files only: the profile and the images file of the branch deploy-images,
@@ -65,6 +67,8 @@ render ci-rev2 ci --set image.tag=$rev2
 # The refresh interval of the search index from the values (tests/test_reindex.py): SEARCH_REFRESH_INTERVAL of every container
 # of the API.
 render ci-refresh ci --set image.tag=$rev1 --set elasticsearch.refreshInterval=500ms
+# The replicas of worker-indexing and the size of the batch of the search rebuild from the values (tests/test_indexing.py).
+render ci-indexing ci --set image.tag=$rev1 --set workers.indexing.replicas=4 --set search.indexBatchSize=1000
 # The alerts on a profile that has other workloads than prod (Mailpit): the rule follows the render (tests/test_alerts.py).
 render ci-alerts ci --set image.tag=$rev1 --set alerts.enabled=true
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true

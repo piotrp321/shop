@@ -35,6 +35,9 @@ The secrets come with envFrom (the .env.local of the compose file).
 # index that exists, so a change needs no rebuild.
 - name: SEARCH_REFRESH_INTERVAL
   value: {{ .Values.elasticsearch.refreshInterval | quote }}
+# The products in one batch of the rebuild of the search index (SEARCH_INDEX_BATCH_SIZE of compose; the API checks the range 1 to 5000).
+- name: SEARCH_INDEX_BATCH_SIZE
+  value: {{ .Values.search.indexBatchSize | quote }}
 # Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
 - name: KEYCLOAK_PUBLIC_URL
   value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
@@ -172,3 +175,10 @@ batches of background jobs. It does not wait for RabbitMQ and does not need it. 
 {{ include "shop.deployment" (dict "root" . "name" "worker-commands" "resources" "workerCommands" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
   "initContainers" (include "shop.api.waitMigrations" .)
   "container" (include "shop.worker.container" (dict "root" . "transports" (list "payment_simulator" "scheduled" "promotions" "jobs")))) }}
+---
+{{- /* The batches of the rebuild of the search index and its finalization (docs/features/async-indexing/spec.md): the finalization
+(Postgres) goes first, so that it never waits behind the batches (RabbitMQ). A worker of its own, so that the events of the shop
+(worker) never wait behind a rebuild; the replicas are the setting workers.indexing.replicas. Needs the broker. */}}
+{{ include "shop.deployment" (dict "root" . "name" "worker-indexing" "resources" "workerIndexing" "replicas" .Values.workers.indexing.replicas "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
+  "initContainers" (print (include "shop.api.waitMigrations" .) "\n" (include "shop.wait" (dict "root" . "name" "rabbitmq" "check" "nc -z -w 2 rabbitmq 5672")))
+  "container" (include "shop.worker.container" (dict "root" . "transports" (list "indexing_finalize" "indexing")))) }}

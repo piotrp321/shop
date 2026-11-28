@@ -17,7 +17,7 @@ class RolloutWaitTest(unittest.TestCase):
     def test_jobs_wait_for_the_rollout_of_what_they_need(self):
         for case in ("prod", "ci"):
             jobs = by_logical(case, "Job")
-            for job, needs in (("initialize", ("api", "varnish", "store", "worker", "worker-commands")), ("purge-caches", ("api", "varnish", "store")), ("backfill", ("api", "worker", "worker-commands"))):
+            for job, needs in (("initialize", ("api", "varnish", "store", "worker", "worker-commands", "worker-indexing")), ("purge-caches", ("api", "varnish", "store")), ("backfill", ("api", "worker", "worker-commands", "worker-indexing"))):
                 waits = init_containers(jobs[job])
                 for need in needs:
                     container = waits[f"wait-for-{need}"]

@@ -141,7 +141,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   unzip, entrypoint z `composer install`, jak w compose), `build` z `base` (`composer install --no-dev
   --classmap-authoritative`, rozgrzany cache `prod`), `prod` z `runtime` (kod i `vendor` z `build`, produkcyjne opcache,
   bez entrypointu instalującego zależności, bez Composera, git i SPX), `dev` z `base` jako ostatni (używa go compose).
-  Dane demo (`apps/api/fixtures`) są w obrazie. Ten sam obraz uruchamia oba workery (`worker` i `worker-commands`, te same transporty i limity co compose), Joby
+  Dane demo (`apps/api/fixtures`) są w obrazie. Ten sam obraz uruchamia trzy workery (`worker`, `worker-commands` i `worker-indexing`, te same transporty i limity co compose), Joby
   i CronJoby.
 - **store:** etap `prod`: `next build` z `output: "standalone"` włączanym zmienną tylko w buildzie obrazu (lokalny
   `STORE_MODE=production` bez zmian), komenda `node server.js`. Build nie woła API.
@@ -162,7 +162,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   wieloarchitekturowego>`, z tagiem takim jak w `infra/docker-compose.yml`; compose zostaje przy samych tagach.
 - Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
   o przypiętych digestach.
-- Compose buduje `api` i oba workery (jeden obraz) z `target: dev`, a `store` i `admin` bez `target` (ostatni etap, `dev`), więc
+- Compose buduje `api` i workery (jeden obraz) z `target: dev`, a `store` i `admin` bez `target` (ostatni etap, `dev`), więc
   lokalny `make up` nie zależy od etapów `prod`.
 - Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: kontener
   Alpine uruchamia `infra/garage/init.sh` z binarką Garage zamontowaną z jej obrazu wolumenem typu `image` (bez kopii
@@ -180,8 +180,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 - Usługi stanowe (Postgres, Elasticsearch, RabbitMQ, Redis, Garage) jako StatefulSety z PVC `local-path`.
   Elasticsearch `single-node`, bez security (bez publicznego adresu).
-- Bezstanowe (api, worker, worker-commands, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką
-  i sondami jak health checki compose. Wszystkie poza Keycloakiem mają `RollingUpdate` z `maxUnavailable: 0`
+- Bezstanowe (api, worker, worker-commands, worker-indexing, store, admin, imgproxy, varnish, keycloak, mailpit) jako Deploymenty z jedną repliką
+  (wyjątek: `worker-indexing`, którego liczbę replik ustawia `workers.indexing.replicas`) i sondami jak health checki compose. Wszystkie poza Keycloakiem mają `RollingUpdate` z `maxUnavailable: 0`
   i `maxSurge: 1`: nowy pod, który nie staje się gotowy, zostawia działający stary.
 - Keycloak ma strategię `Recreate`: przy starcie migruje schemat swojej bazy i nie wspiera dwóch wersji na jednej bazie,
   więc stary pod kończy działanie, zanim wystartuje nowy. Przy zmianie szablonu poda Keycloaka (obraz, zmienne, zasoby)
@@ -200,12 +200,12 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   | −2 | Secret, ConfigMap, middleware Traefika, ServiceAccount `shop-wait` z Role i RoleBinding | – |
   | −1 | StatefulSety, Keycloak, Mailpit | Keycloak: Postgres |
   | 0 | Joby `garage-init`, `migrate` (`doctrine:migrations:migrate --no-interaction`, `catalog:search-index:setup`), `keycloak-config` | Garage; Postgres i Elasticsearch; gotowy Keycloak |
-  | 1 | Deploymenty api, worker, worker-commands, store, admin, imgproxy, varnish; Ingress; CronJob | api, worker i worker-commands: `doctrine:migrations:up-to-date` (api i worker także RabbitMQ, `worker-commands` na RabbitMQ nie czeka); store: Redis; imgproxy: Garage z bucketami |
-  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker, worker-commands |
+  | 1 | Deploymenty api, worker, worker-commands, worker-indexing, store, admin, imgproxy, varnish; Ingress; CronJob | api, worker, worker-commands i worker-indexing: `doctrine:migrations:up-to-date` (api, worker i worker-indexing także RabbitMQ, `worker-commands` na RabbitMQ nie czeka); store: Redis; imgproxy: Garage z bucketami |
+  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker, worker-commands, worker-indexing |
   | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
-  | 3 | Job `backfill` (`app:backfill`: dane, dla których migracje dodały tylko schemat; `apps/api/CLAUDE.md`) | zakończony rollout Deploymentów api, worker, worker-commands |
+  | 3 | Job `backfill` (`app:backfill`: dane, dla których migracje dodały tylko schemat; `apps/api/CLAUDE.md`) | zakończony rollout Deploymentów api, worker, worker-commands, worker-indexing |
 
-  Nieudana migracja: nowe `api`, `worker` i `worker-commands` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
+  Nieudana migracja: nowe `api`, `worker`, `worker-commands` i `worker-indexing` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
 - `initialize`, `purge-caches` i `backfill` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
   a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
   (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
@@ -387,7 +387,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   Argo CD i snapshocie z migracją spoza klas migracji obrazu `api` (Job w trybie `check`, przed pytaniem). Po słowie `tak`:
   kopia `pre-restore` (Job z CronJoba `backup` z `BACKUP_TAG=pre-restore`; jej błąd kończy odtworzenie bez zmian, chyba że
   `PRE_RESTORE=skip`, który ją pomija), przy Argo CD wyłączenie automatycznej synchronizacji `root`, potem `shop`,
-  wstrzymanie CronJobów `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry`, `api`, `worker`, `worker-commands`, `store` i `keycloak` do zera, Job w trybie
+  wstrzymanie CronJobów `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry`, `api`, `worker`, `worker-commands`, `worker-indexing`, `store` i `keycloak` do zera, Job w trybie
   `restore` (`restic restore` na `backup-work`, `DROP`/`CREATE` i `pg_restore` obu baz z właścicielami jak w
   `10-create-databases.sh`, `rclone sync` z usuwaniem do `product-images`, `FLUSHALL` Redisa, opróżnienie kolejek
   RabbitMQ), ponowienie `migrate`, `keycloak` i `keycloak-config`, Job w trybie `reindex` (`catalog:reindex`), powrót
@@ -506,7 +506,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
   realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, `reindex` (bez słowa `tak`
   nie powstaje żaden Job; z nim Job z CronJoba `reindex` przebudowuje indeks, a API listuje tyle samo produktów), upgrade ze zepsutą
-  migracją (poprzednie `api`, `worker` i `worker-commands` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
+  migracją (poprzednie `api`, `worker`, `worker-commands` i `worker-indexing` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
   się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia `generate PROFILE=small` i `open` (zamknięcie sklepu, Job `demo-data-run`
   z CronJoba `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7),
   z żądaniami przez ingress wysyłanymi bez przerwy: przestają dostawać 200 po zamknięciu, a po przebiegu sklep
@@ -540,7 +540,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 | Nieudany build albo smoke test wdrożenia (`workflow_dispatch` na `main`) | `deploy` i `deploy-images` bez zmian, działa poprzednia wersja, workflow czerwony |
 | Render `prod` z plikiem digestów nie zgadza się z plikiem albo odrzucony push (non-fast-forward, ruleset) | nic nie jest opublikowane (atomowy push), workflow czerwony |
 | Rewizja `deploy-images` bez pliku `values-images.yaml` albo z brakującym digestem | render chartu kończy się błędem z nazwą wartości, synchronizacja nie startuje, działa poprzednia wersja |
-| Nieudana migracja | Job `migrate` pada, nowe `api`, `worker` i `worker-commands` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
+| Nieudana migracja | Job `migrate` pada, nowe `api`, `worker`, `worker-commands` i `worker-indexing` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
 | Nieudany `purge-caches` | nowa wersja działa, synchronizacja czerwona; `rerun` albo kolejna rewizja |
 | Brak wymaganej wartości (np. sekret SMTP przy `orderMail: brevo`) | render chartu kończy się błędem z nazwą wartości; synchronizacja nie startuje, działa poprzednia wersja |
 | Żądanie HTTP(S) na IP serwera spoza Cloudflare | 403 z `ipAllowList` |

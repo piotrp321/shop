@@ -130,6 +130,9 @@ fresh_copy() {
   # The tests of the panel run the hook that writes its /config.js at container start.
   mkdir -p "$tree/apps/admin/docker"
   cp "$TOOLS_REPO/apps/admin/docker/40-admin-config.sh" "$tree/apps/admin/docker/40-admin-config.sh"
+  # The tests of the workers read the transports of Messenger (every transport but failed has a consumer).
+  mkdir -p "$tree/apps/api/config/packages"
+  cp "$TOOLS_REPO/apps/api/config/packages/messenger.yaml" "$tree/apps/api/config/packages/messenger.yaml"
   # The step shellcheck reads the scripts of the load measurement (load/k6.sh and load/smoke.sh are sourced by the scripts of infra/k8s).
   cp -R "$TOOLS_REPO/load" "$tree/load"
   # The tests of the load files read the Makefile and its fragments.
@@ -470,6 +473,12 @@ load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml '
 # The CronJob reindex (docs/features/search/spec.md, "Infrastruktura"): not suspended it would rebuild the index on its schedule, and
 # make reindex that goes on without the word tak would rebuild it without the confirmation.
 reindex_not_suspended() { replace_after infra/k8s/charts/shop/templates/reindex.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# Every transport of messenger.yaml but failed has a consumer in compose and in the chart (docs/features/async-indexing/spec.md): a
+# transport that no worker consumes, and worker-indexing that stops consuming the queue of the batches, are found.
+transport_without_consumer() { replace apps/api/config/packages/messenger.yaml '            indexing_finalize:' '            orphan_transport:
+                dsn: "in-memory://"
+            indexing_finalize:'; }
+indexing_worker_without_its_queue() { replace infra/k8s/charts/shop/templates/api.yaml '(list "indexing_finalize" "indexing")' '(list "indexing_finalize")'; }
 # shellcheck disable=SC2016 # the text is a line of the script, with its variables
 reindex_without_confirmation() { replace infra/k8s/scripts/reindex.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
@@ -593,6 +602,8 @@ run_case "make open without the lock of make generate and make open" "test_make_
 run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
 run_case "reindex CronJob that is not suspended" "test_the_reindex_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" reindex_not_suspended
 run_case "make reindex going on without tak" "test_reindex_without_the_word_tak_creates_no_job" "tests" reindex_without_confirmation
+run_case "a transport of messenger.yaml that no worker consumes" "test_the_workers_consume_every_transport_but_failed" "tests" transport_without_consumer
+run_case "worker-indexing that does not consume the queue indexing" "test_the_workers_consume_every_transport_but_failed" "tests" indexing_worker_without_its_queue
 run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
 run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" rate_limits_off_without_absent

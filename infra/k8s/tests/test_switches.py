@@ -73,7 +73,7 @@ class OrderMailTest(unittest.TestCase):
         for case, (_, _, order_mail, _) in SWITCHES.items():
             found = self.mailer_containers(case)
             workloads = {key.split("/")[0] for key in found}
-            self.assertLessEqual({"api", "worker", "worker-commands", "migrate", "initialize", "purge-caches", "backfill", "cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry"}, workloads, case)
+            self.assertLessEqual({"api", "worker", "worker-commands", "worker-indexing", "migrate", "initialize", "purge-caches", "backfill", "cart-purge-expired", "rate-limit-check", "queue-check", "order-expiry"}, workloads, case)
             for key, container in found.items():
                 entries = container["env"]
                 env = env_of(container)
