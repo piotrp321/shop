@@ -23,6 +23,8 @@ use App\Catalog\Application\Port\SearchRebuildRuns;
 final readonly class AsyncProductSearchIndexRebuild
 {
     public const string DOCUMENT_TYPE = 'product';
+    /** The most products in one batch (one message, one bulk request) of both rebuild modes. */
+    public const int MAX_BATCH_SIZE = 5000;
     /** The producer beats at least every this many batches and seconds. */
     private const int BEAT_EVERY_BATCHES = 50;
     private const int BEAT_EVERY_SECONDS = 15;

@@ -30,9 +30,9 @@ final readonly class ProductBatchIndexer
      * @return int the number of documents written; a stale item (a single write through the rebuild alias was newer)
      *             counts, as the index holds the document
      *
-     * @throws SearchUnavailable when the request failed transiently or items still failed only transiently
-     * @throws SearchIndexError  on a permanent failure of the request or of any item
-     * @throws OfferFactsUnavailable              when the offers could not be read; nothing was written
+     * @throws SearchUnavailable     when the request failed transiently or items still failed only transiently
+     * @throws SearchIndexError      on a permanent failure of the request or of any item
+     * @throws OfferFactsUnavailable when the offers could not be read; nothing was written
      */
     public function write(string $index, array $snapshots, int $version): int
     {

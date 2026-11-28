@@ -14,7 +14,6 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchRebuildRun;
 use App\Catalog\Application\Search\SearchRebuildStatus;
 use App\Catalog\Application\Search\SearchUnavailable;
-use App\Catalog\Infrastructure\Search\ProductDocumentIndexer;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
@@ -58,14 +57,14 @@ final readonly class ReindexCommand
         #[Option(description: 'With --async: follow the run to its end and print its progress')]
         bool $wait = false,
     ): int {
-        if (null === $batchSize && ($this->defaultBatchSize < 1 || $this->defaultBatchSize > ProductDocumentIndexer::MAX_IDS)) {
-            $io->error(\sprintf('SEARCH_INDEX_BATCH_SIZE must be from 1 to %d, it is %d.', ProductDocumentIndexer::MAX_IDS, $this->defaultBatchSize));
+        if (null === $batchSize && ($this->defaultBatchSize < 1 || $this->defaultBatchSize > AsyncProductSearchIndexRebuild::MAX_BATCH_SIZE)) {
+            $io->error(\sprintf('SEARCH_INDEX_BATCH_SIZE must be from 1 to %d, it is %d.', AsyncProductSearchIndexRebuild::MAX_BATCH_SIZE, $this->defaultBatchSize));
 
             return Command::FAILURE;
         }
         $batchSize ??= $this->defaultBatchSize;
-        if ($batchSize < 1 || $batchSize > ProductDocumentIndexer::MAX_IDS) {
-            $io->error(\sprintf('--batch-size must be from 1 to %d.', ProductDocumentIndexer::MAX_IDS));
+        if ($batchSize < 1 || $batchSize > AsyncProductSearchIndexRebuild::MAX_BATCH_SIZE) {
+            $io->error(\sprintf('--batch-size must be from 1 to %d.', AsyncProductSearchIndexRebuild::MAX_BATCH_SIZE));
 
             return Command::FAILURE;
         }

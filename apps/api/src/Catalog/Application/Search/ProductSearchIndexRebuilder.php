@@ -53,8 +53,8 @@ final readonly class ProductSearchIndexRebuilder
      * Switches the alias to a new, empty index and deletes the previous one. The alias never disappears.
      *
      * @param (\Closure(): void)|null $before runs under the rebuild lock before the index is replaced (the reset of the
-     *                                    catalog empties the database there), so nothing is changed while another
-     *                                    rebuild, a setup or an asynchronous run holds the index
+     *                                        catalog empties the database there), so nothing is changed while another
+     *                                        rebuild, a setup or an asynchronous run holds the index
      *
      * @throws SearchIndexError when the lock was refused (nothing done) or the alias was not switched to the empty index
      */

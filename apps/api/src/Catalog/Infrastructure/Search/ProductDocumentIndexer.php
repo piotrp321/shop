@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Infrastructure\Search;
 
+use App\Catalog\Application\Search\AsyncProductSearchIndexRebuild;
 use App\Catalog\Application\Search\ProductRebuildBatch;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Shared\Infrastructure\Indexing\DocumentIndexer;
@@ -18,7 +19,7 @@ use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 final readonly class ProductDocumentIndexer implements DocumentIndexer
 {
     public const string TYPE = 'product';
-    public const int MAX_IDS = 5000;
+    public const int MAX_IDS = AsyncProductSearchIndexRebuild::MAX_BATCH_SIZE;
 
     public function __construct(private ProductRebuildBatch $batch)
     {
