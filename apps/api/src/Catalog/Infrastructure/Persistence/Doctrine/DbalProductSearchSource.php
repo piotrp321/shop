@@ -61,6 +61,14 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
     private const string FIRST_PAGE_CURSOR = '';
     private const string NEXT_PAGE_CURSOR = 'WHERE id > CAST(:after AS uuid)';
     private const string BY_ID = 'WHERE id = CAST(:id AS uuid)';
+    // The ids are validated UUIDs in a text array parameter, never concatenated into the statement.
+    private const string BY_IDS = 'WHERE id = ANY(CAST(:ids AS uuid[]))';
+
+    /**
+     * The keys of the producer of an asynchronous rebuild: the primary key index alone, no joins.
+     */
+    public const string ID_PAGE_SQL = 'SELECT id FROM catalog_product WHERE id > CAST(:after AS uuid) ORDER BY id LIMIT :limit';
+    private const string FIRST_ID_PAGE_SQL = 'SELECT id FROM catalog_product ORDER BY id LIMIT :limit';
 
     public function __construct(private Connection $connection)
     {
@@ -83,6 +91,38 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
         )->fetchAssociative();
 
         return false === $row ? null : $this->toSnapshot($row);
+    }
+
+    public function findMany(array $ids): array
+    {
+        // ProductId validates the UUID format and lower-cases it; the database never sees a malformed id.
+        $unique = array_values(array_unique(array_map(static fn (string $id): string => ProductId::fromString($id)->toString(), $ids)));
+        if ([] === $unique) {
+            return [];
+        }
+
+        $rows = $this->connection->executeQuery(
+            str_replace('{cursor}', self::BY_IDS, self::PAGE_SQL),
+            ['ids' => '{'.implode(',', $unique).'}', 'limit' => \count($unique)],
+            ['ids' => ParameterType::STRING, 'limit' => ParameterType::INTEGER],
+        )->fetchAllAssociative();
+
+        return array_map($this->toSnapshot(...), $rows);
+    }
+
+    public function idsAfter(?string $afterId, int $limit): array
+    {
+        if ($limit < 1) {
+            throw new \InvalidArgumentException('The page limit must be at least 1.');
+        }
+        $after = null === $afterId ? null : ProductId::fromString($afterId)->toString();
+
+        /** @var list<string> $ids */
+        $ids = null === $after
+            ? $this->connection->fetchFirstColumn(self::FIRST_ID_PAGE_SQL, ['limit' => $limit], ['limit' => ParameterType::INTEGER])
+            : $this->connection->fetchFirstColumn(self::ID_PAGE_SQL, ['after' => $after, 'limit' => $limit], ['after' => ParameterType::STRING, 'limit' => ParameterType::INTEGER]);
+
+        return $ids;
     }
 
     public function page(?string $afterId, int $limit): array

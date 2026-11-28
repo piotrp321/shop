@@ -38,6 +38,25 @@ final class InMemoryProductSearchSource implements ProductSearchSource
         return null;
     }
 
+    /** @var list<list<string>> every findMany() call */
+    public array $findManyCalls = [];
+
+    public function findMany(array $ids): array
+    {
+        $this->findManyCalls[] = $ids;
+        if (null !== $this->onRead) {
+            ($this->onRead)();
+        }
+        $wanted = array_map('strtolower', $ids);
+
+        return array_values(array_filter($this->snapshots, static fn (ProductSearchSnapshot $s): bool => \in_array($s->id, $wanted, true)));
+    }
+
+    public function idsAfter(?string $afterId, int $limit): array
+    {
+        return array_map(static fn (ProductSearchSnapshot $s): string => $s->id, $this->page($afterId, $limit));
+    }
+
     public function page(?string $afterId, int $limit): array
     {
         $this->calls[] = [$afterId, $limit];

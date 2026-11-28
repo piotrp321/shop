@@ -21,15 +21,20 @@ use Psr\Log\NullLogger;
  */
 final readonly class ProductSearchIndexRebuilder
 {
+    private ProductBatchIndexer $batches;
+    private SearchIndexSwitch $switch;
+
     public function __construct(
         private ProductSearchSource $source,
         private SearchIndexMaintenance $maintenance,
         private SearchIndexRebuildLock $lock,
-        private ProductDocumentBuilder $builder,
-        private ProductOfferFacts $offers,
+        ProductDocumentBuilder $builder,
+        ProductOfferFacts $offers,
         private Clock $clock,
         private LoggerInterface $logger = new NullLogger(),
     ) {
+        $this->batches = new ProductBatchIndexer($maintenance, $builder, $offers);
+        $this->switch = new SearchIndexSwitch($maintenance);
     }
 
     /**
@@ -96,21 +101,13 @@ final readonly class ProductSearchIndexRebuilder
             $documents = null === $batchSize ? 0 : $this->fill($new, $batchSize);
             $this->maintenance->verify($new, $documents);
         } catch (SearchUnavailable|SearchIndexError|OfferFactsUnavailable $e) {
-            return $this->discard($new, RebuildReport::failed($e->getMessage(), $previous, $new));
+            return $this->switch->discard($new, RebuildReport::failed($e->getMessage(), $previous, $new));
         } catch (\Throwable $e) {
-            $this->discard($new, RebuildReport::failed($e->getMessage(), $previous, $new));
+            $this->switch->discard($new, RebuildReport::failed($e->getMessage(), $previous, $new));
             throw $e;
         }
 
-        return match ($this->maintenance->activate($new, $previous)) {
-            ActivationResult::Activated => $this->deletePrevious(RebuildReport::activated($previous, $new, $documents)),
-            ActivationResult::NotActivated => $this->discard($new, RebuildReport::failed(
-                \sprintf('The alias was not switched; it still points to "%s".', $previous),
-                $previous,
-                $new,
-            )),
-            ActivationResult::Unknown => RebuildReport::unknown($previous, $new),
-        };
+        return $this->switch->activate($new, $previous, $documents);
     }
 
     /**
@@ -134,15 +131,7 @@ final readonly class ProductSearchIndexRebuilder
             if ([] === $page) {
                 return $written;
             }
-            $facts = $this->offers->of(array_map(static fn (ProductSearchSnapshot $snapshot): string => $snapshot->id, $page));
-            $result = $this->maintenance->write($index, array_map(
-                fn (ProductSearchSnapshot $snapshot): ProductDocument => $this->builder->build($snapshot, $facts[$snapshot->id] ?? null, $version),
-                $page,
-            ));
-            if ($result->hasFailures()) {
-                throw new SearchIndexError(\sprintf('Writing to "%s" failed: %s.', $index, $result->describeProblems()));
-            }
-            $written += \count($page);
+            $written += $this->batches->write($index, $page, $version);
             $afterId = $page[array_key_last($page)]->id;
             $elapsed = self::seconds($this->clock->now()) - $startedAt;
             $this->logger->info('Search index rebuild progress.', [
@@ -156,32 +145,5 @@ final readonly class ProductSearchIndexRebuilder
     private static function seconds(\DateTimeImmutable $time): float
     {
         return (float) $time->format('U.u');
-    }
-
-    private function discard(string $new, RebuildReport $report): RebuildReport
-    {
-        try {
-            $this->maintenance->deleteIndex($new);
-        } catch (SearchUnavailable|SearchIndexError $e) {
-            return $report->withWarning(\sprintf('The new index "%s" could not be deleted: %s', $new, $e->getMessage()));
-        }
-
-        return $report;
-    }
-
-    private function deletePrevious(RebuildReport $report): RebuildReport
-    {
-        \assert(null !== $report->previousIndex);
-        try {
-            $this->maintenance->deleteIndex($report->previousIndex);
-        } catch (SearchUnavailable|SearchIndexError $e) {
-            return $report->withWarning(\sprintf(
-                'The previous index "%s" could not be deleted and stays as an orphan: %s',
-                $report->previousIndex,
-                $e->getMessage(),
-            ));
-        }
-
-        return $report;
     }
 }

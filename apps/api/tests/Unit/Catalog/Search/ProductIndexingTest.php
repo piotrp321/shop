@@ -88,6 +88,16 @@ final class ProductIndexingTest extends TestCase
                 return $this->inner->page($afterId, $limit);
             }
 
+            public function findMany(array $ids): array
+            {
+                return $this->inner->findMany($ids);
+            }
+
+            public function idsAfter(?string $afterId, int $limit): array
+            {
+                return $this->inner->idsAfter($afterId, $limit);
+            }
+
             public function find(string $id): ?ProductSearchSnapshot
             {
                 $this->clock->advance('+1 second');
