@@ -370,7 +370,7 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
     kolejka, gotowe (`1000+` przy `capped`), najstarsza gotowa, stan „W normie” albo „Zator” (`stalled`).
   - Etykiety (`labels.ts`; nieznana nazwa zostaje jak z API): `outbox` „Zdarzenia do wysłania”, `scheduled` „Komendy
     opóźnione”, `payment_simulator` „Webhooki symulatora płatności”, `promotions` „Granice promocji”, `jobs` „Zadania
-    w tle”.
+    w tle”, `indexing_finalize` „Finalizacja przebudowy indeksu”.
   - Wiek: „—” przy `null`, „N s” poniżej minuty, „N min” poniżej godziny, „N h” powyżej (zaokrąglenie w dół).
   - Podsumowanie z `healthy`: „Kolejki działają” albo „Wymaga uwagi”.
 - Panel nie liczy progu: wyświetla `stalled` i `healthy` z API. Pulpit nie pokazuje stanu systemu (bez zmian, decyzja
