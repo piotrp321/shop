@@ -1276,5 +1276,97 @@ class CheckCronJobs(Case):
                 self.assertIn(name, result.stderr)
 
 
+def allowed(policy, source_namespace, source_labels, destination_labels, port, protocol="TCP", namespace="shop"):
+    """Whether the ingress rules of a NetworkPolicy of the namespace `shop` let a connection through, as Kubernetes reads them: the policy
+    applies to the pods its podSelector selects, a rule lets through the peers that one of its `from` entries selects (the namespaceSelector
+    and the podSelector of one entry both must match; a podSelector alone is the namespace of the policy) and, when it has ports, those ports."""
+    def matches(selector, labels):
+        return all(labels.get(k) == v for k, v in (selector or {}).get("matchLabels", {}).items()) and not (selector or {}).get("matchExpressions")
+
+    if not matches(policy["spec"]["podSelector"], destination_labels):
+        return True  # a pod the policy does not select is not closed by it
+    namespace_labels = {"kubernetes.io/metadata.name": source_namespace}
+    for rule in policy["spec"].get("ingress", []):
+        ports = rule.get("ports")
+        if ports is not None and not any(p.get("protocol", "TCP") == protocol and p["port"] == port for p in ports):
+            continue
+        for peer in rule.get("from", []):
+            if "namespaceSelector" in peer:
+                if matches(peer["namespaceSelector"], namespace_labels) and matches(peer.get("podSelector"), source_labels):
+                    return True
+            elif source_namespace == namespace and matches(peer.get("podSelector"), source_labels):
+                return True
+    return False
+
+
+class ClosedShopAndMonitoring(Case):
+    """The rule shop-closed lets Alloy of the namespace monitoring reach Postgres and Elasticsearch (the exporters of the metrics of the
+    databases: the window of the generator and of the reindex is the one that is measured) and nothing else from outside the shop."""
+
+    ALLOY = {"app.kubernetes.io/name": "alloy", "app.kubernetes.io/instance": "monitoring-alloy"}
+    POSTGRES = {"app.kubernetes.io/name": "postgres"}
+    ELASTICSEARCH = {"app.kubernetes.io/name": "elasticsearch"}
+    API = {"app.kubernetes.io/name": "api"}
+
+    def rule(self):
+        cluster = self.cluster()
+        cluster.run()
+        created = [json.loads(c["stdin"]) for c in cluster.calls() if c["stdin"] and c["args"][-3:] == ["create", "-f", "-"]]
+        (rule,) = [d for d in created if d["kind"] == "NetworkPolicy"]
+        return rule
+
+    def test_alloy_reaches_postgres_and_elasticsearch_on_their_ports(self):
+        rule = self.rule()
+        self.assertTrue(allowed(rule, "monitoring", self.ALLOY, self.POSTGRES, 5432))
+        self.assertTrue(allowed(rule, "monitoring", self.ALLOY, self.ELASTICSEARCH, 9200))
+
+    def test_nothing_else_of_monitoring_and_nothing_else_of_alloy_gets_in(self):
+        rule = self.rule()
+        # Other ports of the shop (the API, the store, Redis, Keycloak, RabbitMQ, the ingress) and of the two databases' neighbours.
+        for port in (80, 443, 3000, 5672, 6379, 8080, 9000, 9201, 5433, 15672):
+            with self.subTest(port=port):
+                self.assertFalse(allowed(rule, "monitoring", self.ALLOY, self.API, port))
+        # The same ports with UDP, which the rule does not name.
+        for port in (5432, 9200):
+            self.assertFalse(allowed(rule, "monitoring", self.ALLOY, self.POSTGRES, port, protocol="UDP"))
+        # Another pod of monitoring on the two ports (the operator, kube-state-metrics, node-exporter) and an Alloy that is not that Alloy.
+        for labels in ({"app.kubernetes.io/name": "alloy-operator", "app.kubernetes.io/instance": "monitoring"},
+                       {"app.kubernetes.io/name": "kube-state-metrics", "app.kubernetes.io/instance": "monitoring"},
+                       {"app.kubernetes.io/name": "node-exporter", "app.kubernetes.io/instance": "monitoring"},
+                       {"app.kubernetes.io/name": "alloy"}, {"app.kubernetes.io/instance": "monitoring-alloy"}, {}):
+            for port in (5432, 9200):
+                with self.subTest(labels=labels, port=port):
+                    self.assertFalse(allowed(rule, "monitoring", labels, self.POSTGRES, port))
+        # The labels of Alloy in another namespace (the namespace is the label that the API server sets, so a pod cannot give itself one).
+        for namespace in ("kube-system", "default", "monitoring-other", "shop-other", "argocd"):
+            for port in (5432, 9200, 80):
+                with self.subTest(namespace=namespace, port=port):
+                    self.assertFalse(allowed(rule, namespace, self.ALLOY, self.POSTGRES, port))
+
+    def test_the_pods_of_the_shop_still_reach_each_other_and_the_public_is_still_shut_out(self):
+        rule = self.rule()
+        for port in (80, 3000, 5432, 6379, 8080, 9200):
+            self.assertTrue(allowed(rule, "shop", self.API, self.POSTGRES, port))
+        # Traefik of kube-system (the ingress) and the rest of the cluster: 502.
+        for labels in ({"app.kubernetes.io/name": "traefik"}, {}):
+            for port in (80, 3000, 8080, 5432):
+                self.assertFalse(allowed(rule, "kube-system", labels, self.API, port))
+
+    def test_only_postgres_and_elasticsearch_listen_on_the_two_ports_of_the_rule(self):
+        """The rule has no destination of its own (it applies to every pod of the shop), so the ports are what restricts it: no other
+        workload of the chart may listen on 5432 or 9200."""
+        from support import logical, of_kind, pod_spec
+
+        for case in ("prod", "ci", "load"):
+            listening = {}
+            for workload in of_kind(case, "Deployment", "StatefulSet", "Job", "CronJob"):
+                spec = pod_spec(workload)
+                for container in spec["containers"] + spec.get("initContainers", []):
+                    for port in container.get("ports", []):
+                        if port.get("containerPort") in (5432, 9200):
+                            listening.setdefault(port["containerPort"], set()).add(logical(workload))
+            self.assertEqual({5432: {"postgres"}, 9200: {"elasticsearch"}}, listening, case)
+
+
 if __name__ == "__main__":
     unittest.main()
