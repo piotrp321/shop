@@ -701,7 +701,7 @@ ELASTICSEARCH_SERIES = {
 # and the wait are the groups of pg_stat_activity_count: without them two groups have the same labels and a session is lost.
 POSTGRES_LABELS = {"__name__", "job", "instance", "datname", "state", "usename", "application_name", "backend_type", "wait_event_type", "wait_event"}
 ELASTICSEARCH_LABELS = {"__name__", "job", "instance", "cluster", "name", "area", "gc", "type", "cache", "breaker", "color", "mount", "path"}
-QUERY_LABELS = {"query", "queryid", "query_id", "statement", "sql", "client_addr", "client_hostname", "client_port", "relname", "schemaname",
+QUERY_LABELS = {"query", "queryid", "query_id", "statement", "sql", "user", "client_addr", "client_hostname", "client_port", "relname", "schemaname",
                 "datid", "pid", "host"}
 # The new series against the 10 thousand of the free plan of Grafana Cloud: this test allows a tenth of it.
 NEW_SERIES_BUDGET = 1000

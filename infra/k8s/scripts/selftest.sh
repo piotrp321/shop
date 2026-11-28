@@ -435,7 +435,7 @@ monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd
 # that matches no line.
 monitoring_exporter_with_the_statements() { replace infra/k8s/argocd/apps/monitoring.yaml '"wal", "long_running_transactions"]' '"wal", "long_running_transactions", "stat_statements"]'; }
 monitoring_exporter_with_the_dsn_in_the_config() { replace infra/k8s/argocd/apps/monitoring.yaml '.data["POSTGRES_EXPORTER_DSN"]]' '.data["POSTGRES_EXPORTER_DSN"], "postgresql://exporter:pw@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable"]'; }
-monitoring_exporter_with_the_query_label() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state"' 'regex  = "__name__|job|instance|datname|state|query"'; }
+monitoring_exporter_with_the_query_label() { replace infra/k8s/argocd/apps/monitoring.yaml '|wait_event_type|wait_event"' '|wait_event_type|wait_event|query"'; }
 monitoring_postgres_labels_cut_to_the_database_and_the_state() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state|usename|application_name|backend_type|wait_event_type|wait_event"' 'regex  = "__name__|job|instance|datname|state"'; }
 # The rule shop-closed of make generate: Alloy on every port, and every namespace.
 generate_rule_for_alloy_on_all_ports() { replace infra/k8s/scripts/generate.sh '"ports":[{"protocol":"TCP","port":5432},{"protocol":"TCP","port":9200}]' '"ports":[]'; }
