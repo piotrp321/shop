@@ -9,9 +9,12 @@
 #   4. The log of Postgres after a violation of a unique constraint, a deadlock, a wait for a lock, a cancelled query and the errors of data
 #      has no line DETAIL, HINT, QUERY, CONTEXT or STATEMENT and no value or text of a query planted in them, but it has the main
 #      message of each error (the test does not pass on an empty log). The main message of the errors of data (SQLSTATE class 22) carries
-#      the value, so Alloy masks it (the log corpus of the masking test); POSTGRES_LOG_CORPUS_OUT=<file> writes those lines to a file.
+#      the value, so Alloy masks it (the log corpus of the masking test); POSTGRES_LOG_CORPUS_OUT=<file> writes those lines to a new
+#      file (an existing one is refused before anything runs, so the corpus is never overwritten: append the file to it with cat).
+#      The sessions of the deadlock and of the wait for a lock wait for each other in the database (advisory locks and pg_locks), not
+#      for a time, so a loaded runner does not fail them.
 #   5. A name of a setting that Postgres does not know stops the start of a throwaway container of the same image with the message
-#      `unrecognized configuration parameter`.
+#      `unrecognized configuration parameter`; a container that is still running after 60 s is a failure (it took the file).
 #
 # Exit code: 0 every check passed, 1 a check failed, 2 the service postgres does not run.
 set -u
@@ -33,6 +36,16 @@ psql_in() {
   shift
   pg psql -X -q -At -v ON_ERROR_STOP=1 -U postgres -d "$database" "$@"
 }
+# wait_until <sql>: polls the database $db until the statement prints t, at most about 30 s (a lost session is a failure, not a hang).
+wait_until() {
+  tries=0
+  while [ "$tries" -lt 100 ]; do
+    [ "$(psql_in "$db" -c "$1" 2> /dev/null)" = t ] && return 0
+    tries=$((tries + 1))
+    sleep 0.3
+  done
+  return 1
+}
 ok() { echo "ok: $1"; }
 fail() { echo "FAIL: $1" >&2; failures=$((failures + 1)); }
 check() { # check <description> <command...>: the command succeeds
@@ -41,10 +54,17 @@ check() { # check <description> <command...>: the command succeeds
   if "$@" > "$out/last" 2>&1; then ok "$description"; else fail "$description"; sed 's/^/    /' "$out/last" >&2; fi
 }
 cleanup() {
+  [ -z "${start_container:-}" ] || docker rm -f "$start_container" > /dev/null 2>&1
   psql_in postgres -c "DROP DATABASE IF EXISTS $db WITH (FORCE)" > /dev/null 2>&1
   rm -rf "$out"
 }
 
+if [ -n "${POSTGRES_LOG_CORPUS_OUT:-}" ] && [ -e "$POSTGRES_LOG_CORPUS_OUT" ]; then
+  echo "postgres-config-test: POSTGRES_LOG_CORPUS_OUT=$POSTGRES_LOG_CORPUS_OUT exists and is not overwritten: name a new file" >&2
+  trap - EXIT
+  rm -rf "$out"
+  exit 2
+fi
 pg true > /dev/null 2>&1 || { echo "postgres-config-test: the compose service postgres does not run" >&2; trap - EXIT; rm -rf "$out"; exit 2; }
 psql_in postgres -c "DROP DATABASE IF EXISTS $db WITH (FORCE)" -c "CREATE DATABASE $db" > /dev/null || { echo "cannot create the database $db" >&2; exit 1; }
 
@@ -121,19 +141,41 @@ CREATE TABLE customer (id int PRIMARY KEY, email text UNIQUE);
 CREATE TABLE lockme (id int PRIMARY KEY, v text);
 INSERT INTO lockme VALUES (1, 'a'), (2, 'b');
 CREATE TYPE status AS ENUM ('new', 'paid');
+-- Barriers between the sessions: the key is held as an advisory lock by the session that reached its point.
+CREATE FUNCTION wait_for_advisory(k int) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  FOR i IN 1..600 LOOP
+    IF EXISTS (SELECT FROM pg_locks WHERE locktype = 'advisory' AND objid = k AND granted) THEN RETURN; END IF;
+    PERFORM pg_sleep(0.05);
+  END LOOP;
+  RAISE EXCEPTION 'barrier % was not reached', k;
+END $$;
+-- Returns when another session waits for a lock, and then holds this one for longer than deadlock_timeout (1 s).
+CREATE FUNCTION hold_while_somebody_waits() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  FOR i IN 1..600 LOOP
+    IF EXISTS (SELECT FROM pg_locks WHERE NOT granted) THEN PERFORM pg_sleep(1.6); RETURN; END IF;
+    PERFORM pg_sleep(0.05);
+  END LOOP;
+  RAISE EXCEPTION 'nobody waited for a lock';
+END $$;
 SQL
 # A violation of a unique constraint: DETAIL would carry the e-mail address, STATEMENT the query.
 psql_in "$db" -c "INSERT INTO customer VALUES (1, 'jan.$canary@example.pl')" > /dev/null
 psql_in "$db" -c "INSERT INTO customer VALUES (2, 'jan.$canary@example.pl')" > /dev/null 2>&1
-# A deadlock: two transactions that update the rows in the opposite order (DETAIL has the queries of both).
-{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 1;\nSELECT pg_sleep(1.5);\nUPDATE lockme SET v = '%s' WHERE id = 2;\nCOMMIT;\n" "$canary-a" "$canary-a" | psql_in "$db" > /dev/null 2>&1; } &
-sleep 0.5
-{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 2;\nSELECT pg_sleep(1.5);\nUPDATE lockme SET v = '%s' WHERE id = 1;\nCOMMIT;\n" "$canary-b" "$canary-b" | psql_in "$db" > /dev/null 2>&1; } &
+# A deadlock: two transactions that update the rows in the opposite order (DETAIL has the queries of both). Each takes its row, announces
+# it with an advisory lock and waits for the announcement of the other before it reaches for the other row.
+{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 1;\nSELECT pg_advisory_lock(901);\nSELECT wait_for_advisory(902);\nUPDATE lockme SET v = '%s' WHERE id = 2;\nCOMMIT;\n" "$canary-a" "$canary-a" | psql_in "$db" > /dev/null 2>&1; } &
+{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 2;\nSELECT pg_advisory_lock(902);\nSELECT wait_for_advisory(901);\nUPDATE lockme SET v = '%s' WHERE id = 1;\nCOMMIT;\n" "$canary-b" "$canary-b" | psql_in "$db" > /dev/null 2>&1; } &
 wait
-# A wait for a lock longer than deadlock_timeout (1 s), which log_lock_waits logs; both transactions finish.
-{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 1;\nSELECT pg_sleep(2.5);\nCOMMIT;\n" "$canary-c" | psql_in "$db" > /dev/null 2>&1; } &
-sleep 0.7
-psql_in "$db" -c "UPDATE lockme SET v = '$canary-d' WHERE id = 1" > /dev/null 2>&1
+# A wait for a lock longer than deadlock_timeout (1 s), which log_lock_waits logs: the first transaction holds the row until the second
+# waits for it (and 1.6 s longer); the second starts when the first has the row.
+{ printf "BEGIN;\nUPDATE lockme SET v = '%s' WHERE id = 1;\nSELECT pg_advisory_lock(903);\nSELECT hold_while_somebody_waits();\nCOMMIT;\n" "$canary-c" | psql_in "$db" > /dev/null 2>&1; } &
+if wait_until "SELECT EXISTS (SELECT FROM pg_locks WHERE locktype = 'advisory' AND objid = 903 AND granted)"; then
+  psql_in "$db" -c "UPDATE lockme SET v = '$canary-d' WHERE id = 1" > /dev/null 2>&1
+else
+  fail "the first session of the wait for a lock did not take the row"
+fi
 wait
 # A cancelled query (what statement_timeout of the API does).
 psql_in "$db" -c "SET statement_timeout = '300ms'; SELECT pg_sleep(5), '$canary-e'" > /dev/null 2>&1
@@ -166,7 +208,7 @@ else ok "no value and no text of a query in the log of the violation, the deadlo
 grep -E 'invalid input (syntax|value)|out of range' "$out/log" > "$out/class22"
 if [ -s "$out/class22" ]; then ok "$(wc -l < "$out/class22" | tr -d ' ') lines of the errors of data (class 22) in the log"; else fail "no line of an error of data in the log"; fi
 if [ -n "${POSTGRES_LOG_CORPUS_OUT:-}" ]; then
-  cp "$out/class22" "$POSTGRES_LOG_CORPUS_OUT"
+  cp -n "$out/class22" "$POSTGRES_LOG_CORPUS_OUT"
   echo "the lines of the errors of data are in $POSTGRES_LOG_CORPUS_OUT"
 fi
 
@@ -175,15 +217,24 @@ echo "== 5. an unknown setting stops the start"
 image="$(docker compose config --images postgres | head -n 1)"
 bad="$out/bad.conf"
 { cat "$conf"; echo "no_such_setting = on"; } > "$bad"
-if docker run --rm -e POSTGRES_PASSWORD=unused -v "$bad:/etc/postgresql/postgresql.conf:ro" "$image" -c config_file=/etc/postgresql/postgresql.conf > "$out/start" 2>&1; then
-  fail "Postgres started with an unknown setting in the file"
+start_container="$(docker run -d -e POSTGRES_PASSWORD=unused -v "$bad:/etc/postgresql/postgresql.conf:ro" "$image" -c config_file=/etc/postgresql/postgresql.conf)"
+waited=0
+while [ "$(docker inspect -f '{{.State.Running}}' "$start_container" 2> /dev/null)" = true ] && [ "$waited" -lt 60 ]; do
+  sleep 1
+  waited=$((waited + 1))
+done
+docker logs "$start_container" > "$out/start" 2>&1
+if [ "$(docker inspect -f '{{.State.Running}}' "$start_container" 2> /dev/null)" = true ]; then
+  fail "Postgres still runs 60 s after the start with an unknown setting in the file"
+elif [ "$(docker inspect -f '{{.State.ExitCode}}' "$start_container" 2> /dev/null)" = 0 ]; then
+  fail "Postgres stopped with the exit code 0 on an unknown setting in the file"
+elif grep -q 'unrecognized configuration parameter "no_such_setting"' "$out/start"; then
+  ok "the start fails with: unrecognized configuration parameter \"no_such_setting\""
 else
-  if grep -q 'unrecognized configuration parameter "no_such_setting"' "$out/start"; then
-    ok "the start fails with: unrecognized configuration parameter \"no_such_setting\""
-  else
-    fail "the start failed without the message about the setting"; tail -n 5 "$out/start" >&2
-  fi
+  fail "the start failed without the message about the setting"; tail -n 5 "$out/start" >&2
 fi
+docker rm -f "$start_container" > /dev/null 2>&1
+start_container=""
 
 echo
 if [ "$failures" -eq 0 ]; then echo "postgres-config-test: all checks passed"; else echo "postgres-config-test: $failures checks failed" >&2; exit 1; fi

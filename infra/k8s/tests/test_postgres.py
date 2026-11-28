@@ -27,6 +27,10 @@ SETTINGS = {
     "default_text_search_config": "pg_catalog.english",
     "timezone": "Etc/UTC",
     "log_timezone": "Etc/UTC",
+    "lc_messages": "en_US.utf8",
+    "lc_monetary": "en_US.utf8",
+    "lc_numeric": "en_US.utf8",
+    "lc_time": "en_US.utf8",
 }
 # The settings that stay the defaults or come from the environment: not in the file.
 NOT_IN_THE_FILE = ("jit", "work_mem", "random_page_cost", "max_connections", "shared_buffers", "effective_cache_size",
