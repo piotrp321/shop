@@ -3506,9 +3506,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
             503: {
                 headers: {
+                    /** @description Seconds to wait before the next attempt (only with a cancelled query). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4407,9 +4409,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
             503: {
                 headers: {
+                    /** @description Seconds to wait before the next attempt (only with a cancelled query). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4805,9 +4809,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
             503: {
                 headers: {
+                    /** @description Seconds to wait before the next attempt (only with a cancelled query). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4939,9 +4945,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
             503: {
                 headers: {
+                    /** @description Seconds to wait before the next attempt (only with a cancelled query). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5305,9 +5313,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
             503: {
                 headers: {
+                    /** @description Seconds to wait before the next attempt (only with a cancelled query). */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

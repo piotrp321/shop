@@ -61,6 +61,35 @@ parameters:
     app.demo_data.keycloak_idle_timeout: 120
     app.demo_data.keycloak_max_duration: 300
 
+    # Limits of time of the database (docs/features/runtime-config/spec.md, "Limity czasu w bazie"), in seconds, 0 for none:
+    # how long a statement may run (it also ends a wait for a lock), how long a transaction may stay open without a
+    # statement (the connection is closed and its locks are released) and how long a statement may wait for a lock. Set on
+    # the session before the first statement by App\Shared\Infrastructure\Persistence\Timeout; the profile follows the
+    # process: a command of the console has `console`, a Messenger worker `worker`, a command of the migrations
+    # `migration` and an HTTP request `http` or, for a route of the list below, `http_long`.
+    app.database_timeouts:
+        console: { statement: 0, idle_in_transaction: 0, lock: 0 }
+        http: { statement: 3, idle_in_transaction: 60, lock: 0 }
+        # The limit of ONE statement, not of the request (a list of products runs two: the page and the count), so it
+        # does not promise an answer before the limit of Cloudflare (100 s). A statement that the client gave up still
+        # runs in the database until its limit, so a higher value only holds a connection and a thread longer.
+        http_long: { statement: 90, idle_in_transaction: 60, lock: 0 }
+        worker: { statement: 60, idle_in_transaction: 60, lock: 0 }
+        migration: { statement: 0, idle_in_transaction: 0, lock: 5 }
+    # The only routes with the `http_long` profile: those whose query costs more with the size of the table (a scan of it,
+    # a fragment without a trigram, the boundaries of the sitemap) and those measured above 1.2 s (1/2.5 of the limit).
+    # The inventory with the reason for each route: the specification, "Limity czasu w bazie". A new route that reads a
+    # whole table belongs here; one that is bounded by a limit or an index does not.
+    app.database_timeouts.long_routes:
+        - catalog_backoffice_products
+        - inventory_backoffice_stock
+        - pricing_backoffice_prices
+        - ordering_backoffice_orders
+        - ordering_backoffice_customers
+        - catalog_sitemap_product_chunks
+    # The routes of the tests that have the `http_long` profile as well (the test environment sets them).
+    app.database_timeouts.test_long_routes: []
+
 services:
     _defaults:
         autowire: true
@@ -70,6 +99,12 @@ services:
         resource: '../src/'
         exclude:
             - '../src/Kernel.php'
+
+    App\Shared\Infrastructure\Persistence\Timeout\DatabaseTimeouts:
+        arguments:
+            $profiles: '%app.database_timeouts%'
+            $longRoutes: '%app.database_timeouts.long_routes%'
+            $testLongRoutes: '%app.database_timeouts.test_long_routes%'
 
     app.s3_client:
         class: AsyncAws\S3\S3Client
@@ -349,6 +384,8 @@ services:
 
 when@test: &test
     parameters:
+        # The route of TestDatabaseController that has the longer limit.
+        app.database_timeouts.test_long_routes: [test_database_sleep_long]
         # Integration tests use their own bucket, like the `_test` database.
         app.images_bucket: 'product-images-test'
         # Test indexes are prefixed with test_, the alias is recreated by `make -C apps/api init-test`.
