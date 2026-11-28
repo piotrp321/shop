@@ -198,7 +198,11 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza części�
 Wymaga certyfikatu w repo (2.5).
 
 1. **agent** – `make -C infra/k8s seal-secrets WHAT=shop`: klucze z `infra/scripts/init-env.sh` z losowymi wartościami do
-   `infra/k8s/environments/prod/secrets/shop-secrets.yaml`. Istniejących kluczy nie zmienia (wartości są już w bazach).
+   `infra/k8s/environments/prod/secrets/shop-secrets.yaml`. Istniejących kluczy nie zmienia (wartości są już w bazach). Hasło
+   roli `exporter` (`EXPORTER_DB_PASSWORD`) pieczętuje też w `shop-exporter.yaml` (DSN dla eksportera Postgresa w Alloy, który
+   nie czyta `shop-secrets`): oba pliki powstają z jednej losowej wartości w jednym przebiegu. Zapieczętowanego hasła nie da się
+   odczytać, więc `shop-secrets.yaml` z tym kluczem bez `shop-exporter.yaml` zatrzymuje skrypt; wtedy usuwa się z niego wiersz
+   `EXPORTER_DB_PASSWORD` i uruchamia go jeszcze raz (migracja ustawia rolę na nowe hasło; baza ma je z `shop-secrets`).
 2. **użytkownik** – w Brevo (SMTP & API) tworzy klucz SMTP; w Cloudflare (SSL/TLS → Origin Server) wystawia certyfikat Origin CA
    dla `<domena>` i `*.<domena>` (PEM certyfikatu i klucza). Na koncie Cloudflare zakłada bucket R2 na kopie zapasowe i token
    API R2 z dostępem tylko do tego bucketu (klucz i sekret S3); wymyśla hasło repozytorium restic i zapisuje je w menedżerze
@@ -527,7 +531,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
 Aplikacje Argo CD `prometheus-crds` (fala −3) i `monitoring` (fala 1, po `shop`) stawiają CRD Prometheusa oraz Grafana Alloy
 (chart `k8s-monitoring`), który wysyła do Grafana Cloud logi podów wszystkich przestrzeni, zdarzenia klastra i metryki z listy
 dozwolonych (`docs/features/deploy-ops/spec.md`, O5 i O7). Logi są maskowane w Alloy przed wysłaniem, a Mailpit nie jest zbierany.
-Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy Operator działa tylko w przestrzeni `monitoring`,
+Alloy czyta z klastra tylko sekrety `grafana-cloud` i `shop-exporter` (DSN roli `exporter` Postgresa) z przestrzeni `shop`, a Alloy Operator działa tylko w przestrzeni `monitoring`,
 bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach. Polityki dopuszczania z tego samego
 manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) albo z klasą priorytetu `system-*`, Service
 inne niż `ClusterIP` albo z `externalIPs` i sekrety z tokenami kont, także żądania administratora; `kubectl debug` poda

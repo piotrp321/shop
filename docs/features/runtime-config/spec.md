@@ -327,9 +327,10 @@ Każdy klucz ma TTL, ale żaden nie jest cache: usunięcie dowolnego łamie gwar
 - `pg_stat_statements` trzyma tekst znormalizowany (stałe jako `$n`); `track_utility = off` wyłącza polecenia użytkowe.
   Widok czyta tylko rola z `pg_read_all_stats` (eksporter, superużytkownik); tekst zapytań nie trafia do metryk.
 - Eksportery Alloy (D7): `prometheus.exporter.postgres` bez kolektora `stat_statements` i bez tekstu zapytań, DSN
-  z sekretu Kubernetesa jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
-  statystyki klastra i węzła. Etykiety serii to nazwy baz, ról, indeksów i węzłów; lista dozwolonych serii i ich
-  etykiet jest w teście.
+  z sekretu Kubernetesa `shop-exporter` (osobnego od `shop-secrets`, bo Role nie dają dostępu do jednego klucza, a Alloy nie
+  czyta haseł baz) jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
+  statystyki klastra i węzła. Etykiety serii to nazwy baz, stany sesji i nazwy węzłów (lista `labelkeep`); lista dozwolonych
+  serii i ich etykiet jest w teście, który liczy też serie (ok. 117 przy trzech bazach i jednym węźle).
 
 ## Budżet pamięci węzła (kandydat, wariant A)
 

@@ -47,11 +47,15 @@ serwera” i „Smoke test i check”).
   z `seal-secrets WHAT=grafana`; aktualizacja chartu: runbook, sekcja 9). Logi są maskowane w Alloy (jeden blok etapów
   dla logów podów i zdarzeń), a źródło, którego nie da się zamaskować, nie jest zbierane (Mailpit: `extraDiscoveryRules`);
   nowa usługa z danymi klientów albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie
-  `infra/k8s/tests/log-corpus` w tym samym PR. Alloy czyta z klastra tylko sekret `grafana-cloud`
+  `infra/k8s/tests/log-corpus` w tym samym PR. Alloy czyta z klastra tylko sekrety `grafana-cloud` i `shop-exporter`
   (`docs/features/deploy-ops/spec.md`, O5 i O7, `docs/adr/backups-observability.md`). Lista dozwolonych metryk w tym
   manifeście ma metryki alertów i metryki, od których zależy planowany hypercare z `docs/features/oncall/spec.md`
   (`kube_pod_container_info`, `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`;
-  pilnuje tego `check`).
+  pilnuje tego `check`). Metryki baz idą z dwóch eksporterów Alloy (`collectors.alloy.extraConfig`): nowa rodzina metryk
+  dochodzi do listy w manifeście i do tabeli serii w `tests/test_monitoring.py`, etykiety z tekstem zapytania nie wychodzą
+  (lista `labelkeep`), a DSN roli `exporter` jest tylko w sekrecie `shop-exporter`, który `seal-secrets WHAT=shop` pieczętuje razem
+  z `EXPORTER_DB_PASSWORD` z jednej wartości (zapieczętowanego hasła nie da się odczytać: bez pliku `shop-exporter.yaml` skrypt
+  się zatrzymuje).
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
   dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości

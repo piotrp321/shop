@@ -198,13 +198,30 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   - kolektor (zasób `Alloy` z `rbac.create: false`, konto usługi `monitoring-alloy`) ma własną ClusterRole tylko do odczytu
     (`get/list/watch`: węzły i `nodes/metrics`, usługi, endpointy, pody i `pods/log`, przestrzenie, zdarzenia,
     `PrometheusRule`), bez `secrets` i ConfigMap, oraz osobną Role w `shop` z `get/list/watch` tylko na
-    `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani `shop-secrets`;
+    `resourceNames: [grafana-cloud, shop-exporter]`; Alloy nie czyta `shop-backup` ani `shop-secrets`;
   - żadna rola monitoringu nie ma `bind`, `escalate`, `impersonate`, zmian obiektów RBAC ani podzasobów `pods/exec`,
     `pods/attach`, `pods/portforward`, `pods/ephemeralcontainers`, `serviceaccounts/token` i `nodes/proxy`.
 
-  Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
-  `check`: lista nie jest pusta i ma metryki alertów; RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
-  Role na `grafana-cloud` w `shop`, związana tylko z kontem Alloy, i Role operatora w `monitoring`, związana tylko z jego
+  Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych). Do listy domyślnej chartu
+  i metryk alertów dochodzą: `container_memory_rss` i `container_memory_cache` (nazwane w manifeście, żeby nowa wersja chartu nie
+  zabrała ich z listy domyślnej), `node_pressure_*` węzła (PSI procesora, dysku i pamięci z node-exportera) oraz metryki baz
+  z dwóch eksporterów Alloy w `collectors.alloy.extraConfig` (`docs/features/runtime-config/spec.md`, D7):
+  - `prometheus.exporter.postgres` łączy się rolą `exporter` (tylko `pg_monitor`, bez odczytu tabel sklepu) z `postgres.shop`
+    i ma jawną listę kolektorów (`database`, `stat_bgwriter`, `stat_checkpointer`, `stat_database`, `wal`,
+    `long_running_transactions`), nigdy `stat_statements`, więc tekst zapytań nie wychodzi z klastra. DSN to wartość typu `secret`
+    z sekretu `shop-exporter` (klucz `POSTGRES_EXPORTER_DSN`; SealedSecret pieczętowany razem z `EXPORTER_DB_PASSWORD`, w profilu
+    `ci` robi go chart), nigdy w ConfigMapie ani w tekście konfiguracji;
+  - `prometheus.exporter.elasticsearch` (`elasticsearch.shop`, `all = true`) zbiera zdrowie klastra i statystyki węzłów, bez
+    indeksów, shardów, migawek i ustawień;
+  - każdy ma `prometheus.scrape` (60 s) i `prometheus.relabel`: lista rodzin metryk (27 Postgresa, 30 Elasticsearcha) i lista
+    nazw etykiet (`labelkeep`; bez etykiet z tekstem zapytania ani adresu poda; bazy `template0` i `template1` odpadają). Razem
+    ok. 117 serii przy trzech bazach i jednym węźle (test je liczy z list);
+  - niedostępna baza nie zatrzymuje Alloy: eksporter podaje `pg_up` albo `elasticsearch_node_stats_up` równe 0, a pozostałe
+    metryki idą dalej. Brak sekretu `shop-exporter` albo klucza w nim zatrzymuje Alloy przy starcie, tak jak brak `grafana-cloud`.
+  `check`: lista nie jest pusta i ma metryki alertów, pamięci i PSI; listy dozwolonych serii i etykiet eksporterów, lista
+  kolektorów bez `stat_statements`, DSN spoza ConfigMapy i tekstu oraz przebieg prawdziwego Alloy bez baz (`scripts/exporters.sh`:
+  Alloy działa, inne metryki i `pg_up` 0 docierają do odbiorcy, żadna etykieta spoza listy, hasło DSN nigdzie); RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
+  Role na `grafana-cloud` i `shop-exporter` w `shop`, związana tylko z kontem Alloy, i Role operatora w `monitoring`, związana tylko z jego
   kontem; podmiot powiązania to także grupa kont usług i nazwa użytkownika konta; dokładny kształt Role operatora);
   polityki dopuszczania jak wyżej (trzy, przestrzeń, `Deny`, `Fail`, zasoby i operacje, fala przed resztą aplikacji, wyjątek
   tylko dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet, żaden workload nie ma klasy priorytetu
