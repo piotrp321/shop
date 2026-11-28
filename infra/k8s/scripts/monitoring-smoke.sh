@@ -291,6 +291,12 @@ failures=0
 fail() { echo "monitoring-smoke: FAIL $1" >&2; failures=$((failures + 1)); }
 operator=monitoring-alloy-operator
 alloy=monitoring-alloy
+# The NetworkPolicy shop-closed of make generate (scripts/generate.sh) lets Alloy through by these labels of its pod: exactly one pod has
+# them (not the operator, kube-state-metrics or node-exporter), and no other pod of monitoring has the label name alloy.
+alloy_pods="$(mkc get pods -l app.kubernetes.io/name=alloy,app.kubernetes.io/instance=monitoring-alloy -o name | wc -l | tr -d ' ')"
+[ "$alloy_pods" = 1 ] || fail "$alloy_pods pods of monitoring have the labels of Alloy that the rule shop-closed names (one expected)"
+named_alloy="$(mkc get pods -l app.kubernetes.io/name=alloy -o name | wc -l | tr -d ' ')"
+[ "$named_alloy" = 1 ] || fail "$named_alloy pods of monitoring have the label app.kubernetes.io/name=alloy (one expected)"
 
 log "the admission policies of monitoring (requests with --dry-run=server)"
 host_policy=monitoring-no-host-access
