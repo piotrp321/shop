@@ -38,6 +38,7 @@ final class ProductCategoryEquivalenceTest extends KernelTestCase
     private const int PAGE = 4;
 
     private Connection $connection;
+    private ?int $budget = null;
 
     protected function setUp(): void
     {
@@ -50,6 +51,18 @@ final class ProductCategoryEquivalenceTest extends KernelTestCase
     public function testPagesAndCountsAreTheSameAsTheReferenceStatement(): void
     {
         $this->assertEveryListEquivalent();
+    }
+
+    /**
+     * The walk of the global index that comes before the branches of the category finds the whole page, a part of it or nothing,
+     * and ends at the end of the order or before it, whatever the budget is: the lists are the same.
+     */
+    public function testPagesAndCountsAreTheSameWhateverTheBudgetOfTheWalkIs(): void
+    {
+        foreach ([1, 2, 3, 5, 7, 13, 100] as $budget) {
+            $this->budget = $budget;
+            $this->assertEveryListEquivalent();
+        }
     }
 
     public function testAfterTheCategoryWasMovedTheListIsTheOneOfTheNewSubtree(): void
@@ -123,7 +136,9 @@ final class ProductCategoryEquivalenceTest extends KernelTestCase
 
     private function source(): DbalBackofficeProductSource
     {
-        return new DbalBackofficeProductSource($this->connection, new BoundedCounter($this->connection));
+        return null === $this->budget
+            ? new DbalBackofficeProductSource($this->connection, new BoundedCounter($this->connection))
+            : new DbalBackofficeProductSource($this->connection, new BoundedCounter($this->connection), phraseBudget: $this->budget);
     }
 
     private static function path(string ...$ids): CategoryPath

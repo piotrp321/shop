@@ -182,6 +182,34 @@ final class ProductCategoryPlanTest extends KernelTestCase
     }
 
     /**
+     * A department is a part of the table that is dense in the order of the sorts (the products of its categories, a sixth by the main one and
+     * a part by the additional ones), so its page is found in the first rows of the global index of the sort: the walk of the budget, with the
+     * membership of the subtree checked, fills it, and the products that are in the subtree only by additional categories are not read at all
+     * (they cost the memberships of the subtree, or the table). The count of such a department reaches the limit in its branches.
+     */
+    public function testThePagesOfADenseCategoryReadTheWalkOfTheBudgetNotTheAdditionalMembers(): void
+    {
+        $budget = 5_000;
+        $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording), phraseBudget: $budget);
+        $path = CategoryPath::fromString('/'.self::DEPARTMENT.'/');
+
+        foreach ([[null, false], [ProductStatus::Published, false], [ProductStatus::Draft, false], [null, true]] as [$status, $withoutImages]) {
+            foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
+                $this->recording->forget();
+                $first = $source->page(null, $path, $status, null, $sort, self::PAGE, $withoutImages);
+                $read = $this->rowsRead();
+                self::assertCount(self::PAGE, $first);
+                self::assertLessThanOrEqual($budget + self::SLACK, $read, \sprintf("first page by %s (%s) read %d rows of %d (budget %d)\n%s", $sort->value, $status?->value ?? 'any', $read, self::PRODUCTS, $budget, $this->plans()));
+
+                $this->recording->forget();
+                $source->page(null, $path, $status, ProductCursor::after($first[self::PAGE - 1], $sort), $sort, self::PAGE, $withoutImages);
+                $read = $this->rowsRead();
+                self::assertLessThanOrEqual($budget + self::SLACK, $read, \sprintf("second page by %s (%s) read %d rows of %d (budget %d)\n%s", $sort->value, $status?->value ?? 'any', $read, self::PRODUCTS, $budget, $this->plans()));
+            }
+        }
+    }
+
+    /**
      * R2d: a phrase of a middle frequency (625 hits in the catalog, none in the department) with the department: the candidates of the
      * phrase are checked for the department, and what they cost is their number (the budget of the walk of the first rows, then the hits),
      * not the department (17 000 products by the main category and 11 000 by the additional ones) nor the table.
