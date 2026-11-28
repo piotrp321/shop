@@ -8,19 +8,45 @@ Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia 
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | zrobione 2026-11-26 (R=4, B=500, T=800, C=3 godz. 45 min); fala 1 rusza po zakończeniu PERF-2 etapu B i dostosowaniu specyfikacji do kodu |
-| 1 | 2 (wspólna logika, wiadomość, rejestr typów, szyna) | |
-| 2 | 3 (przebieg, rejestr, wykluczanie, finalizacja) | |
-| 3 | 4 (producent i komenda) | |
-| 4 | 5 (abort, nadzór), 6 (integracje i dokumentacja) | |
-| 5 | 7 (pomiar po wdrożeniu) | |
+| 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | zrobione 2026-11-26 (R=4, B=500, T=800, C=3 godz. 45 min) |
+| 1–4 | 2–6 jednym PR i w jednej sesji (polecenie użytkownika 2026-11-28) | w toku |
+| 5 | 7 (pomiar po wdrożeniu, tylko za zgodą użytkownika) | |
 
-**Realizacja:** w nowej sesji z Opus High, zaczynając wyłącznie od zadania 1. Sesja kończy się na bramie: przedstawia
-użytkownikowi wyniki pomiarów i proponowane kryteria wydajnościowe (R, B, T, C) do akceptacji i nie zaczyna zadania 2 bez niej.
-Zadanie 2 nie startuje przed bramą: kryterium jest wpisane do specyfikacji i zatwierdzone. Zadania idą po kolei, każde jako
-osobny PR. **Transport, compose i chart są jednym PR (zadanie 2):** definicja transportów w `messenger.yaml`, usługa
-`worker-indexing` w compose i w chartcie, zmienne i test chartu trafiają razem, więc żaden commit nie zostawia transportu
-bez konsumenta ani usługi bez transportu.
+**Realizacja zadań 2–6:** jeden PR, jedna sesja, testy celowane lokalnie na własnym stosie worktree, pełne testy w CI.
+Bez ciężkich testów kolidujących z generowaniem profilu `server` przez PERF-7, bez dotykania worf.pl. Przegląd ograniczony
+do logiki współbieżności, finalizacji i przełączenia aliasu.
+
+## Dostosowanie do PERF-2B (stan `main` z 2026-11-28)
+
+PERF-2B zmienił przebudowę synchroniczną; zadania 2–6 przyjmują poniższe zamiast sprzecznych fragmentów niżej:
+
+- **Alias przebudowy (W19a, M5).** `createIndex` tworzy indeks z aliasem `<alias>-rebuild` (zapisy pojedyncze trafiają do
+  budowanego indeksu), `activate` zdejmuje go w żądaniu przepięcia, usunięcie indeksu usuwa go z indeksem. Przebieg
+  asynchroniczny trzyma alias przebudowy na `target_index` od startu do `activate`, więc zapisy pojedyncze w trakcie paczek
+  i finalizacji trafiają do nowego indeksu bez nowego kodu. Nieudany i przerwany przebieg usuwa `target_index` (z aliasem).
+- **Tworzenie produktu w trakcie przebudowy (#982).** Dziś `CreateProduct` bierze współdzieloną blokadę transakcji na
+  kluczu `SearchIndexRebuildLock`, a przebudowa trzyma ją na wyłączność przez całą pracę. Przebieg asynchroniczny zwalnia
+  blokadę po starcie, więc reguła „trwa przebudowa” to: blokada zajęta **albo** istnieje aktywny przebieg. Sprawdza to
+  `PostgresSearchIndexRebuildLock` w obu metodach (`tryAcquire`: blokada, potem brak aktywnego przebiegu, inaczej zwolnienie
+  i odmowa; `tryShareInTransaction`: blokada współdzielona, potem osobnym zapytaniem brak aktywnego przebiegu, więc odczyt
+  widzi wiersz zatwierdzony przed zwolnieniem blokady startu). Dzięki temu `setup`, `reset`, przebudowa synchroniczna
+  i `CreateProduct` odmawiają w trakcie przebiegu bez zmian u wołających (kryterium 9 i dokładna weryfikacja liczby).
+- **Pozycje przestarzałe.** `write` nie traktuje 409 (zapis pojedynczy przez alias przebudowy był nowszy) jako błędu, więc
+  `ProductBatchIndexer` liczy paczkę jako zapisaną w całości; licznik `documents` przebiegu = suma migawek paczek.
+- **Weryfikacja.** `verify` (interwał odświeżania, `refresh`, zdrowie, dokładna liczba, skrót definicji) zostaje bez zmian
+  i jest etapem `finalizing`; katalog nie usuwa produktów, a tworzenie jest wstrzymane, więc dokładna równość obowiązuje
+  także w trybie asynchronicznym.
+- **Termin Joba `reindex` (#981, 12 h)** zostaje; `make -C infra/k8s reindex` woła `catalog:reindex --async --wait`
+  i skaluje `worker-indexing`.
+- **Uproszczenia wobec specyfikacji (bez zmiany zachowania):** rejestr typów jest częścią `IndexDocumentsHandler`
+  (bez osobnej klasy `DocumentIndexers`); warstwa ogólna leży w `Shared\Infrastructure\Indexing` (Shared nie ma warstwy
+  Application dostępnej z Catalog, Deptrac bez zmian); przebieg nie ma agregatu ORM: stan i przejścia to warunkowe
+  `UPDATE` DBAL w `DbalSearchRebuildRuns` (rekordy tylko definiują schemat, wzorzec `DbalCategoryReindexRuns`, wpis na liście
+  wyjątków w `apps/api/CLAUDE.md`), a dozwolone statusy są w enumie `SearchRebuildStatus`; finalizacja idzie wprost
+  `indexing.bus` w jawnej transakcji DBAL (wiersz transportu Doctrine na tym samym połączeniu dołącza do transakcji bez
+  `BusNameStamp`); jeden parametr rozmiaru paczki (`app.search.indexing_batch_size` z `SEARCH_INDEX_BATCH_SIZE`) zastępuje
+  `app.search.batch_size` dla obu trybów; `activating` z nieczytelnym aliasem ponawia wiadomość (status zostaje etapem),
+  zamiast kończyć `failed`.
 
 ## Zadania
 
