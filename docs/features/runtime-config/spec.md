@@ -136,16 +136,21 @@ wartość po wskazanym pomiarze; podana wartość to kandydat, punkt startu pomi
 | `log_min_error_statement` | `error` | `panic` | bez tekstu zapytania przy błędzie; zapytanie identyfikuje `pg_stat_statements` | teraz |
 | `log_min_duration_statement` | -1 | bez zmiany | loguje parametry zapytań; źródłem wolnych zapytań jest `pg_stat_statements` | – |
 | `wal_compression` | off | `lz4` | mniej zapisu WAL z pełnymi obrazami stron przy generatorze i reindeksie, mniej I/O na wspólnym dysku | teraz |
-| `max_wal_size` | 1 GB | kandydat 8 GB | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`. Limit miękki: przy ciężkim zapisie WAL rośnie ponad niego, dopóki checkpoint nie nadąży; budżet dysku liczy zmierzony szczyt `pg_wal` (D6) | [server] |
-| `checkpoint_timeout` | 5 min | kandydat 15 min | razem z `max_wal_size`; dłuższe odtwarzanie po awarii jest dopuszczalne na etapie demo | [server] |
-| `shared_buffers` | 128 MB | kandydat 25% limitu pamięci Postgresa (np. 2 GiB) | gorące indeksy sklepu `server` to ok. 9,5 GB; bufory są `shmem` (nieodzyskiwalne), więc wchodzą w request; reszta gorących danych w cache plików | [PERF-0] [server] (D2) |
+| `max_wal_size` | 1 GB | 8 GB (start) | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY; `medium`: 81 wymuszonych wobec 8 czasowych, raport zadania 1); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`. Limit miękki: przy ciężkim zapisie WAL rośnie ponad niego, dopóki checkpoint nie nadąży; budżet dysku liczy zmierzony szczyt `pg_wal` (D6) | wartość startowa; potwierdza ją pomiar na `server` |
+| `checkpoint_timeout` | 5 min | 15 min (start) | razem z `max_wal_size`; dłuższe odtwarzanie po awarii jest dopuszczalne na etapie demo | wartość startowa; potwierdza ją pomiar na `server` |
+| `shared_buffers` | 128 MB | 25% limitu pamięci Postgresa; start `prod` i `load`: 1 GB, `ci` i compose: 128 MB | gorące indeksy sklepu `server` to ok. 9,5 GB; bufory są `shmem` (nieodzyskiwalne), więc wchodzą w request; reszta gorących danych w cache plików; wariant startowy zmierzony na `medium` (raport zadania 1, sekcja 8) | wartość startowa; ostateczna w D2 [server] [PERF-2B] |
 | `effective_cache_size` | 4 GB | `shared_buffers` + cache plików przyznany w limicie | tylko informacja dla planera, musi odpowiadać Z1 | razem z D2 |
 | `work_mem` | 4 MB | bez zmiany, chyba że `pg_stat_statements.temp_blks_written` pokaże sortowania na dysku w ścieżkach W3–W6 | ścieżki sklepu sortują setki wierszy; `work_mem` × połączenia × węzły planu to ryzyko OOM | [PERF-0] |
-| `maintenance_work_mem` | 64 MB | kandydat 512 MB | budowa indeksów i VACUUM na tabelach 10 mln wierszy; używane przez 1–4 procesy naraz | teraz (wchodzi w request) |
+| `maintenance_work_mem` | 64 MB | 256 MB | budowa indeksów i VACUUM na tabelach 10 mln wierszy; używane przez 1–4 procesy naraz; 512 MB × 4 procesy generatora zajęłoby sam request Postgresa | teraz (wchodzi w request) |
+| `autovacuum_work_mem` | -1 (`maintenance_work_mem`) | 128 MB | `autovacuum_max_workers` (3) × 128 MB zamiast × 256 MB; VACUUM tabel 10 mln wierszy mieści listę martwych krotek | teraz (wchodzi w request) |
 | `jit` | on | decyzja z `pg_stat_statements.jit_*_time` | wyłączamy, jeśli czas kompilacji JIT jest istotną częścią zapytań API; inaczej domyślne | [PERF-0] |
 | `random_page_cost` | 4 | bez zmiany | zmienia plany; zmieniamy tylko po planie `EXPLAIN` pokazującym zły wybór (PERF-7, PERF-8) | – |
 | `max_connections` | 100 | bez zmiany | budżet niżej mieści się z zapasem | – |
 | `/dev/shm` | 64 MB | `emptyDir` `Memory` 1 GiB (chart), `shm_size` (compose) | zapytania równoległe używają `dynamic_shared_memory_type=posix`; za mały segment kończy zapytanie błędem; zajętość jest `shmem` poda i wchodzi w request | teraz |
+
+Plik `infra/postgres/postgresql.conf` zastępuje plik katalogu danych (`config_file`), więc powtarza też to, co
+zapisuje w nim initdb obrazu i co różni się od wartości domyślnych Postgresa: `listen_addresses`,
+`default_text_search_config`, `timezone`, `log_timezone` i `lc_*`.
 
 **Budżet połączeń** (zapisany w ADR i w komentarzu `values.yaml`): API 16 (połączenie na żądanie, najwyżej jedno na
 wątek), workery 2, `worker-indexing` × repliki z chartu, joby cykliczne 3, reindeks albo generator 4, kopia
