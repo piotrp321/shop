@@ -60,16 +60,31 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - **Obserwowalność: Grafana Cloud (darmowy plan, stos w UE, logi 14 dni) z Grafana Alloy zamiast własnego Prometheusa i
   Lokiego.** Alloy (chart `k8s-monitoring` 4.x przypięty wersją, aplikacja Argo CD `monitoring` w ostatniej fali, po `shop`)
   wysyła logi podów wszystkich przestrzeni (przez API Kubernetesa), zdarzenia klastra i metryki z listy dozwolonych (lista
-  domyślna chartu dla pulpitów Kubernetes plus metryki alertów), żeby zmieścić się w 10 tys. serii planu. CRD Prometheusa
+  domyślna chartu dla pulpitów Kubernetes plus metryki alertów, pamięć nieodzyskiwalna i cache kontenerów
+  `container_memory_rss` i `container_memory_cache` oraz `node_pressure_*` węzła), żeby zmieścić się w 10 tys. serii planu. CRD Prometheusa
   (`prometheus-operator-crds`) to osobna aplikacja w pierwszej fali, tylko CRD bez operatora, `ServerSideApply`. Chart
   instaluje Alloy Operator, a kolektor jest zasobem `Alloy` (jedna replika: klaster ma jeden węzeł). Obraz Alloy jest
   przypięty tagiem, który wskazuje chart, więc działa ten, na którym biegnie test maskowania. Brak konta albo zły token
   zostawia `Degraded` tylko `monitoring`; sklep się wdraża.
-- **Alloy czyta z klastra jeden sekret: `grafana-cloud` w przestrzeni `shop`** (SealedSecret z `seal-secrets WHAT=grafana`,
-  klucze `GRAFANA_CLOUD_TOKEN` dla metryk i logów oraz `GRAFANA_ALERTING_TOKEN` dla reguł alertów, `secret.create: false`). Domyślne reguły Alloy (`get/list/watch` na wszystkie sekrety i
+- **Metryki baz: dwa eksportery Alloy, każdy z listą dozwolonych metryk i nazw etykiet** (`collectors.alloy.extraConfig` manifestu
+  `monitoring`; `docs/features/runtime-config/spec.md`, D7). `prometheus.exporter.postgres` łączy się rolą `exporter` z `pg_monitor`
+  (bez odczytu tabel sklepu), z jawną listą kolektorów bez `stat_statements`, więc tekst zapytań nie wychodzi z klastra;
+  `prometheus.exporter.elasticsearch` zbiera tylko zdrowie klastra i statystyki węzłów (bez indeksów, shardów, migawek i ustawień).
+  Z kilkudziesięciu rodzin metryk każdego eksportera przechodzi ok. trzydzieści (odsetek trafień bufora, checkpointy, WAL, sesje,
+  pamięć JVM, cache, pule wątków), a etykiety tylko z listy (`labelkeep`: nazwy baz, nazwa węzła, a dla liczby sesji
+  `pg_stat_activity_count` pięć etykiet jej grup: rola, aplikacja, rodzaj backendu, stan i oczekiwanie; z mniejszej liczby
+  etykiet wiersze różnych grup się zlewają i sesje giną), bez adresów podów i tekstu zapytań. Razem ok. 140 aktywnych serii
+  z 10 tys. planu (zmierzone na prawdziwym Postgresie i szacunek 40 grup sesji); test liczy je z list. Niedostępna baza daje `pg_up` i
+  `elasticsearch_node_stats_up` równe 0, a Alloy i pozostałe metryki działają dalej (test uruchamia prawdziwy Alloy bez baz).
+- **Alloy czyta z klastra dwa sekrety w przestrzeni `shop`: `grafana-cloud` i `shop-exporter`** (SealedSecrety; `grafana-cloud`
+  z `seal-secrets WHAT=grafana`: klucze `GRAFANA_CLOUD_TOKEN` dla metryk i logów oraz `GRAFANA_ALERTING_TOKEN` dla reguł alertów,
+  `secret.create: false`; `shop-exporter`: klucz `POSTGRES_EXPORTER_DSN`, adres roli `exporter` jako wartość typu `secret`, nigdy
+  w ConfigMapie). Role nie dają dostępu do jednego klucza, a `shop-secrets` ma hasła baz, więc DSN to osobny sekret, pieczętowany
+  razem z `EXPORTER_DB_PASSWORD` z jednej losowej wartości (`seal-secrets WHAT=shop`). Brak któregokolwiek z nich zatrzymuje Alloy
+  przy starcie (jak brak `grafana-cloud`): `Degraded` tylko `monitoring`. Domyślne reguły Alloy (`get/list/watch` na wszystkie sekrety i
   ConfigMapy klastra) zastępuje ClusterRole kolektora tylko do odczytu, bez sekretów i ConfigMap (węzły i metryki kubeleta
   i cAdvisora, usługi, endpointy, pody i ich logi, przestrzenie, zdarzenia, `PrometheusRule`), a osobna Role w `shop` daje
-  dostęp tylko do tego sekretu (`resourceNames`); kube-state-metrics nie zbiera metryk sekretów.
+  dostęp tylko do tych dwóch sekretów (`resourceNames`); kube-state-metrics nie zbiera metryk sekretów.
 - **Alloy Operator działa tylko w przestrzeni `monitoring`** (`ownNamespaceOnly`, `WATCH_NAMESPACE`), bez ClusterRoli: jego
   uprawnienia to jedna Role w `monitoring` (zasób `Alloy` bez tworzenia i usuwania, bo zakłada go Argo CD; Deployment, konto
   usługi i Service, które robi z niego chart Alloy, przy czym zmienia i usuwa tylko obiekty `monitoring-alloy`; sekrety
@@ -126,7 +141,14 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - **Logi są maskowane w Alloy przed wysłaniem, jedną listą etapów** (`extraLogProcessingStages`, blok w manifeście
   `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
   klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
-  `STATEMENT` Postgresa są odrzucane. Źródła, których nie da się zagwarantować zamaskować, nie są zbierane (Mailpit:
+  `STATEMENT` Postgresa są odrzucane, a w głównym komunikacie błędu Postgresa (np. `invalid input syntax for type uuid: "…"`,
+  `"…" is out of range for type real`, `time zone "…" not recognized`; także w komunikacie Doctrine w logu API, gdzie cudzysłowy są
+  escapowane) każdy literał w cudzysłowie poza tym, który stoi po nazwie obiektu (`constraint`, `column`, `relation`, `table`,
+  `index`, `type`, `function`, `schema`, `database`, `role`, `user` i podobne), jest zastępowany do końca linii (w logu API do końca
+  napisu JSON). Reguła jest odwrócona, bo formatów z wartością w cudzysłowie jest w serwerze ponad dwa tysiące, a nazw obiektów
+  garstka: nieznany format maskuje się, nie przepuszcza. Wartość nie jest escapowana w komunikacie, więc cudzysłów, ukośnik
+  wsteczny albo tekst innego komunikatu w niej nie kończą dopasowania. Linie kontynuacji wartości wielowierszowej w kontenerze
+  `postgres` są zastępowane w całości; nazwy ograniczeń, kolumn, relacji i tabel zostają. Źródła, których nie da się zagwarantować zamaskować, nie są zbierane (Mailpit:
   `extraDiscoveryRules`). Wzorce nie znają każdego formatu, więc po wdrożeniu przegląd próbki logów (runbook) jest częścią
   decyzji: znalezisko to nowa reguła albo wyłączenie źródła. Test w `check` uruchamia prawdziwy Alloy (przypięty tagiem i
   digestem) na korpusie próbek logów każdego źródła z podłożonymi sekretami i danymi klientów.
@@ -185,7 +207,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - Grafana Cloud dostaje logi i metryki klastra: dane klientów w nieprzewidzianym formacie (np. imię i adres w treści wyjątku
   poza parametrami Doctrine) mogą przejść maskowanie; ograniczają to korpus testowy, przegląd próbki po wdrożeniu i zasada
   wyłączania źródła do czasu poprawki. Przekroczenie darmowego planu Grafana Cloud odrzuca nadmiar; lista dozwolonych metryk
-  i pomiar po wdrożeniu.
+  i pomiar po wdrożeniu. Metryki baz nie niosą wartości z tabel ani tekstu zapytań (lista kolektorów i etykiet).
 - Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x, `destinations` w 4.x), a obraz
   Alloy zależy od wersji chartu: aktualizacja to osobna zmiana (wersje i digesty archiwów chartów są w
   `infra/k8s/scripts/monitoring-render.sh`, obraz Alloy w `infra/k8s/scripts/tools.sh`).
@@ -199,7 +221,8 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
 - Klaster nie ma stałej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Jedyna reguła to
   tymczasowa `shop-closed` w przestrzeni `shop`, którą zakłada `make -C infra/k8s generate`, a usuwa `make -C infra/k8s open`, żeby
-  zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni; poza chartem, bez
+  zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni i z Alloy z `monitoring` na
+  portach 5432 i 9200, dla eksporterów baz; poza chartem, bez
   śledzenia Argo CD; `docs/features/demo-scale/spec.md`); istnieje tylko przy zamkniętym sklepie i nie jest
   zabezpieczeniem sieci. Redis działa bez
   hasła i trzyma sesje sklepu z tokenami OIDC klientów, a Elasticsearch działa bez security (`xpack.security.enabled: false`).

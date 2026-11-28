@@ -6,7 +6,10 @@
 #   shop   environments/prod/secrets/shop-secrets.yaml: the keys of infra/scripts/init-env.sh (the lists `secrets` and
 #          `appendable`, read from the file). Only the keys the file lacks are added, with random values; the sealed
 #          values that are there are never touched (they could not be recreated anyway: the data on the volumes was
-#          initialized with them).
+#          initialized with them). EXPORTER_DB_PASSWORD is also sealed into shop-exporter.yaml (the key POSTGRES_EXPORTER_DSN, the
+#          DSN of the role exporter with the same password): Alloy reads that one Secret and not shop-secrets. The two files are
+#          made in one run; a sealed password cannot be read back, so with the password in shop-secrets.yaml and no
+#          shop-exporter.yaml the script stops (remove the line EXPORTER_DB_PASSWORD and run it again).
 #   brevo  shop-brevo-smtp.yaml: BREVO_SMTP_LOGIN and BREVO_SMTP_PASSWORD of Brevo SMTP, asked for on the terminal.
 #   tls    shop-origin-tls.yaml (kubernetes.io/tls): the Cloudflare Origin CA certificate and private key, pasted on
 #          the terminal.
@@ -205,6 +208,8 @@ seal_shop() {
   path="$out_dir/$name.yaml"
   : > "$work/$name.pairs"
   [ ! -f "$path" ] || existing_pairs "$path" "$name" Opaque "$work/$name.pairs"
+  exporter=shop-exporter
+  exporter_password_new=""
   added=""
   init_env_keys > "$work/keys"
   [ -s "$work/keys" ] || fail "no keys found in infra/scripts/init-env.sh"
@@ -213,9 +218,25 @@ seal_shop() {
     [ "$prefix" != "-" ] || prefix=""
     random="$(random_hex "$bytes")" || exit 1
     add_pair "$work/$name.pairs" "$key" "$name" "$prefix$random"
+    # The password of the role exporter is sealed a second time, in the DSN of the Secret shop-exporter (below).
+    [ "$key" != EXPORTER_DB_PASSWORD ] || exporter_password_new="$prefix$random"
     random=""
     added="$added $key"
   done < "$work/keys"
+  # Alloy reads the DSN of the role exporter from the Secret shop-exporter, not from shop-secrets (a Role cannot give one key of a
+  # Secret, and shop-secrets holds the passwords of the databases). The two hold the same password, so they are sealed together, from
+  # the one random value: a sealed password cannot be read back, so a missing shop-exporter.yaml next to a sealed password is an error.
+  if [ -n "$exporter_password_new" ]; then
+    : > "$work/$exporter.pairs"
+    add_pair "$work/$exporter.pairs" POSTGRES_EXPORTER_DSN "$exporter" \
+      "postgresql://exporter:$exporter_password_new@postgres.$namespace.svc.cluster.local:5432/postgres?sslmode=disable"
+    exporter_password_new=""
+    write_file "$exporter" Opaque "$work/$exporter.yaml" "$work/$exporter.pairs"
+    stage "$exporter"
+    echo "seal-secrets: $exporter.yaml gets the key: POSTGRES_EXPORTER_DSN (with the password of EXPORTER_DB_PASSWORD)"
+  elif grep -q "^EXPORTER_DB_PASSWORD$tab" "$work/$name.pairs" && [ ! -f "$out_dir/$exporter.yaml" ]; then
+    fail "$exporter.yaml is missing, and EXPORTER_DB_PASSWORD of shop-secrets.yaml is sealed, so the DSN cannot be made from it: remove the line EXPORTER_DB_PASSWORD from shop-secrets.yaml and run again (the migration sets the new password of the role exporter); nothing was written"
+  fi
   if [ -z "$added" ]; then
     echo "seal-secrets: shop-secrets.yaml has every key of init-env.sh, nothing to add"
     return 0

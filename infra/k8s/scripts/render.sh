@@ -128,6 +128,8 @@ for workflow in "$TOOLS_REPO"/.github/workflows/*.yml "$TOOLS_REPO"/.github/work
 done
 # The charts of the applications prometheus-crds and monitoring with the values of their manifests (monitoring.yaml,
 # monitoring.ndjson, prometheus-crds.yaml, ... for kubeconform and tests/test_monitoring.py) and the log masking run in a real
-# Alloy (masking-output.log for tests/test_log_masking.py).
+# Alloy (masking-output.log for tests/test_log_masking.py), and the exporters of the databases run in a real Alloy against databases
+# that are not there (exporters-*.* for tests/test_monitoring.py).
 sh "$here/monitoring-render.sh" "$out"
 sh "$here/masking.sh" "$out"
+sh "$here/exporters.sh" "$out"

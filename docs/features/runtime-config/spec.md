@@ -322,14 +322,19 @@ Każdy klucz ma TTL, ale żaden nie jest cache: usunięcie dowolnego łamie gwar
   (domyślne). Maskowanie Alloy zostaje drugą warstwą.
 - `terse` zostawia główny komunikat, a błędy danych (SQLSTATE klasy 22, np.
   `invalid input syntax for type uuid: "…"`, `invalid input value for enum`, `value "…" is out of range`) niosą w nim
-  wartość wejścia. Alloy maskuje w liniach Postgresa literał w cudzysłowie po dwukropku i po `value`; nazwy ograniczeń
-  i kolumn zostają.
+  wartość wejścia. Alloy maskuje w liniach Postgresa (i w komunikacie Doctrine w logu API) każdy literał w cudzysłowie poza tym,
+  który stoi po nazwie obiektu (`constraint`, `column`, `relation`, `table`, `index`, `type`, ...); formatów z wartością w serwerze
+  jest ponad dwa tysiące, więc nieznany format maskuje się. Nazwy ograniczeń i kolumn zostają.
 - `pg_stat_statements` trzyma tekst znormalizowany (stałe jako `$n`); `track_utility = off` wyłącza polecenia użytkowe.
   Widok czyta tylko rola z `pg_read_all_stats` (eksporter, superużytkownik); tekst zapytań nie trafia do metryk.
 - Eksportery Alloy (D7): `prometheus.exporter.postgres` bez kolektora `stat_statements` i bez tekstu zapytań, DSN
-  z sekretu Kubernetesa jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
-  statystyki klastra i węzła. Etykiety serii to nazwy baz, ról, indeksów i węzłów; lista dozwolonych serii i ich
-  etykiet jest w teście.
+  z sekretu Kubernetesa `shop-exporter` (osobnego od `shop-secrets`, bo Role nie dają dostępu do jednego klucza, a Alloy nie
+  czyta haseł baz) jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
+  statystyki klastra i węzła. Etykiety serii to nazwy baz, nazwy węzłów i grupy sesji `pg_stat_activity_count` (rola, aplikacja, rodzaj backendu, stan,
+  oczekiwanie: bez nich wiersze grup się zlewają i liczba sesji, z której liczy się budżet połączeń według ról, jest za niska);
+  lista dozwolonych serii i ich etykiet jest w teście, który liczy też serie (ok. 140 przy trzech bazach, jednym węźle i 40
+  grupach sesji). Reguła `shop-closed` (zamknięty sklep) przepuszcza Alloy z `monitoring` na porty 5432 i 9200, żeby okno
+  generatora i reindeksu było widoczne w metrykach.
 
 ## Budżet pamięci węzła (kandydat, wariant A)
 

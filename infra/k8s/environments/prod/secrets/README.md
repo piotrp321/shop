@@ -4,6 +4,8 @@ SealedSecret resources written by `infra/k8s/scripts/seal-secrets.sh` (encrypted
 `../sealed-secrets.pem`; safe to commit). The `secrets` application of Argo CD applies them to the namespace `shop`:
 
 - `shop-secrets.yaml`: the keys of `infra/scripts/init-env.sh`, read by every pod;
+- `shop-exporter.yaml`: `POSTGRES_EXPORTER_DSN`, the DSN of the role `exporter` (`pg_monitor` only) with the password of `EXPORTER_DB_PASSWORD`;
+  the exporter of Postgres in Alloy reads it (it may not read `shop-secrets.yaml`); sealed together with that key;
 - `shop-brevo-smtp.yaml`: `BREVO_SMTP_LOGIN` and `BREVO_SMTP_PASSWORD`;
 - `shop-origin-tls.yaml`: the Cloudflare Origin CA certificate and key (type `kubernetes.io/tls`).
 
