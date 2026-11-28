@@ -30,8 +30,10 @@ interface SearchRebuildRuns
 
     /**
      * The beat of the producer while it sends the batches (only in `producing`).
+     *
+     * @return bool false when the run is no longer in `producing` (aborted or failed): the producer stops
      */
-    public function beat(string $runId, \DateTimeImmutable $now): void;
+    public function beat(string $runId, \DateTimeImmutable $now): bool;
 
     /**
      * Counts a written batch once: a batch already counted, or a run that no longer takes batches, counts nothing. The

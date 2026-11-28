@@ -30,6 +30,7 @@ final class AliasFakeMaintenance implements SearchIndexMaintenance
     /** @var (\Closure(): void)|null */
     public ?\Closure $duringDelete = null;
     public bool $loseActivateAnswer = false;
+    public int $rejectSwitches = 0;
 
     public function __construct(public string $alias, string ...$indexes)
     {
@@ -84,7 +85,7 @@ final class AliasFakeMaintenance implements SearchIndexMaintenance
             $this->duringActivate = null;
             $hook();
         }
-        if ($this->alias !== $expectedCurrent) {
+        if ($this->alias !== $expectedCurrent || $this->rejectSwitches-- > 0) {
             return ActivationResult::NotActivated;
         }
         $this->alias = $index;

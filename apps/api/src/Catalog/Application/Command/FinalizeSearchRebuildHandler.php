@@ -89,11 +89,9 @@ final readonly class FinalizeSearchRebuildHandler
             // Whatever the answer said, the alias as it is now decides (another handler may have switched it).
             $active = $this->maintenance->activeIndex();
             if ($active === $run->previousIndex) {
-                if ($this->move($run, SearchRebuildStatus::Failed, \sprintf('The alias was not switched; it still points to "%s".', $run->previousIndex))) {
-                    $this->warn($run, $this->switch->discard($run->targetIndex, RebuildReport::failed('not switched')));
-                }
-
-                return;
+                // Refused or not sent (the switch expects the previous index, so a retry is safe): the transport
+                // retries the stage; the new index stays.
+                throw new SearchUnavailable(\sprintf('The alias was not switched; it still points to "%s".', $run->previousIndex));
             }
         }
         if ($active === $run->targetIndex) {

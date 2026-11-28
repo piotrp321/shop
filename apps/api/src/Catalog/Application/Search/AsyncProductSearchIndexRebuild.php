@@ -114,7 +114,9 @@ final readonly class AsyncProductSearchIndexRebuild
                 $afterId = $ids[array_key_last($ids)];
                 $now = $this->clock->now();
                 if (0 === $batch % self::BEAT_EVERY_BATCHES || $now->getTimestamp() - $beatAt >= self::BEAT_EVERY_SECONDS) {
-                    $this->runs->beat($runId, $now);
+                    if (!$this->runs->beat($runId, $now)) {
+                        return AsyncRebuildStart::failed(\sprintf('The run %s was aborted while its batches were sent.', $runId), $runId);
+                    }
                     $beatAt = $now->getTimestamp();
                 }
             }

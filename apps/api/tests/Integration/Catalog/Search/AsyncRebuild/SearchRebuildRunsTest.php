@@ -206,6 +206,35 @@ final class SearchRebuildRunsTest extends KernelTestCase
         self::assertSame(SearchRebuildStatus::Succeeded, $this->runs->get($run)?->status);
     }
 
+    public function testARejectedSwitchIsRetriedFromActivatingAndKeepsTheNewIndex(): void
+    {
+        $es = new AliasFakeMaintenance('test_products_old', 'test_products_target');
+        $es->rejectSwitches = 1;
+        $run = $this->finalizingRun();
+
+        try {
+            $this->handler($es)(new FinalizeSearchRebuild($run));
+            self::fail('Expected a transient failure, so the transport retries the stage.');
+        } catch (SearchUnavailable) {
+        }
+        self::assertSame(SearchRebuildStatus::Activating, $this->runs->get($run)?->status);
+        self::assertSame([], $es->deleted);
+
+        $this->handler($es)(new FinalizeSearchRebuild($run));
+
+        self::assertSame(SearchRebuildStatus::Succeeded, $this->runs->get($run)?->status);
+        self::assertSame(['test_products_target', 1], [$es->alias, $es->activations]);
+    }
+
+    public function testTheBeatOfTheProducerSaysWhetherTheRunStillTakesItsBatches(): void
+    {
+        $run = $this->start();
+
+        self::assertTrue($this->runs->beat($run, $this->clock->now()));
+        $this->runs->move($run, [SearchRebuildStatus::Producing], SearchRebuildStatus::Aborted, $this->clock->now());
+        self::assertFalse($this->runs->beat($run, $this->clock->now()));
+    }
+
     public function testAFailedVerifyFailsTheRunAndDeletesOnlyTheNewIndex(): void
     {
         $es = new AliasFakeMaintenance('test_products_old', 'test_products_target');

@@ -61,9 +61,9 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
         return false === $row ? null : self::run($row);
     }
 
-    public function beat(string $runId, \DateTimeImmutable $now): void
+    public function beat(string $runId, \DateTimeImmutable $now): bool
     {
-        $this->connection->executeStatement(
+        return 1 === $this->connection->executeStatement(
             "UPDATE catalog_search_rebuild_run SET heartbeat_at = ? WHERE id = ? AND status = 'producing'",
             [self::time($now), $runId],
         );
