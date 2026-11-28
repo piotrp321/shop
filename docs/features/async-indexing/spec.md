@@ -263,7 +263,7 @@ krótką transakcją, a każdy etap jest idempotentny, więc ponowienie wiadomo�
 |---|---|---|
 | `finalizing` | `verify(target, documents)` (przywraca `refresh_interval`, `refresh`, zdrowie, liczbę dokumentów, skrót definicji; idempotentne), potem status `verified` | powtórzony `verify`; niepowodzenie weryfikacji to `failed`, nowy indeks usunięty (nie wskazuje go alias), alias bez zmian |
 | `verified` | status `activating` (zapis przed wysłaniem żądania) | bez zmiany aliasu |
-| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias; nadal `previous_index`: `failed`, nowy indeks usunięty. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią albo zrobił to drugi handler). Inny: `failed`, oba indeksy zachowane, kod wyjścia 2. Nieczytelny: błąd przejściowy, ponowienie wiadomości od tego etapu | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
+| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias; nadal `previous_index` (przełączenie odrzucone albo niewysłane): błąd przejściowy, ponowienie etapu, nowy indeks zostaje. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią albo zrobił to drugi handler). Inny: `failed`, oba indeksy zachowane, kod wyjścia 2. Nieczytelny: błąd przejściowy, ponowienie wiadomości od tego etapu | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
 | `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się w `deleteIndex` jako usunięty |
 | `succeeded`, `failed`, `aborted` | koniec bez skutku | — |
 
@@ -322,7 +322,8 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
    start zdejmuje z niego alias przebudowy (jak przebudowa synchroniczna).
 2. **Produkcja** jak wyżej; producent odświeża `heartbeat_at` co kilkadziesiąt paczek i co kilkanaście sekund. Błąd publikacji
    do RabbitMQ (potwierdzenie) kończy przebieg jako `failed` (warunkowy `UPDATE`), usuwa nowy indeks i zwraca błąd.
-   Producent zabity w trakcie zostawia przebieg `producing` bez heartbeatu: martwy po limicie, usuwa go `abort`.
+   Producent zabity w trakcie zostawia przebieg `producing` bez heartbeatu: martwy po limicie, usuwa go `abort`. Producent,
+   którego przebieg przerwano (`abort --force`), kończy wysyłanie przy najbliższym heartbeacie.
 3. **`--wait`** odpytuje wiersz przebiegu aż do stanu końcowego i wypisuje postęp (paczki, dokumenty, tempo); kończy się
    błędem, gdy `heartbeat_at` nie rusza dłużej niż limit (`app.search.rebuild_stall_seconds`, 30 minut; ten sam limit
    uznaje przebieg za martwy w `abort`), np. bez workera. Kody wyjścia jak dziś według stanu aliasu po końcu albo po
@@ -357,7 +358,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Zdarzenie | Skutek |
 |---|---|
 | Przejściowy błąd ES albo ofert w paczce | Ponowienie transportu (1, 3, 9, 27, 81 s), potem `failed`; przebieg `running`, alias bez zmian |
-| Bulk z częściowym błędem (część dokumentów odrzucona) | Przejściowe pozycje ponawia `write`; po wyczerpaniu prób albo przy trwałym odrzuceniu paczka rzuca błąd, nie jest rozliczona, ponowienie zapisuje całą paczkę z nową wersją (idempotentne) |
+| Bulk z częściowym błędem (część dokumentów odrzucona) | Przejściowe pozycje ponawia `write`; po wyczerpaniu prób paczka z samymi pozycjami przejściowymi to błąd przejściowy (ponowienie transportu), a z pozycją trwale odrzuconą błąd trwały (`failed`); paczka nie jest rozliczona, ponowienie zapisuje całą paczkę z nową wersją (idempotentne) |
 | Błąd trwały paczki (`SearchIndexError`, nieznany typ, zła wiadomość, `ids` ponad limit) | Od razu `failed`; przebieg `running`, alias bez zmian |
 | Paczka z `failed` naprawiona przez `app:messaging:failed-retry` | Wykonuje się i jest rozliczona raz |
 | Worker zabity po zapisie do ES, przed rozliczeniem albo ack | Wiadomość wraca, paczka zapisuje się ponownie (wersja zewnętrzna), wiersz paczki powstaje raz (`ON CONFLICT`), licznik rośnie raz |
@@ -372,6 +373,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Kopia rozliczonej paczki zapisuje się podczas finalizacji | Te same identyfikatory, nowsza wersja; liczba dokumentów i alias bez zmian |
 | Długa finalizacja (minuty) | Obsługuje ją `worker-indexing`; `worker-commands` (webhooki, wygaszanie zamówień, promocje) jej nie widzi |
 | Finalizacja w `failed` (po ponowieniach) | Status zostaje etapem (np. `activating`), alias bez zmian albo już przełączony; operator ponawia wiadomość (`app:messaging:failed-retry`) |
+| Wiadomość finalizacji usunięta z `failed` | Przebieg zostaje aktywny w etapie finalizacji: `abort` odmawia, `setup`, przebudowa i tworzenie produktu też; wyjście to ręczna korekta wiersza przebiegu (poza zakresem; ryzyko przyjęte) |
 | `verify` nie przechodzi | `failed`, nowy indeks usunięty, alias bez zmian |
 | `activate` w stanie nieznanym | `failed`, oba indeksy zachowane, kod wyjścia 2 |
 | Abort w trakcie przejścia `running → finalizing` | Warunkowe `UPDATE`: wygrywa jedno; abort przegrany odmawia i nie usuwa niczego; abort nigdy nie usuwa indeksu aliasu |
