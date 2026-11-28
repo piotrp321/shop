@@ -6,6 +6,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Application\Command\FinalizeSearchRebuild;
 use App\Catalog\Application\Port\SearchRebuildRuns;
+use App\Catalog\Application\Search\ForeignRebuildBatch;
 use App\Catalog\Application\Search\SearchRebuildRun;
 use App\Catalog\Application\Search\SearchRebuildStatus;
 use Doctrine\DBAL\ArrayParameterType;
@@ -69,7 +70,15 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
         );
     }
 
-    public function countBatch(string $runId, int $batch, int $documents, \DateTimeImmutable $now): ?SearchRebuildRun
+    public function registerBatch(string $runId, int $batch, array $ids): void
+    {
+        $this->connection->executeStatement(
+            'INSERT INTO catalog_search_rebuild_batch (run_id, batch, ids_hash, documents) VALUES (?, ?, ?, NULL)',
+            [$runId, $batch, self::fingerprint($ids)],
+        );
+    }
+
+    public function countBatch(string $runId, int $batch, array $ids, int $documents, \DateTimeImmutable $now): ?SearchRebuildRun
     {
         $this->connection->beginTransaction();
         try {
@@ -79,12 +88,22 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
                  WHERE id = ? AND status IN ('producing', 'running') RETURNING ".self::COLUMNS,
                 [$documents, self::time($now), $runId],
             );
-            $counted = false !== $row && 1 === $this->connection->executeStatement(
-                'INSERT INTO catalog_search_rebuild_batch (run_id, batch, documents) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
-                [$runId, $batch, $documents],
+            if (false === $row) {
+                $this->connection->rollBack();
+
+                return null;
+            }
+            $fingerprint = self::fingerprint($ids);
+            $counted = 1 === $this->connection->executeStatement(
+                'UPDATE catalog_search_rebuild_batch SET documents = ? WHERE run_id = ? AND batch = ? AND ids_hash = ? AND documents IS NULL',
+                [$documents, $runId, $batch, $fingerprint],
             );
             if (!$counted) {
+                $registered = $this->connection->fetchOne('SELECT ids_hash FROM catalog_search_rebuild_batch WHERE run_id = ? AND batch = ?', [$runId, $batch]);
                 $this->connection->rollBack();
+                if ($registered !== $fingerprint) {
+                    throw new ForeignRebuildBatch(\sprintf('The run %s did not send batch %d with these ids; it is not counted.', $runId, $batch));
+                }
 
                 return null;
             }
@@ -104,6 +123,25 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
             }
             throw $e;
         }
+    }
+
+    public function resumeFinalization(string $runId, \DateTimeImmutable $now): bool
+    {
+        return $this->connection->transactional(function () use ($runId, $now): bool {
+            $resumed = 1 === $this->connection->executeStatement(
+                'UPDATE catalog_search_rebuild_run SET heartbeat_at = ? WHERE id = ? AND status IN (?)',
+                [self::time($now), $runId, array_map(
+                    static fn (SearchRebuildStatus $status): string => $status->value,
+                    array_values(array_filter(SearchRebuildStatus::active(), static fn (SearchRebuildStatus $status): bool => $status->finalizes())),
+                )],
+                [2 => ArrayParameterType::STRING],
+            );
+            if ($resumed) {
+                $this->indexingBus->dispatch(new FinalizeSearchRebuild($runId));
+            }
+
+            return $resumed;
+        });
     }
 
     public function finishProduction(string $runId, int $totalBatches, \DateTimeImmutable $now): bool
@@ -143,6 +181,14 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
             ],
             ['from' => ArrayParameterType::STRING],
         );
+    }
+
+    /**
+     * @param list<string> $ids
+     */
+    private static function fingerprint(array $ids): string
+    {
+        return hash('sha256', implode(',', $ids));
     }
 
     private static function time(\DateTimeImmutable $time): string

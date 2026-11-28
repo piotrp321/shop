@@ -125,6 +125,14 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
         return $ids;
     }
 
+    public function count(): int
+    {
+        $count = $this->connection->fetchOne('SELECT count(*) FROM catalog_product');
+        \assert(\is_int($count));
+
+        return $count;
+    }
+
     public function page(?string $afterId, int $limit): array
     {
         if ($limit < 1) {

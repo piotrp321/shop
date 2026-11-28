@@ -90,7 +90,7 @@ final readonly class AsyncProductSearchIndexRebuild
             return AbortOutcome::refused('No rebuild run is active.');
         }
         if (!$run->status->takesBatches()) {
-            return AbortOutcome::refused(\sprintf('The run %s is %s: its finalization cannot be aborted; it ends by the retry of its message (app:messaging:failed-retry when it is in failed).', $run->id, $run->status->value));
+            return AbortOutcome::refused(\sprintf('The run %s is %s: its finalization cannot be aborted; it ends by the retry of its message, and catalog:reindex:resume sends that again when it was lost.', $run->id, $run->status->value));
         }
         if (!$force && !$run->isStalled($this->clock->now(), $stallSeconds)) {
             return AbortOutcome::refused(\sprintf('The run %s is alive (it moved at %s); pass --force to abort it anyway.', $run->id, $run->heartbeatAt->format(\DATE_ATOM)));
@@ -104,6 +104,44 @@ final readonly class AsyncProductSearchIndexRebuild
         return AbortOutcome::aborted($run->id, $run->targetIndex, $report->warnings);
     }
 
+    /**
+     * After a restore of the database from a backup (no worker runs, the queues were purged): the run the backup holds
+     * is aborted at whatever stage it was, its messages left in the database do nothing any more (a batch and the
+     * finalization act only on a run that is not final), and its new index is deleted unless the alias points to it.
+     *
+     * @return AbortOutcome|null null when no run is active
+     */
+    public function abortAfterRestore(): ?AbortOutcome
+    {
+        $run = $this->runs->active(self::DOCUMENT_TYPE);
+        if (null === $run) {
+            return null;
+        }
+        $failure = 'Aborted after a restore of the database from a backup.';
+        if (!$this->runs->move($run->id, SearchRebuildStatus::active(), SearchRebuildStatus::Aborted, $this->clock->now(), $failure)) {
+            return AbortOutcome::refused(\sprintf('The run %s ended meanwhile; nothing was aborted.', $run->id));
+        }
+        $report = $this->switch->discard($run->targetIndex, RebuildReport::failed($failure));
+
+        return AbortOutcome::aborted($run->id, $run->targetIndex, $report->warnings);
+    }
+
+    /**
+     * Sends the finalization of the active run again from its saved stage, when the run is in its finalization (its
+     * message lost, e.g. removed from failed).
+     *
+     * @return SearchRebuildRun|null the run whose finalization was sent; null when no run is in its finalization
+     */
+    public function resume(): ?SearchRebuildRun
+    {
+        $run = $this->runs->active(self::DOCUMENT_TYPE);
+        if (null === $run || !$run->status->finalizes() || !$this->runs->resumeFinalization($run->id, $this->clock->now())) {
+            return null;
+        }
+
+        return $run;
+    }
+
     private function produce(string $runId, string $target, int $batchSize): AsyncRebuildStart
     {
         $batch = 0;
@@ -111,6 +149,7 @@ final readonly class AsyncProductSearchIndexRebuild
         $beatAt = $this->clock->now()->getTimestamp();
         try {
             while ([] !== ($ids = $this->source->idsAfter($afterId, $batchSize))) {
+                $this->runs->registerBatch($runId, $batch, $ids);
                 $this->batches->send($runId, $batch, $ids);
                 ++$batch;
                 $afterId = $ids[array_key_last($ids)];

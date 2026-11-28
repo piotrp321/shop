@@ -52,6 +52,11 @@ final class InMemoryProductSearchSource implements ProductSearchSource
         return array_values(array_filter($this->snapshots, static fn (ProductSearchSnapshot $s): bool => \in_array($s->id, $wanted, true)));
     }
 
+    public function count(): int
+    {
+        return \count($this->snapshots);
+    }
+
     public function idsAfter(?string $afterId, int $limit): array
     {
         return array_map(static fn (ProductSearchSnapshot $s): string => $s->id, $this->page($afterId, $limit));

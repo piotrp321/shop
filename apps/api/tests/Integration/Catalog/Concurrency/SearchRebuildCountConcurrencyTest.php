@@ -94,8 +94,12 @@ final class SearchRebuildCountConcurrencyTest extends KernelTestCase
              VALUES (?, 'product', 'running', 'test_products_new', 'test_products_old', 10, ?, ?, ?, now(), now())",
             [$runId, $total, \count($done), 10 * \count($done)],
         );
-        foreach ($done as $batch) {
-            $this->control->executeStatement('INSERT INTO catalog_search_rebuild_batch (run_id, batch, documents) VALUES (?, ?, 10)', [$runId, $batch]);
+        // Every batch registered as the producer does (CountSearchRebuildBatchHandler counts the ids ["batch-<n>"]).
+        for ($batch = 0; $batch < $total; ++$batch) {
+            $this->control->executeStatement(
+                'INSERT INTO catalog_search_rebuild_batch (run_id, batch, ids_hash, documents) VALUES (?, ?, ?, ?)',
+                [$runId, $batch, hash('sha256', 'batch-'.$batch), \in_array($batch, $done, true) ? 10 : null],
+            );
         }
         $this->runs[] = $runId;
 

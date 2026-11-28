@@ -16,6 +16,6 @@ final readonly class CountSearchRebuildBatchHandler
 
     public function __invoke(CountSearchRebuildBatch $message): bool
     {
-        return null !== $this->runs->countBatch($message->runId, $message->batch, $message->documents, new \DateTimeImmutable());
+        return null !== $this->runs->countBatch($message->runId, $message->batch, ['batch-'.$message->batch], $message->documents, new \DateTimeImmutable());
     }
 }

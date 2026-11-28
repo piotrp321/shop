@@ -93,6 +93,11 @@ final class ProductIndexingTest extends TestCase
                 return $this->inner->findMany($ids);
             }
 
+            public function count(): int
+            {
+                return $this->inner->count();
+            }
+
             public function idsAfter(?string $afterId, int $limit): array
             {
                 return $this->inner->idsAfter($afterId, $limit);

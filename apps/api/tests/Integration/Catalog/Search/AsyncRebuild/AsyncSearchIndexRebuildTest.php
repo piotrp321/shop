@@ -4,18 +4,29 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Catalog\Search\AsyncRebuild;
 
+use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
+use App\Catalog\Application\Command\FinalizeSearchRebuild;
+use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchRebuildRuns;
 use App\Catalog\Application\Search\AsyncProductSearchIndexRebuild;
+use App\Catalog\Application\Search\ProductBatchIndexer;
+use App\Catalog\Application\Search\ProductDocumentBuilder;
+use App\Catalog\Application\Search\ProductRebuildBatch;
+use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchRebuildStatus;
+use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
 use App\Shared\Infrastructure\Indexing\IndexDocuments;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
+use App\Tests\Support\InMemory\FixedCatalogClock;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Elastic\Elasticsearch\Response\Elasticsearch;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
@@ -70,7 +81,7 @@ final class AsyncSearchIndexRebuildTest extends KernelTestCase
         yield 'a multiple' => [6, 2, 3];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('catalogSizes')]
+    #[DataProvider('catalogSizes')]
     public function testTheBatchesOfTheWorkersRebuildTheIndexAndTheFinalizationSwitchesTheAlias(int $products, int $batchSize, int $messages): void
     {
         $ids = $this->createProducts($products);
@@ -166,6 +177,219 @@ final class AsyncSearchIndexRebuildTest extends KernelTestCase
         $this->work();
     }
 
+    public function testABatchThatIsNotOneTheProducerSentIsRefusedAndTheRunStillIndexesTheWholeCatalog(): void
+    {
+        $ids = $this->createProducts(3);
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+
+        // A valid UUID of no product in the place of batch 0, and a real product under a number the producer never used.
+        foreach ([[['01990000-0000-7000-8000-000000000001'], 0], [[$ids[0]], 7]] as [$forged, $batch]) {
+            try {
+                $this->handle(new Envelope(new IndexDocuments('product', $forged, $run->id, $batch)));
+                self::fail('Expected a permanent failure of a batch that is not of the run.');
+            } catch (HandlerFailedException $e) {
+                self::assertInstanceOf(UnrecoverableMessageHandlingException::class, $e->getPrevious());
+            }
+        }
+        self::assertSame(0, $this->runs->get($run->id)?->doneBatches);
+
+        $this->work();
+
+        self::assertSame(SearchRebuildStatus::Succeeded, $this->runs->get($run->id)?->status);
+        self::assertSame($ids, $this->indexedIds());
+    }
+
+    public function testAProductThatTheBatchesMissedFailsTheVerificationAgainstTheCatalogAndTheAliasStays(): void
+    {
+        $this->createProducts(2);
+        $previous = $this->maintenance->activeIndex();
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        // Saved past the lock of the rebuild (the repository, not the command), so no batch has it.
+        $this->createProducts(1);
+
+        $this->work();
+
+        $ended = $this->runs->get($run->id);
+        self::assertSame(SearchRebuildStatus::Failed, $ended?->status);
+        self::assertStringContainsString('3', (string) $ended->failure);
+        self::assertSame($previous, $this->maintenance->activeIndex());
+        self::assertFalse($this->indexExists($run->targetIndex));
+    }
+
+    public function testALostFinalizationIsResumedFromTheSavedStage(): void
+    {
+        $ids = $this->createProducts(3);
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        $resume = $this->command('catalog:reindex:resume');
+        self::assertSame(Command::FAILURE, $resume->execute([]), 'a run that takes batches is not resumed');
+
+        while ([] !== ($envelopes = $this->drain('indexing'))) {
+            foreach ($envelopes as $envelope) {
+                $this->handle($envelope);
+            }
+        }
+        self::assertCount(1, $this->drain('indexing_finalize'), 'the finalization is lost');
+        self::assertSame(SearchRebuildStatus::Finalizing, $this->runs->get($run->id)?->status);
+
+        $resumed = $this->command('catalog:reindex:resume');
+        self::assertSame(Command::SUCCESS, $resumed->execute([]), $resumed->getDisplay());
+        $again = $this->command('catalog:reindex:resume');
+        self::assertSame(Command::SUCCESS, $again->execute([]), 'a second resumption only sends one more finalization');
+        $this->work();
+
+        self::assertSame(SearchRebuildStatus::Succeeded, $this->runs->get($run->id)?->status);
+        self::assertSame($ids, $this->indexedIds());
+        self::assertSame(Command::FAILURE, $resume->execute([]), 'nothing left to resume');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function restoredStages(): iterable
+    {
+        foreach (['producing', 'running', 'finalizing', 'verified', 'activating', 'activated'] as $status) {
+            yield $status => [$status];
+        }
+    }
+
+    #[DataProvider('restoredStages')]
+    public function testADatabaseRestoredWithAnActiveRunIsReleasedForTheSynchronousRebuild(string $status): void
+    {
+        $ids = $this->createProducts(2);
+        $previous = $this->maintenance->activeIndex();
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '1']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        // The run as the backup holds it, at any of its stages.
+        $this->connection()->executeStatement('UPDATE catalog_search_rebuild_run SET status = ? WHERE id = ?', [$status, $run->id]);
+
+        $abort = $this->command('catalog:reindex:abort');
+        self::assertSame(Command::SUCCESS, $abort->execute(['--restored' => true]), $abort->getDisplay());
+
+        self::assertSame(SearchRebuildStatus::Aborted, $this->runs->get($run->id)?->status);
+        self::assertFalse($this->indexExists($run->targetIndex));
+        // What the backup holds of the run (its batches, its finalization) changes nothing any more.
+        $this->handle(new Envelope(new FinalizeSearchRebuild($run->id)));
+        $this->work();
+        self::assertFalse($this->indexExists($run->targetIndex));
+        self::assertSame($previous, $this->maintenance->activeIndex());
+
+        $rebuild = $this->command('catalog:reindex');
+        self::assertSame(Command::SUCCESS, $rebuild->execute([]), $rebuild->getDisplay());
+        self::assertSame($ids, $this->indexedIds());
+        self::assertSame(Command::SUCCESS, $abort->execute(['--restored' => true]), 'no active run: nothing to do');
+    }
+
+    public function testAWorkerThatDiesAfterTheWriteBeforeTheCountCountsTheBatchOnceOnTheRedelivery(): void
+    {
+        $ids = $this->createProducts(3);
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        $es = new HookedMaintenance($this->maintenance);
+        $es->afterWrite = static function (): void {
+            throw new \RuntimeException('The worker was killed.');
+        };
+
+        try {
+            $this->batchOf($es, $this->transport('indexing')->getSent()[0]);
+            self::fail('Expected the worker to die.');
+        } catch (\RuntimeException) {
+        }
+        self::assertSame(0, $this->runs->get($run->id)?->doneBatches, 'written, not counted');
+
+        $this->work();
+
+        $ended = $this->runs->get($run->id);
+        self::assertSame(SearchRebuildStatus::Succeeded, $ended?->status);
+        self::assertSame([2, 3], [$ended->doneBatches, $ended->documents]);
+        self::assertSame($ids, $this->indexedIds());
+    }
+
+    /**
+     * @return iterable<string, array{\Throwable}>
+     */
+    public static function batchFailures(): iterable
+    {
+        yield 'transient (the transport retries it)' => [new SearchUnavailable('Elasticsearch timed out.')];
+        yield 'permanent (failed, then retried by hand)' => [new SearchIndexError('A mapping conflict.')];
+    }
+
+    #[DataProvider('batchFailures')]
+    public function testAFailedBatchCountsNothingAndItsRetryCompletesTheRun(\Throwable $failure): void
+    {
+        $ids = $this->createProducts(3);
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        [$failing, $other] = array_values($this->transport('indexing')->getSent());
+        $es = new HookedMaintenance($this->maintenance);
+        $es->beforeWrite = static function () use ($failure): void {
+            throw $failure;
+        };
+
+        try {
+            $this->batchOf($es, $failing);
+            self::fail('Expected the batch to fail.');
+        } catch (SearchUnavailable|SearchIndexError) {
+        }
+        $this->handle($other);
+        $stalled = $this->runs->get($run->id);
+        self::assertSame([SearchRebuildStatus::Running, 1], [$stalled?->status, $stalled?->doneBatches]);
+
+        $this->handle($failing);
+        $this->work(); // the copies still queued count nothing
+
+        $ended = $this->runs->get($run->id);
+        self::assertSame(SearchRebuildStatus::Succeeded, $ended?->status);
+        self::assertSame(3, $ended->documents);
+        self::assertSame($ids, $this->indexedIds());
+    }
+
+    /**
+     * @return iterable<string, array{bool}>
+     */
+    public static function abortMoments(): iterable
+    {
+        yield 'before the bulk request' => [true];
+        yield 'after the bulk request, before the count' => [false];
+    }
+
+    #[DataProvider('abortMoments')]
+    public function testAnAbortDuringTheWriteOfABatchCountsNothingAndLeavesNoIndex(bool $beforeTheRequest): void
+    {
+        $this->createProducts(3);
+        $previous = $this->maintenance->activeIndex();
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        $es = new HookedMaintenance($this->maintenance);
+        $abort = function (): void {
+            $tester = $this->command('catalog:reindex:abort');
+            self::assertSame(Command::SUCCESS, $tester->execute(['--force' => true]), $tester->getDisplay());
+        };
+        if ($beforeTheRequest) {
+            $es->beforeWrite = $abort;
+        } else {
+            $es->afterWrite = $abort;
+        }
+
+        $this->batchOf($es, $this->transport('indexing')->getSent()[0]);
+
+        $ended = $this->runs->get($run->id);
+        self::assertSame([SearchRebuildStatus::Aborted, 0], [$ended?->status, $ended?->doneBatches]);
+        self::assertFalse($this->indexExists($run->targetIndex), 'the write did not leave an index behind');
+        $this->work();
+        self::assertFalse($this->indexExists($run->targetIndex));
+        self::assertSame($previous, $this->maintenance->activeIndex());
+    }
+
     public function testTheBatchSizeOutsideItsRangeIsRefused(): void
     {
         foreach ([['--async' => true, '--batch-size' => '0'], ['--async' => true, '--batch-size' => '5001'], ['--batch-size' => '-1'], ['--wait' => true]] as $input) {
@@ -211,6 +435,29 @@ final class AsyncSearchIndexRebuildTest extends KernelTestCase
         $bus = self::getContainer()->get('indexing.bus');
         \assert($bus instanceof MessageBusInterface);
         $bus->dispatch($envelope->withoutAll(ReceivedStamp::class)->with(new ReceivedStamp('indexing')));
+    }
+
+    /**
+     * Handles one batch as worker-indexing does, with the given maintenance of the index.
+     */
+    private function batchOf(HookedMaintenance $es, Envelope $envelope): void
+    {
+        $message = $envelope->getMessage();
+        \assert($message instanceof IndexDocuments);
+        $offers = self::getContainer()->get(QueryBusProductOfferFacts::class);
+        \assert($offers instanceof QueryBusProductOfferFacts);
+        $source = self::getContainer()->get(ProductSearchSource::class);
+        \assert($source instanceof ProductSearchSource);
+        $batch = new ProductRebuildBatch($this->runs, $source, new ProductBatchIndexer($es, new ProductDocumentBuilder(), $offers), $es, new FixedCatalogClock(new \DateTimeImmutable()));
+        $batch->index($message->runId, $message->batch, $message->ids);
+    }
+
+    private function connection(): Connection
+    {
+        $connection = self::getContainer()->get('doctrine.dbal.default_connection');
+        \assert($connection instanceof Connection);
+
+        return $connection;
     }
 
     private function transport(string $name): InMemoryTransport

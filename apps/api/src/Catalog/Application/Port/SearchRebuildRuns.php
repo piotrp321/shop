@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Port;
 
+use App\Catalog\Application\Search\ForeignRebuildBatch;
 use App\Catalog\Application\Search\SearchRebuildRun;
 use App\Catalog\Application\Search\SearchRebuildStatus;
 
@@ -36,13 +37,33 @@ interface SearchRebuildRuns
     public function beat(string $runId, \DateTimeImmutable $now): bool;
 
     /**
+     * Records a batch before the producer sends it: its number and the fingerprint of its ids, so only that batch is
+     * ever counted under that number.
+     *
+     * @param list<string> $ids
+     */
+    public function registerBatch(string $runId, int $batch, array $ids): void;
+
+    /**
      * Counts a written batch once: a batch already counted, or a run that no longer takes batches, counts nothing. The
      * batch that completes a run whose producer has finished moves it to `finalizing` and sends its finalization in
      * the same transaction.
      *
+     * @param list<string> $ids the ids of the batch as its message has them
+     *
      * @return SearchRebuildRun|null the run after the count; null when nothing was counted
+     *
+     * @throws ForeignRebuildBatch when the run takes batches and never registered this one with these ids
      */
-    public function countBatch(string $runId, int $batch, int $documents, \DateTimeImmutable $now): ?SearchRebuildRun;
+    public function countBatch(string $runId, int $batch, array $ids, int $documents, \DateTimeImmutable $now): ?SearchRebuildRun;
+
+    /**
+     * Sends the finalization of a run again from its saved stage (finalizing, verified, activating, activated), e.g.
+     * after its message was lost; the finalization is idempotent, so a copy in flight does no harm.
+     *
+     * @return bool false when the run is in no stage of its finalization
+     */
+    public function resumeFinalization(string $runId, \DateTimeImmutable $now): bool;
 
     /**
      * The producer sent all its batches: `producing` → `running` with their total, or straight to `finalizing` (with

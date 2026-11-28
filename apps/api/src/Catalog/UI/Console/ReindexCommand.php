@@ -141,7 +141,7 @@ final readonly class ReindexCommand
                 return $this->aliasState($io, $run);
             }
             if ($run->isStalled($this->clock->now(), $this->stallSeconds)) {
-                $io->error(\sprintf('The run %s has not moved for more than %d s (is worker-indexing running? a message in failed?). It goes on when it moves again; catalog:reindex:abort ends it.', $run->id, $this->stallSeconds));
+                $io->error(\sprintf('The run %s has not moved for more than %d s (is worker-indexing running? a message in failed?). It goes on when it moves again; catalog:reindex:abort ends it while it takes batches, catalog:reindex:resume sends a lost finalization again.', $run->id, $this->stallSeconds));
 
                 return $this->aliasState($io, $run);
             }

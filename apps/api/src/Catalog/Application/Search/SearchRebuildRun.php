@@ -27,6 +27,16 @@ final readonly class SearchRebuildRun
     }
 
     /**
+     * Whether it was aborted or failed while it took batches (never all counted): its new index is deleted, also when a
+     * late write of a batch created it again.
+     */
+    public function endedBeforeFinalization(): bool
+    {
+        return (SearchRebuildStatus::Aborted === $this->status || SearchRebuildStatus::Failed === $this->status)
+            && (null === $this->totalBatches || $this->doneBatches < $this->totalBatches);
+    }
+
+    /**
      * Whether nothing moved it (no batch counted, no beat of the producer, no stage) for longer than $limitSeconds.
      */
     public function isStalled(\DateTimeImmutable $now, int $limitSeconds): bool

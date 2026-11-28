@@ -12,7 +12,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Exit codes: 0 the run was aborted (a warning when its index could not be deleted), 1 nothing was aborted.
+ * Exit codes: 0 the run was aborted (a warning when its index could not be deleted), and with --restored also when no
+ * run was active; 1 nothing was aborted.
  */
 #[AsCommand(name: 'catalog:reindex:abort', description: 'Aborts the active asynchronous rebuild run of the search index while it takes batches and deletes its new index.')]
 final readonly class AbortReindexCommand
@@ -28,8 +29,19 @@ final readonly class AbortReindexCommand
         SymfonyStyle $io,
         #[Option(description: 'Abort also a run that is alive (it moved within the stall limit)')]
         bool $force = false,
+        #[Option(description: 'The database was restored from a backup and no worker runs (make -C infra/k8s restore): abort the run the backup holds at whatever stage it was')]
+        bool $restored = false,
     ): int {
-        $outcome = $this->asyncRebuild->abort($force, $this->stallSeconds);
+        if ($restored) {
+            $outcome = $this->asyncRebuild->abortAfterRestore();
+            if (null === $outcome) {
+                $io->success('No rebuild run is active.');
+
+                return Command::SUCCESS;
+            }
+        } else {
+            $outcome = $this->asyncRebuild->abort($force, $this->stallSeconds);
+        }
         foreach ($outcome->warnings as $warning) {
             $io->warning($warning);
         }

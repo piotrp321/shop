@@ -6,9 +6,12 @@ namespace App\Tests\Integration\Catalog\Search\AsyncRebuild;
 
 use App\Catalog\Application\Command\FinalizeSearchRebuild;
 use App\Catalog\Application\Command\FinalizeSearchRebuildHandler;
+use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexRebuildLock;
 use App\Catalog\Application\Port\SearchRebuildRuns;
+use App\Catalog\Application\Search\ForeignRebuildBatch;
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Application\Search\SearchRebuildRun;
 use App\Catalog\Application\Search\SearchRebuildStatus;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Tests\Support\InMemory\FixedCatalogClock;
@@ -49,22 +52,22 @@ final class SearchRebuildRunsTest extends KernelTestCase
         $run = $this->start();
         self::assertTrue($this->runs->finishProduction($run, 2, $this->clock->now()));
 
-        self::assertSame(3, $this->runs->countBatch($run, 0, 3, $this->clock->now())?->documents);
-        self::assertNull($this->runs->countBatch($run, 0, 3, $this->clock->now()), 'a second delivery of batch 0');
+        self::assertSame(3, $this->countBatch($run, 0, 3)?->documents);
+        self::assertNull($this->countBatch($run, 0, 3), 'a second delivery of batch 0');
         self::assertSame([], $this->finalizations->getSent());
-        $last = $this->runs->countBatch($run, 1, 2, $this->clock->now());
+        $last = $this->countBatch($run, 1, 2);
 
         self::assertSame(SearchRebuildStatus::Finalizing, $last?->status);
         self::assertSame([2, 5], [$last->doneBatches, $last->documents]);
-        self::assertNull($this->runs->countBatch($run, 1, 2, $this->clock->now()), 'a copy of the last batch');
+        self::assertNull($this->countBatch($run, 1, 2), 'a copy of the last batch');
         self::assertSame([$run], $this->finalizationsSent());
     }
 
     public function testBatchesCountedBeforeTheProducerFinishesAreFinalizedByTheProducer(): void
     {
         $run = $this->start();
-        $this->runs->countBatch($run, 1, 2, $this->clock->now());
-        $this->runs->countBatch($run, 0, 3, $this->clock->now());
+        $this->countBatch($run, 1, 2);
+        $this->countBatch($run, 0, 3);
         self::assertSame([], $this->finalizations->getSent(), 'the total is not known yet');
 
         self::assertTrue($this->runs->finishProduction($run, 2, $this->clock->now()));
@@ -88,11 +91,47 @@ final class SearchRebuildRunsTest extends KernelTestCase
         $run = $this->start();
         self::assertTrue($this->runs->move($run, [SearchRebuildStatus::Producing], SearchRebuildStatus::Aborted, $this->clock->now()));
 
-        self::assertNull($this->runs->countBatch($run, 0, 3, $this->clock->now()));
+        self::assertNull($this->countBatch($run, 0, 3));
         self::assertFalse($this->runs->finishProduction($run, 1, $this->clock->now()));
         self::assertSame(0, $this->runs->get($run)?->doneBatches);
-        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM catalog_search_rebuild_batch WHERE run_id = ?', [$run]));
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM catalog_search_rebuild_batch WHERE run_id = ? AND documents IS NOT NULL', [$run]));
         self::assertSame([], $this->finalizations->getSent());
+    }
+
+    public function testOnlyABatchTheProducerRegisteredIsCountedAndOnlyWithItsIds(): void
+    {
+        $run = $this->start();
+
+        foreach ([[0, [self::ids(0)[0]]], [0, self::ids(1)], [2, self::ids(0)], [0, array_reverse(self::ids(0))]] as [$batch, $ids]) {
+            try {
+                $this->runs->countBatch($run, $batch, $ids, 1, $this->clock->now());
+                self::fail('Expected a foreign batch to be refused.');
+            } catch (ForeignRebuildBatch) {
+            }
+        }
+        self::assertSame([0, 0], [$this->runs->get($run)?->doneBatches, $this->runs->get($run)?->documents], 'nothing counted, the transaction rolled back');
+
+        self::assertSame(1, $this->countBatch($run, 0, 2)?->doneBatches);
+        self::assertNull($this->countBatch($run, 0, 2), 'its copy');
+        self::assertTrue($this->runs->move($run, [SearchRebuildStatus::Producing], SearchRebuildStatus::Aborted, $this->clock->now()));
+        self::assertNull($this->runs->countBatch($run, 9, ['x'], 1, $this->clock->now()), 'a run that takes no batches refuses nothing: it counts nothing');
+    }
+
+    public function testTheFinalizationIsSentAgainOnlyFromAStageOfTheFinalization(): void
+    {
+        $run = $this->finalizingRun();
+        $sent = \count($this->finalizationsSent());
+        $this->connection->executeStatement("UPDATE catalog_search_rebuild_run SET status = 'running' WHERE id = ?", [$run]);
+        self::assertFalse($this->runs->resumeFinalization($run, $this->clock->now()), 'running');
+
+        foreach ([SearchRebuildStatus::Finalizing, SearchRebuildStatus::Verified, SearchRebuildStatus::Activating, SearchRebuildStatus::Activated] as $status) {
+            $this->connection->executeStatement('UPDATE catalog_search_rebuild_run SET status = ? WHERE id = ?', [$status->value, $run]);
+            self::assertTrue($this->runs->resumeFinalization($run, $this->clock->now()), $status->value);
+        }
+        self::assertCount($sent + 4, $this->finalizationsSent());
+
+        $this->connection->executeStatement("UPDATE catalog_search_rebuild_run SET status = 'succeeded', finished_at = now() WHERE id = ?", [$run]);
+        self::assertFalse($this->runs->resumeFinalization($run, $this->clock->now()), 'final');
     }
 
     public function testAMoveIsConditionalOnTheStatusSeenAndAFinalStatusIsNeverOverwritten(): void
@@ -293,14 +332,33 @@ final class SearchRebuildRunsTest extends KernelTestCase
     private function start(): string
     {
         $this->connection->executeStatement('SAVEPOINT before_second');
+        $run = $this->runs->start('product', 'test_products_target', 'test_products_old', 500, $this->clock->now());
+        // The producer registers every batch before it sends it.
+        foreach ([0, 1] as $batch) {
+            $this->runs->registerBatch($run, $batch, self::ids($batch));
+        }
 
-        return $this->runs->start('product', 'test_products_target', 'test_products_old', 500, $this->clock->now());
+        return $run;
+    }
+
+    private function countBatch(string $run, int $batch, int $documents): ?SearchRebuildRun
+    {
+        return $this->runs->countBatch($run, $batch, self::ids($batch), $documents, $this->clock->now());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function ids(int $batch): array
+    {
+        return [\sprintf('0199%04d-0000-7000-8000-000000000000', $batch), \sprintf('0199%04d-0000-7000-8000-000000000001', $batch)];
     }
 
     private function finalizingRun(): string
     {
         $run = $this->start();
-        $this->runs->countBatch($run, 0, 5, $this->clock->now());
+        // As many documents as the catalog has, so the check against the catalog passes.
+        $this->countBatch($run, 0, $this->source()->count());
         $this->runs->finishProduction($run, 1, $this->clock->now());
         self::assertSame(SearchRebuildStatus::Finalizing, $this->runs->get($run)?->status);
 
@@ -309,7 +367,15 @@ final class SearchRebuildRunsTest extends KernelTestCase
 
     private function handler(AliasFakeMaintenance $es): FinalizeSearchRebuildHandler
     {
-        return new FinalizeSearchRebuildHandler($this->runs, $es, $this->clock);
+        return new FinalizeSearchRebuildHandler($this->runs, $es, $this->source(), $this->clock);
+    }
+
+    private function source(): ProductSearchSource
+    {
+        $source = self::getContainer()->get(ProductSearchSource::class);
+        \assert($source instanceof ProductSearchSource);
+
+        return $source;
     }
 
     /**

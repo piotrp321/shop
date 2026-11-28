@@ -54,4 +54,9 @@ interface ProductSearchSource
      * @throws \InvalidArgumentException when $limit is lower than 1 or $afterId is not a UUID
      */
     public function idsAfter(?string $afterId, int $limit): array;
+
+    /**
+     * The number of products of the catalog: what a full index holds, checked apart from what the batches counted.
+     */
+    public function count(): int;
 }

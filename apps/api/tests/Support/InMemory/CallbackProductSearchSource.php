@@ -52,6 +52,11 @@ final class CallbackProductSearchSource implements ProductSearchSource
         return array_map(fn (string $id): ProductSearchSnapshot => ($this->read)($id), array_values(array_filter($this->ids, static fn (string $id): bool => \in_array($id, $wanted, true))));
     }
 
+    public function count(): int
+    {
+        return \count($this->ids);
+    }
+
     public function idsAfter(?string $afterId, int $limit): array
     {
         return \array_slice(array_values(array_filter($this->ids, static fn (string $id): bool => null === $afterId || $id > strtolower($afterId))), 0, $limit);

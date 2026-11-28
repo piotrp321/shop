@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Catalog\Application\Command;
 
 use App\Catalog\Application\Port\Clock;
+use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchRebuildRuns;
 use App\Catalog\Application\Search\RebuildReport;
@@ -36,6 +37,7 @@ final readonly class FinalizeSearchRebuildHandler
     public function __construct(
         private SearchRebuildRuns $runs,
         private SearchIndexMaintenance $maintenance,
+        private ProductSearchSource $source,
         private Clock $clock,
         private LoggerInterface $logger = new NullLogger(),
     ) {
@@ -61,10 +63,19 @@ final readonly class FinalizeSearchRebuildHandler
         }
     }
 
+    /**
+     * The new index is checked against the catalog itself, not only against what the batches counted: no product is
+     * created while a run is active (the lock of the rebuild refuses) and none is deleted, so the index of a complete run
+     * holds exactly the products of the catalog.
+     */
     private function verify(SearchRebuildRun $run): void
     {
         try {
-            $this->maintenance->verify($run->targetIndex, $run->documents);
+            $products = $this->source->count();
+            if ($run->documents !== $products) {
+                throw new SearchIndexError(\sprintf('The batches wrote %d documents, the catalog has %d products.', $run->documents, $products));
+            }
+            $this->maintenance->verify($run->targetIndex, $products);
         } catch (SearchIndexError $e) {
             // The alias never pointed to the new index: once this handler failed the run, the index goes.
             if ($this->move($run, SearchRebuildStatus::Failed, $e->getMessage())) {

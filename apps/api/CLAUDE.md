@@ -144,7 +144,7 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`docs/features/admin-features/spec.md`, sekcja 4, P9, P10).
 - Catalog, przebiegi przebudowy indeksu (`catalog_search_rebuild_run`, `catalog_search_rebuild_batch`): zapis i odczyt przez
   DBAL (`DbalSearchRebuildRuns`, rekordy tylko definiują schemat). Każde przejście statusu to `UPDATE … WHERE status IN
-  (:widziane)`, rozliczenie paczki `UPDATE` przebiegu i `INSERT … ON CONFLICT DO NOTHING` w jednej transakcji, a wiadomość
+  (:widziane)`, rozliczenie paczki `UPDATE` przebiegu i warunkowy `UPDATE` wiersza paczki zarejestrowanego przez producenta w jednej transakcji, a wiadomość
   finalizacji idzie w tej transakcji, więc współbieżne handlery nie przełączą aliasu dwa razy ani nie nadpiszą statusu
   końcowego (`docs/features/async-indexing/spec.md`).
 - Ordering, sprzedaż godzinowa (`ordering_sales_hour`) i klienci panelu (`ordering_customer`): zapis i odczyt przez DBAL

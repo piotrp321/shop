@@ -356,7 +356,11 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   i przy aktywnym przebiegu innego procesu), i kodem 2, gdy stan aliasu jest nieznany (cel pokazuje wtedy, na którym indeksie alias jest).
   Przerwanie trwającego przebiegu: **użytkownik** (agent nie ma na to celu), na serwerze
   `sudo k3s kubectl -n shop exec deploy/worker-indexing -- php bin/console catalog:reindex:abort` (przebieg żywy wymaga `--force`);
-  alias zostaje na starym indeksie, a Job `reindex-*` kończy się błędem. Repliki `worker-indexing` konsumują kolejkę `indexing`
+  alias zostaje na starym indeksie, a Job `reindex-*` kończy się błędem. Przebieg, który stoi w etapie finalizacji, bo jego
+  wiadomość zginęła (usunięta z `failed`): **użytkownik**, na serwerze
+  `sudo k3s kubectl -n shop exec deploy/worker-indexing -- php bin/console catalog:reindex:resume` (wysyła finalizację
+  ponownie od zapisanego etapu; idempotentne). Przebieg aktywny w odtwarzanej kopii bazy `make restore` przerywa sam
+  (`catalog:reindex:abort --restored` przed przebudową indeksu). Repliki `worker-indexing` konsumują kolejkę `indexing`
   w RabbitMQ i transport `indexing_finalize` w Postgresie (finalizacja przebiegu jedną wiadomością, pierwsza w kolejności).
   Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
   nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Dodawanie

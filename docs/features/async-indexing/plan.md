@@ -9,7 +9,7 @@ Istotne decyzje DDD są w specyfikacji; zmiana któregokolwiek rozstrzygnięcia 
 | Fala | Zadania | Status |
 |---|---|---|
 | 0 | 1 (pomiar przyczyny) + **brama**: użytkownik zatwierdza kryterium wydajnościowe (spec, kryterium 12) | zrobione 2026-11-26 (R=4, B=500, T=800, C=3 godz. 45 min) |
-| 1–4 | 2–6 jednym PR i w jednej sesji (polecenie użytkownika 2026-11-28) | zaimplementowane 2026-11-28, przegląd `code-reviewer` (rdzeń współbieżności i finalizacji) po poprawkach; PR do akceptacji użytkownika |
+| 1–4 | 2–6 jednym PR i w jednej sesji (polecenie użytkownika 2026-11-28) | zaimplementowane 2026-11-28, przegląd `code-reviewer` (rdzeń współbieżności i finalizacji) po poprawkach; po niezależnym przeglądzie: rejestr paczek z odciskiem identyfikatorów, `verify` względem katalogu, `catalog:reindex:resume`, `abort --restored` w Jobie `restore`, sprzątanie indeksu po zapisie w trakcie abortu; PR #988 do akceptacji użytkownika |
 | 5 | 7 (pomiar po wdrożeniu, tylko za zgodą użytkownika) | |
 
 **Realizacja zadań 2–6:** jeden PR, jedna sesja, testy celowane lokalnie na własnym stosie worktree, pełne testy w CI.
@@ -115,7 +115,7 @@ PERF-2B zmienił przebudowę synchroniczną; zadania 2–6 przyjmują poniższe 
   unikalny indeks częściowy „jeden aktywny przebieg na typ”), rekordy ORM, repozytorium i agregat `SearchRebuildRun`
   z przejściami statusów; (c) wzajemne wykluczanie: blokada `SearchIndexRebuildLock` + sprawdzenie aktywnego przebiegu
   w `ProductSearchIndexRebuilder::rebuild`, `reset` (używany przez `DbalCatalogReset`) i `catalog:search-index:setup`;
-  (d) rozliczenie paczki (`INSERT … ON CONFLICT`, `UPDATE` licznika i `heartbeat_at`, warunkowe `running → finalizing`
+  (d) rozliczenie paczki (warunkowy `UPDATE` wiersza paczki zarejestrowanego przez producenta, `UPDATE` licznika i `heartbeat_at`, warunkowe `running → finalizing`
   i wysłanie finalizacji w tej samej transakcji); (e) handler `FinalizeSearchRebuild` z etapami `finalizing → verified →
   activating → activated → succeeded`; sprawdzenie i ewentualna poprawka idempotencji `deleteIndex` (brak indeksu = usunięty).
 - **Testy (TDD):** przejścia statusów i niedozwolone; powtórne rozliczenie tej samej paczki nie zwiększa liczników;

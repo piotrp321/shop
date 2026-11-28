@@ -23,8 +23,12 @@ class SearchRebuildBatchRecord
         #[ORM\Id]
         #[ORM\Column(type: Types::INTEGER)]
         public readonly int $batch,
-        #[ORM\Column(type: Types::INTEGER)]
-        public readonly int $documents,
+        /** The SHA-256 of the ids of the batch as the producer sent them, joined by commas. */
+        #[ORM\Column(name: 'ids_hash', type: Types::STRING, length: 64, options: ['fixed' => true])]
+        public readonly string $idsHash,
+        /** The documents the batch wrote; null until it is counted. */
+        #[ORM\Column(type: Types::INTEGER, nullable: true)]
+        public readonly ?int $documents = null,
     ) {
     }
 }

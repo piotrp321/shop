@@ -21,7 +21,7 @@ final class Version20261128120000CreateSearchRebuildRuns extends AbstractMigrati
 
     public function up(Schema $schema): void
     {
-        $this->addSql('CREATE TABLE catalog_search_rebuild_batch (batch INT NOT NULL, documents INT NOT NULL, run_id UUID NOT NULL, PRIMARY KEY (run_id, batch))');
+        $this->addSql('CREATE TABLE catalog_search_rebuild_batch (batch INT NOT NULL, ids_hash CHAR(64) NOT NULL, documents INT DEFAULT NULL, run_id UUID NOT NULL, PRIMARY KEY (run_id, batch))');
         $this->addSql('CREATE INDEX IDX_D20FB25984E3FEC4 ON catalog_search_rebuild_batch (run_id)');
         $this->addSql('CREATE TABLE catalog_search_rebuild_run (status VARCHAR(16) NOT NULL, total_batches INT DEFAULT NULL, done_batches INT NOT NULL, documents BIGINT NOT NULL, finished_at TIMESTAMP(0) WITH TIME ZONE DEFAULT NULL, failure TEXT DEFAULT NULL, id UUID NOT NULL, document_type VARCHAR(32) NOT NULL, target_index VARCHAR(255) NOT NULL, previous_index VARCHAR(255) NOT NULL, batch_size INT NOT NULL, started_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, heartbeat_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, PRIMARY KEY (id))');
         $this->addSql('CREATE UNIQUE INDEX catalog_search_rebuild_run_active_uniq ON catalog_search_rebuild_run (document_type) WHERE (finished_at IS NULL)');

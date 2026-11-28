@@ -27,6 +27,24 @@ enum SearchRebuildStatus: string
     }
 
     /**
+     * The statuses that are not final, in their order.
+     *
+     * @return list<self>
+     */
+    public static function active(): array
+    {
+        return array_values(array_filter(self::cases(), static fn (self $status): bool => !$status->isFinal()));
+    }
+
+    /**
+     * Whether the run is in a stage of its finalization (it no longer takes batches and is not final).
+     */
+    public function finalizes(): bool
+    {
+        return !$this->isFinal() && !$this->takesBatches();
+    }
+
+    /**
      * Whether batches are still written and counted.
      */
     public function takesBatches(): bool

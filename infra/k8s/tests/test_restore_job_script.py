@@ -384,15 +384,21 @@ class RestoreJobScriptTest(unittest.TestCase):
 
     # reindex
 
-    def test_reindex_rebuilds_the_index_and_nothing_else(self):
+    def test_reindex_aborts_a_restored_rebuild_run_then_rebuilds_the_index_and_nothing_else(self):
         results = self.run_pod("reindex", snapshot="")
         self.assertTrue(all(result.returncode == 0 for _, result in results), self.output(results))
-        self.assertEqual(["console catalog:reindex"], self.calls())
+        self.assertEqual(["console catalog:reindex:abort --restored", "console catalog:reindex"], self.calls())
+
+    def test_a_failing_abort_of_the_restored_run_is_an_error_and_nothing_is_rebuilt(self):
+        result = self.run_stage("api", "reindex", "", STUB_FAIL="console:catalog:reindex:abort")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("catalog:reindex:abort --restored failed", result.stderr)
+        self.assertEqual(["console catalog:reindex:abort --restored"], self.calls())
 
     def test_a_failing_reindex_is_an_error(self):
-        result = self.run_stage("api", "reindex", "", STUB_FAIL="console")
+        result = self.run_stage("api", "reindex", "", STUB_FAIL="console:catalog:reindex")
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("catalog:reindex", result.stderr)
+        self.assertIn("catalog:reindex failed", result.stderr)
 
     def test_only_reindex_runs_the_console(self):
         for mode, snapshot in (("list", ""), ("check", SNAPSHOT), ("restore", SNAPSHOT)):
