@@ -225,11 +225,12 @@ templates in the reverse order of their names, so the file with the rule is name
 {{- end }}
 
 {{/*
-A Deployment with one replica that, unless recreate is set, never loses capacity during an update (maxUnavailable 0):
+A Deployment with one replica (unless replicas says otherwise) that, unless recreate is set, never loses capacity during an update (maxUnavailable 0):
 a new pod that does not become ready leaves the old one serving.
 Parameters: root, name, wave, resources, container (YAML of the container without name, image and resources),
 image; optional: initContainers, volumes (YAML lists), podAnnotations (YAML map), recreate (true: the strategy Recreate,
-the old pod stops before the new one starts, for a service that must never run in two versions at once).
+the old pod stops before the new one starts, for a service that must never run in two versions at once), replicas
+(default 1; only a worker whose work several processes share).
 */}}
 {{- define "shop.deployment" -}}
 {{- $_ := include "shop.recordWorkload" (dict "root" .root "name" .name "kind" "Deployment") -}}
@@ -242,7 +243,7 @@ metadata:
   annotations:
     {{- include "shop.wave" .wave | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ default 1 .replicas }}
   revisionHistoryLimit: 2
   # At least as long as the jobs wait for the rollout (kubectl rollout status in shop.waitRollout stops at the deadline).
   progressDeadlineSeconds: 1500

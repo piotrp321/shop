@@ -1,0 +1,179 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Catalog\Application\Search;
+
+use App\Catalog\Application\Port\Clock;
+use App\Catalog\Application\Port\ProductSearchSource;
+use App\Catalog\Application\Port\SearchIndexMaintenance;
+use App\Catalog\Application\Port\SearchIndexRebuildLock;
+use App\Catalog\Application\Port\SearchRebuildBatches;
+use App\Catalog\Application\Port\SearchRebuildRuns;
+
+/**
+ * The asynchronous full rebuild of the product index (docs/features/async-indexing/spec.md, "Przebieg komendy"): the
+ * start and the producer of the batches, and the abort of a run. The batches are written and counted by the workers
+ * ({@see ProductRebuildBatch}), the run is finalized by FinalizeSearchRebuildHandler.
+ *
+ * The start excludes every other operation on the index: under the {@see SearchIndexRebuildLock} (which also refuses
+ * while a run is active) it creates the new index, with the rebuild alias through which the single writes reach it, and
+ * writes the run; it releases the lock only then. From that moment the active run refuses the others.
+ */
+final readonly class AsyncProductSearchIndexRebuild
+{
+    public const string DOCUMENT_TYPE = 'product';
+    /** The most products in one batch (one message, one bulk request) of both rebuild modes. */
+    public const int MAX_BATCH_SIZE = 5000;
+    /** The producer beats at least every this many batches and seconds. */
+    private const int BEAT_EVERY_BATCHES = 50;
+    private const int BEAT_EVERY_SECONDS = 15;
+
+    private SearchIndexSwitch $switch;
+
+    public function __construct(
+        private SearchIndexRebuildLock $lock,
+        private SearchIndexMaintenance $maintenance,
+        private SearchRebuildRuns $runs,
+        private ProductSearchSource $source,
+        private SearchRebuildBatches $batches,
+        private Clock $clock,
+    ) {
+        $this->switch = new SearchIndexSwitch($maintenance);
+    }
+
+    /**
+     * Starts a run and sends all its batches. A failure of the broker fails the run and deletes the new index.
+     *
+     * @throws \InvalidArgumentException when $batchSize is lower than 1
+     */
+    public function start(int $batchSize): AsyncRebuildStart
+    {
+        if ($batchSize < 1) {
+            throw new \InvalidArgumentException('The batch size must be at least 1.');
+        }
+        if (!$this->lock->tryAcquire()) {
+            $active = $this->runs->active(self::DOCUMENT_TYPE);
+
+            return AsyncRebuildStart::failed(null === $active
+                ? 'Another rebuild or setup of the search index is running.'
+                : \sprintf('The rebuild run %s is %s; wait for it or abort it (catalog:reindex:abort).', $active->id, $active->status->value));
+        }
+
+        try {
+            $previous = $this->maintenance->activeIndex();
+            $target = $this->maintenance->createIndex();
+            try {
+                $runId = $this->runs->start(self::DOCUMENT_TYPE, $target, $previous, $batchSize, $this->clock->now());
+            } catch (\Throwable $e) {
+                $this->switch->discard($target, RebuildReport::failed($e->getMessage()));
+                throw $e;
+            }
+        } catch (SearchUnavailable|SearchIndexError $e) {
+            return AsyncRebuildStart::failed($e->getMessage());
+        } finally {
+            $this->lock->release();
+        }
+
+        return $this->produce($runId, $target, $batchSize);
+    }
+
+    /**
+     * Aborts the active run while it takes batches (producing, running) and then deletes its index. A live run (one that
+     * moved within $stallSeconds) needs $force. A run in its finalization is never aborted: the retry of its message
+     * finishes it.
+     */
+    public function abort(bool $force, int $stallSeconds): AbortOutcome
+    {
+        $run = $this->runs->active(self::DOCUMENT_TYPE);
+        if (null === $run) {
+            return AbortOutcome::refused('No rebuild run is active.');
+        }
+        if (!$run->status->takesBatches()) {
+            return AbortOutcome::refused(\sprintf('The run %s is %s: its finalization cannot be aborted; it ends by the retry of its message, and catalog:reindex:resume sends that again when it was lost.', $run->id, $run->status->value));
+        }
+        if (!$force && !$run->isStalled($this->clock->now(), $stallSeconds)) {
+            return AbortOutcome::refused(\sprintf('The run %s is alive (it moved at %s); pass --force to abort it anyway.', $run->id, $run->heartbeatAt->format(\DATE_ATOM)));
+        }
+        if (!$this->runs->move($run->id, [SearchRebuildStatus::Producing, SearchRebuildStatus::Running], SearchRebuildStatus::Aborted, $this->clock->now(), 'Aborted.')) {
+            return AbortOutcome::refused(\sprintf('The run %s moved on meanwhile (to its finalization); nothing was aborted.', $run->id));
+        }
+
+        $report = $this->switch->discard($run->targetIndex, RebuildReport::failed('Aborted.'));
+
+        return AbortOutcome::aborted($run->id, $run->targetIndex, $report->warnings);
+    }
+
+    /**
+     * After a restore of the database from a backup (no worker runs, the queues were purged): the run the backup holds
+     * is aborted at whatever stage it was, its messages left in the database do nothing any more (a batch and the
+     * finalization act only on a run that is not final), and its new index is deleted unless the alias points to it.
+     *
+     * @return AbortOutcome|null null when no run is active
+     */
+    public function abortAfterRestore(): ?AbortOutcome
+    {
+        $run = $this->runs->active(self::DOCUMENT_TYPE);
+        if (null === $run) {
+            return null;
+        }
+        $failure = 'Aborted after a restore of the database from a backup.';
+        if (!$this->runs->move($run->id, SearchRebuildStatus::active(), SearchRebuildStatus::Aborted, $this->clock->now(), $failure)) {
+            return AbortOutcome::refused(\sprintf('The run %s ended meanwhile; nothing was aborted.', $run->id));
+        }
+        $report = $this->switch->discard($run->targetIndex, RebuildReport::failed($failure));
+
+        return AbortOutcome::aborted($run->id, $run->targetIndex, $report->warnings);
+    }
+
+    /**
+     * Sends the finalization of the active run again from its saved stage, when the run is in its finalization (its
+     * message lost, e.g. removed from failed).
+     *
+     * @return SearchRebuildRun|null the run whose finalization was sent; null when no run is in its finalization
+     */
+    public function resume(): ?SearchRebuildRun
+    {
+        $run = $this->runs->active(self::DOCUMENT_TYPE);
+        if (null === $run || !$run->status->finalizes() || !$this->runs->resumeFinalization($run->id, $this->clock->now())) {
+            return null;
+        }
+
+        return $run;
+    }
+
+    private function produce(string $runId, string $target, int $batchSize): AsyncRebuildStart
+    {
+        $batch = 0;
+        $afterId = null;
+        $beatAt = $this->clock->now()->getTimestamp();
+        try {
+            while ([] !== ($ids = $this->source->idsAfter($afterId, $batchSize))) {
+                $this->runs->registerBatch($runId, $batch, $ids);
+                $this->batches->send($runId, $batch, $ids);
+                ++$batch;
+                $afterId = $ids[array_key_last($ids)];
+                $now = $this->clock->now();
+                if (0 === $batch % self::BEAT_EVERY_BATCHES || $now->getTimestamp() - $beatAt >= self::BEAT_EVERY_SECONDS) {
+                    if (!$this->runs->beat($runId, $now)) {
+                        return AsyncRebuildStart::failed(\sprintf('The run %s was aborted while its batches were sent.', $runId), $runId);
+                    }
+                    $beatAt = $now->getTimestamp();
+                }
+            }
+        } catch (\Throwable $e) {
+            $failure = \sprintf('Sending batch %d failed: %s', $batch, $e->getMessage());
+            if ($this->runs->move($runId, [SearchRebuildStatus::Producing], SearchRebuildStatus::Failed, $this->clock->now(), $failure)) {
+                $this->switch->discard($target, RebuildReport::failed($failure));
+            }
+
+            return AsyncRebuildStart::failed($failure, $runId);
+        }
+
+        if (!$this->runs->finishProduction($runId, $batch, $this->clock->now())) {
+            return AsyncRebuildStart::failed(\sprintf('The run %s was aborted while its batches were sent.', $runId), $runId);
+        }
+
+        return AsyncRebuildStart::produced($runId);
+    }
+}

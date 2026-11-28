@@ -8,7 +8,8 @@ from support import (
 )
 
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
-STATELESS = {"api", "worker", "worker-commands", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
+STATELESS = {"api", "worker", "worker-commands", "worker-indexing", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
+WORKERS = ("worker", "worker-commands", "worker-indexing")
 VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches", "backfill"}
 
 
@@ -25,6 +26,17 @@ def compose_services():
 def compose_service(service):
     text = (REPO / "infra/docker-compose.yml").read_text()
     return re.search(rf"^  {service}:(?: &[a-z-]+)?\n(.*?)(?={SERVICE_LINE}|\Z)", text, re.M | re.S).group(0)
+
+
+def messenger_transports():
+    config = (REPO / "apps/api/config/packages/messenger.yaml").read_text()
+    block = config.split("        transports:\n", 1)[1].split("        routing:", 1)[0]
+    return set(re.findall(r"^            ([a-z_]+):\n", block, re.M))
+
+
+def consumed_transports(commands):
+    """The transports (with repetitions) the command lines of `messenger:consume` name."""
+    return [word for command in commands for word in command[3:] if not word.startswith("--")]
 
 
 def compose_images():
@@ -44,7 +56,7 @@ class WorkloadsTest(unittest.TestCase):
 
     def test_services_exist_for_the_compose_names(self):
         services = {s["metadata"]["name"] for s in of_kind("ci", "Service")}
-        self.assertEqual(set(), (STATEFUL | STATELESS) - {"worker", "worker-commands"} - services)
+        self.assertEqual(set(), (STATEFUL | STATELESS) - set(WORKERS) - services)
 
     def test_stateful_services_are_statefulsets_with_local_path_volumes(self):
         found = by_logical("prod", "StatefulSet")
@@ -133,7 +145,7 @@ class WorkloadsTest(unittest.TestCase):
         self.assertNotIn("plugins", volumes)
 
     def test_application_images_use_the_revision_and_the_digest(self):
-        for name in ("api", "worker", "worker-commands", "store", "admin"):
+        for name in ("api", "worker", "worker-commands", "worker-indexing", "store", "admin"):
             app = "api" if name.startswith("worker") else name
             image = containers(by_logical("prod", "Deployment")[name])[0]["image"]
             self.assertEqual(f"ghcr.io/piotrp321/shop/{app}:{REVISION}@{DIGESTS[app]}", image)
@@ -160,7 +172,7 @@ class WorkloadsTest(unittest.TestCase):
 
     def test_worker_consumes_the_transports_of_compose(self):
         """Each worker runs the command line of its compose service, in the profiles prod and ci, and its probe waits for it."""
-        for name in ("worker", "worker-commands"):
+        for name in WORKERS:
             compose = json.loads(re.search(r"^    command: (\[.*\])$", compose_service(name), re.M).group(1))
             container = containers(by_logical("prod", "Deployment")[name])[0]
             self.assertEqual(["php", *compose], container["command"], name)
@@ -171,19 +183,46 @@ class WorkloadsTest(unittest.TestCase):
             # The healthcheck of compose waits for the same line.
             self.assertIn(f"grep -q '^php {' '.join(compose)}'", compose_service(name), name)
 
-    def test_the_two_workers_consume_every_transport_but_failed(self):
-        """A transport of messenger.yaml that no worker consumes would never be handled: the test fails for it."""
-        config = (REPO / "apps/api/config/packages/messenger.yaml").read_text()
-        block = config.split("        transports:\n", 1)[1].split("        routing:", 1)[0]
-        transports = set(re.findall(r"^            ([a-z_]+):\n", block, re.M))
-        self.assertLessEqual({"outbox", "events", "scheduled", "payment_simulator", "promotions", "jobs", "failed"}, transports)
+    def test_the_workers_consume_every_transport_but_failed(self):
+        """A transport of messenger.yaml that no worker consumes would never be handled: the test fails for it, in the chart and in compose."""
+        transports = messenger_transports()
+        self.assertLessEqual(
+            {"outbox", "events", "scheduled", "payment_simulator", "promotions", "jobs", "indexing", "indexing_finalize", "failed"}, transports
+        )
         for case in ("prod", "ci"):
-            consumed = []
-            for name in ("worker", "worker-commands"):
-                command = containers(by_logical(case, "Deployment")[name])[0]["command"]
-                self.assertEqual(["php", "bin/console", "messenger:consume"], command[:3], name)
-                consumed += [word for word in command[3:] if not word.startswith("--")]
+            commands = [containers(by_logical(case, "Deployment")[name])[0]["command"] for name in WORKERS]
+            for command in commands:
+                self.assertEqual(["php", "bin/console", "messenger:consume"], command[:3], case)
+            consumed = consumed_transports(commands)
+            self.assertEqual(set(), transports - {"failed"} - set(consumed), case)
             self.assertEqual(sorted(transports - {"failed"}), sorted(consumed), case)
+        # compose: the same transports, each by one worker.
+        compose = [["php", *json.loads(re.search(r"^    command: (\[.*\])$", compose_service(name), re.M).group(1))] for name in WORKERS]
+        for command in compose:
+            self.assertEqual(["php", "bin/console", "messenger:consume"], command[:3])
+        self.assertEqual(sorted(transports - {"failed"}), sorted(consumed_transports(compose)))
+
+    def test_a_transport_that_no_worker_consumes_is_found(self):
+        """The negative case of the test above: the helper names a transport without a consumer, and a transport two workers consume twice."""
+        commands = [["php", "bin/console", "messenger:consume", "outbox", "events", "--time-limit=86400"]]
+        self.assertEqual({"orphan"}, {"outbox", "events", "orphan"} - set(consumed_transports(commands)))
+        twice = commands + [["php", "bin/console", "messenger:consume", "events", "--time-limit=86400"]]
+        self.assertEqual(["events", "events", "outbox"], sorted(consumed_transports(twice)))
+
+    def test_the_indexing_worker_takes_the_finalization_first_and_the_commands_worker_leaves_indexing_alone(self):
+        for case in ("prod", "ci"):
+            deployments = by_logical(case, "Deployment")
+            indexing = deployments["worker-indexing"]
+            words = [w for w in containers(indexing)[0]["command"][3:] if not w.startswith("--")]
+            # The Postgres transport first: after every message the worker starts from the first transport, so a finalization
+            # never waits behind the batches of the queue.
+            self.assertEqual(["indexing_finalize", "indexing"], words, case)
+            commands = [w for w in containers(deployments["worker-commands"])[0]["command"][3:] if not w.startswith("--")]
+            self.assertEqual(["payment_simulator", "scheduled", "promotions", "jobs"], commands, case)
+            events = [w for w in containers(deployments["worker"])[0]["command"][3:] if not w.startswith("--")]
+            self.assertEqual(["outbox", "events"], events, case)
+            # It needs the broker, like the events worker.
+            self.assertEqual({"migrate", "rabbitmq"}, set(waits_for(indexing)), case)
 
     def test_the_events_worker_relays_the_outbox_first_and_waits_for_rabbitmq_and_the_commands_worker_does_not(self):
         for case in ("prod", "ci"):
@@ -198,9 +237,9 @@ class WorkloadsTest(unittest.TestCase):
             for container in pod_spec(deployments["worker-commands"]).get("initContainers", []):
                 self.assertNotIn("5672", " ".join(container.get("command", []) + container.get("args", [])), f"{case} {container['name']}")
 
-    def test_both_workers_stop_by_themselves_after_a_day_or_at_192_megabytes(self):
+    def test_all_workers_stop_by_themselves_after_a_day_or_at_192_megabytes(self):
         for case in ("prod", "ci"):
-            for name in ("worker", "worker-commands"):
+            for name in WORKERS:
                 command = containers(by_logical(case, "Deployment")[name])[0]["command"]
                 self.assertIn("--time-limit=86400", command, f"{case} {name}")
                 self.assertIn("--memory-limit=192M", command, f"{case} {name}")
@@ -246,19 +285,21 @@ class WorkloadsTest(unittest.TestCase):
 
     def test_prod_fits_the_server(self):
         """8 vCore and 24 GB: CPU requests up to 7 vCPU, memory limits up to 20 GB (steady state), the shop and the application
-        monitoring (Alloy, its operator, kube-state-metrics, node-exporter) together."""
-        cpu = memory = 0
-        for workload in of_kind("prod", "Deployment", "StatefulSet"):
-            for container in containers(workload):
-                resources = container["resources"]
-                cpu += quantity_cpu(resources["requests"]["cpu"]) * workload["spec"]["replicas"]
-                memory += quantity_bytes(resources["limits"]["memory"]) * workload["spec"]["replicas"]
-        self.assertGreater(memory, 4 * 2**30)
-        monitoring_cpu, monitoring_memory = monitoring_budget()
-        self.assertGreater(monitoring_cpu, 0)
-        self.assertGreater(monitoring_memory, 0)
-        self.assertLessEqual(cpu + monitoring_cpu, 7, f"shop {cpu} + monitoring {monitoring_cpu} vCPU of requests")
-        self.assertLessEqual(memory + monitoring_memory, 20 * 2**30, f"shop {memory / 2**30} + monitoring {monitoring_memory / 2**30} GiB of limits")
+        monitoring (Alloy, its operator, kube-state-metrics, node-exporter) together; also with the four replicas of worker-indexing
+        that the criterion of the search rebuild measures (docs/features/async-indexing/spec.md, criterion 12)."""
+        for case in ("prod", "prod-indexing"):
+            cpu = memory = 0
+            for workload in of_kind(case, "Deployment", "StatefulSet"):
+                for container in containers(workload):
+                    resources = container["resources"]
+                    cpu += quantity_cpu(resources["requests"]["cpu"]) * workload["spec"]["replicas"]
+                    memory += quantity_bytes(resources["limits"]["memory"]) * workload["spec"]["replicas"]
+            self.assertGreater(memory, 4 * 2**30)
+            monitoring_cpu, monitoring_memory = monitoring_budget()
+            self.assertGreater(monitoring_cpu, 0)
+            self.assertGreater(monitoring_memory, 0)
+            self.assertLessEqual(cpu + monitoring_cpu, 7, f"{case}: shop {cpu} + monitoring {monitoring_cpu} vCPU of requests")
+            self.assertLessEqual(memory + monitoring_memory, 20 * 2**30, f"{case}: shop {memory / 2**30} + monitoring {monitoring_memory / 2**30} GiB of limits")
 
     def test_ci_profile_is_light(self):
         es = env_of(containers(by_logical("ci", "StatefulSet")["elasticsearch"])[0])

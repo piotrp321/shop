@@ -20,7 +20,7 @@ final readonly class DashboardMessagesResponse
         #[OA\Property(ref: new Model(type: DashboardFailedMessagesResponse::class))]
         public DashboardFailedMessagesResponse $failed,
         #[OA\Property(
-            description: 'Always in this order: outbox, scheduled, payment_simulator, promotions, jobs.',
+            description: 'Always in this order: outbox, scheduled, payment_simulator, promotions, jobs, indexing_finalize.',
             type: 'array',
             items: new OA\Items(ref: new Model(type: DashboardTransportResponse::class)),
         )]

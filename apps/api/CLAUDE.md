@@ -142,6 +142,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   produktów, a zapis produktu bierze `FOR KEY SHARE` na wierszach swoich kategorii przed zapisem
   (`CategoryRepository::lockForAssignment`), więc nigdy nie kończy się 500 z klucza obcego
   (`docs/features/admin-features/spec.md`, sekcja 4, P9, P10).
+- Catalog, przebiegi przebudowy indeksu (`catalog_search_rebuild_run`, `catalog_search_rebuild_batch`): zapis i odczyt przez
+  DBAL (`DbalSearchRebuildRuns`, rekordy tylko definiują schemat). Każde przejście statusu to `UPDATE … WHERE status IN
+  (:widziane)`, rozliczenie paczki `UPDATE` przebiegu i warunkowy `UPDATE` wiersza paczki zarejestrowanego przez producenta w jednej transakcji, a wiadomość
+  finalizacji idzie w tej transakcji, więc współbieżne handlery nie przełączą aliasu dwa razy ani nie nadpiszą statusu
+  końcowego (`docs/features/async-indexing/spec.md`).
 - Ordering, sprzedaż godzinowa (`ordering_sales_hour`) i klienci panelu (`ordering_customer`): zapis i odczyt przez DBAL
   (rekordy tylko definiują schemat). Dopisanie przyrostowe to jeden `INSERT … ON CONFLICT … DO UPDATE` w transakcji
   `MarkOrderPaid` albo `PlaceOrder`, więc wycofana transakcja wycofuje też licznik. Godzinę i kubełek liczą wyłącznie
@@ -399,13 +404,19 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
 - Transporty Messengera na Doctrine (`scheduled`, `payment_simulator`, `promotions`, `jobs`; ta sama tabela
   `messenger_messages` i to samo połączenie co `outbox`) trzymają wiadomości zapisane w transakcji wywołującego, więc
   przestój workera tylko opóźnia ich obsługę. W `test` są w pamięci (jak `outbox`), w `test_messaging` prawdziwe.
-  Dwa workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
+  Trzy workery z jednego obrazu (compose i chart, komenda i healthcheck albo sonda z tej samej listy): `worker` konsumuje
   `outbox events`, `worker-commands` `payment_simulator scheduled promotions jobs` po kolei, bez RabbitMQ (webhooki
   symulatora przed anulowaniami), więc długa kolejka wcześniejszego transportu opóźnia następne w tym samym workerze
-  (`docs/features/async-reliability/spec.md`, W1). Każdy transport poza `failed` konsumuje któryś z workerów (test
+  (`docs/features/async-reliability/spec.md`, W1), a `worker-indexing` `indexing_finalize indexing` (pełna przebudowa
+  indeksu, skalowana replikami; zdarzenia sklepu na nią nie czekają). Każdy transport poza `failed` konsumuje któryś z workerów (test
   chartu). Granice promocji mają osobną
   kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
   (`infra/k8s/CLAUDE.md`).
+- Handler, który czeka na Elasticsearch sekundy albo minuty (paczka i finalizacja przebudowy), działa na `indexing.bus`
+  bez `doctrine_transaction`; jego zapisy do bazy to krótkie jawne transakcje DBAL po operacji na indeksie. Pełna przebudowa
+  asynchroniczna to **wachlarz paczek** (`docs/features/async-indexing/spec.md`), nie łańcuch: producent rozsyła wszystkie
+  paczki naraz, każda jest liczona raz (`INSERT … ON CONFLICT` i warunkowy `UPDATE` przebiegu), a komplet przełącza przebieg
+  do finalizacji w tej samej transakcji, w której zapisuje jej wiadomość.
 - **Wzorzec łańcucha partii** (transport `jobs`) to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
   workera (komendy uruchamiane świadomie, jak `catalog:reindex`, `cart:purge-expired` i `pricing:reconcile-tax`, zostają
   przy swoich wzorcach): odbiorca zdarzenia w jednej transakcji `command.bus` zakłada wiersz przebiegu (`next_batch` 0,

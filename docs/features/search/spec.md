@@ -202,7 +202,9 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   transakcji na kluczu blokady przebudowy (`pg_try_advisory_xact_lock_shared`), a przebudowa i `setup` biorą ten klucz
   na wyłączność (`pg_try_advisory_lock`), więc wykluczają się bez okna wyścigu: tworzenie trwające w chwili startu
   przebudowy kończy się przed nim (przebudowa albo `setup` odmawia jak przy innej przebudowie i ponawia się je), a
-  rozpoczęte w trakcie przebudowy jest odrzucane. Zmiana, publikacja i wycofanie produktu nie dodają dokumentu, więc
+  rozpoczęte w trakcie przebudowy jest odrzucane. Przebudowa asynchroniczna trzyma blokadę tylko przy starcie, więc
+  obie metody `PostgresSearchIndexRebuildLock` odmawiają też przy aktywnym przebiegu (`catalog_search_rebuild_run`
+  bez `finished_at`), czytanym osobnym zapytaniem po wzięciu blokady. Zmiana, publikacja i wycofanie produktu nie dodają dokumentu, więc
   zostają dozwolone. Tworzenie produktów w trakcie przebudowy bez odmowy: #979.
 - Zapis pojedynczy w chwili przepięcia aliasu. Przepięcie (`_aliases`) jest atomowe, a `_bulk` rozwiązuje aliasy
   wszystkich pozycji w jednym stanie klastra, przed zapisem na shardach. Źródło (Elasticsearch 9.4.0, tag `v9.4.0`):
@@ -486,6 +488,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   dla „kurtki” i „kurtka” (`ProductIndexDefinitionTest`).
 - `make seed`: `catalog:seed-demo`, `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`,
   `catalog:reindex`, `storefront:cache:purge-all`.
+- Przebudowa asynchroniczna (`catalog:reindex --async [--wait] [--batch-size N]`, `catalog:reindex:abort [--force]`):
+  paczki na transporcie AMQP `indexing`, finalizacja na transporcie Doctrine `indexing_finalize`, obie obsługuje
+  `worker-indexing`; rozmiar paczki `SEARCH_INDEX_BATCH_SIZE` (domyślnie 500, `1..5000`) dla obu trybów. Działanie,
+  przebieg i błędy: `docs/features/async-indexing/spec.md`. `make seed` zostaje synchroniczny; `bin/generate-demo`
+  i `make -C infra/k8s reindex` wołają `--async --wait`.
 - Liczba shardów nie jest konfiguracją (M3): każdy nowy indeks ma jeden, z stałej `ProductIndexDefinition::SHARDS`. Compose
   i chart nie mają zmiennej ani wartości na shardy (schemat chartu odrzuca `elasticsearch.shards`). Kontener z kodem API, który nadal ma `SEARCH_SHARDS` (z compose, `.env`,
   chartu albo ustawione ręcznie) w wartości innej niż `1` (2, 0, ujemna, tekst, ze spacją albo zerem na początku), odmawia
@@ -517,7 +524,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   `open`, albo gdy nie da się odczytać indeksu aliasu `products`; wypisuje bieżący indeks (z jego shardami) i jeden shard nowego
   i pyta o słowo `tak`. Po nim bierze blokadę `demo-data-lock` na czas przebiegu (`generate` i `open` wtedy
   odmawiają), sprawdza Joby jeszcze raz (Job, który wystartował w czasie oczekiwania na odpowiedź, to odmowa), tworzy
-  Job z zawieszonego CronJoba `reindex` (`catalog:reindex` z obrazem, środowiskiem i sekretami wdrożonej rewizji),
+  Job z zawieszonego CronJoba `reindex` (`catalog:reindex --async --wait` z obrazem, środowiskiem i sekretami wdrożonej
+  rewizji; paczki obsługuje `worker-indexing`),
   czeka na niego i sprawdza, że alias wskazuje nowy indeks o jednym shardzie. Sklep działa w trakcie
   na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
   się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po

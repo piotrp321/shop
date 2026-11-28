@@ -1,0 +1,84 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Catalog\Application\Search;
+
+use App\Catalog\Application\Port\Clock;
+use App\Catalog\Application\Port\ProductSearchSource;
+use App\Catalog\Application\Port\SearchIndexMaintenance;
+use App\Catalog\Application\Port\SearchRebuildRuns;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+
+/**
+ * One batch of an asynchronous rebuild run (docs/features/async-indexing/spec.md, "Paczki a stan przebiegu"), always in
+ * this order: (1) the run is read without a lock and a run that no longer takes batches ends here, without a write, and
+ * so does a batch the producer did not register with these ids (refused, {@see ForeignRebuildBatch});
+ * (2) the version is taken, the products are read and the batch is written to the target index of the run by
+ * {@see ProductBatchIndexer}, outside any transaction; (3) the batch is counted once, conditionally on the status and
+ * only as the producer registered it (its number and its ids), so a batch whose run was aborted, failed or is finalizing
+ * meanwhile counts nothing and a batch the producer never sent is refused. A repeated delivery writes the same products
+ * again with a newer version and counts nothing. When the run was aborted or failed during the write, the new index is
+ * deleted once more: a bulk write creates the index the abort had just deleted.
+ */
+final readonly class ProductRebuildBatch
+{
+    private SearchIndexSwitch $switch;
+
+    public function __construct(
+        private SearchRebuildRuns $runs,
+        private ProductSearchSource $source,
+        private ProductBatchIndexer $batches,
+        SearchIndexMaintenance $maintenance,
+        private Clock $clock,
+        private LoggerInterface $logger = new NullLogger(),
+    ) {
+        $this->switch = new SearchIndexSwitch($maintenance);
+    }
+
+    /**
+     * @param list<string> $ids
+     *
+     * @throws \InvalidArgumentException          when an id is not a UUID, or the batch is not one the run sent
+     *                                            ({@see ForeignRebuildBatch})
+     * @throws SearchUnavailable|SearchIndexError from the write; nothing was counted
+     * @throws OfferFactsUnavailable              nothing was written or counted
+     */
+    public function index(string $runId, int $batch, array $ids): void
+    {
+        $run = $this->runs->get($runId);
+        if (null === $run || !$run->status->takesBatches()) {
+            return;
+        }
+
+        // Before the write (the count checks it again in its transaction): a batch the producer never sent writes nothing.
+        if (!$this->runs->isRegisteredBatch($runId, $batch, $ids)) {
+            throw new ForeignRebuildBatch(\sprintf('The run %s did not send batch %d with these ids; nothing is written.', $runId, $batch));
+        }
+        $version = ProductIndexing::version($this->clock->now());
+        $snapshots = $this->source->findMany($ids);
+        $written = $this->batches->write($run->targetIndex, $snapshots, $version);
+
+        $now = $this->clock->now();
+        $counted = $this->runs->countBatch($runId, $batch, $ids, $written, $now);
+        if (null === $counted) {
+            if (true === $this->runs->get($runId)?->endedBeforeFinalization()) {
+                foreach ($this->switch->discard($run->targetIndex, RebuildReport::failed('The run ended during the write of a batch.'))->warnings as $warning) {
+                    $this->logger->warning($warning, ['run' => $runId]);
+                }
+            }
+
+            return;
+        }
+        $elapsed = $now->getTimestamp() - $counted->startedAt->getTimestamp();
+        $this->logger->info('Search index rebuild progress.', [
+            'run' => $runId,
+            'index' => $counted->targetIndex,
+            'batches' => $counted->doneBatches,
+            'total_batches' => $counted->totalBatches,
+            'documents' => $counted->documents,
+            'documents_per_second' => $elapsed > 0 ? round($counted->documents / $elapsed, 1) : null,
+        ]);
+    }
+}

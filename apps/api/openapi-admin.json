@@ -7166,7 +7166,7 @@
                 ],
                 "properties": {
                     "name": {
-                        "description": "The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.",
+                        "description": "The name of the transport: outbox, scheduled, payment_simulator, promotions, jobs or indexing_finalize.",
                         "type": "string",
                         "example": "outbox"
                     },
@@ -7211,7 +7211,7 @@
                         "$ref": "#/components/schemas/DashboardFailedMessagesResponse"
                     },
                     "transports": {
-                        "description": "Always in this order: outbox, scheduled, payment_simulator, promotions, jobs.",
+                        "description": "Always in this order: outbox, scheduled, payment_simulator, promotions, jobs, indexing_finalize.",
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/DashboardTransportResponse"

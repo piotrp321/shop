@@ -47,7 +47,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   ponowione Joby `migrate` i `keycloak-config`. Przed odtworzeniem powstaje snapshot `pre-restore` stanu bieżącego (jego
   błąd zatrzymuje odtworzenie, chyba że `PRE_RESTORE=skip`), a na czas odtworzenia wyłączona jest automatyczna
   synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check` i `order-expiry` (potem odtworzenie czeka na Job, który zdążył wystartować po
-  pierwszym sprawdzeniu, bo działałby na tym samym wolumenie `backup-work`), a `api`, `worker`, `worker-commands`, `store` i `keycloak`
+  pierwszym sprawdzeniu, bo działałby na tym samym wolumenie `backup-work`), a `api`, `worker`, `worker-commands`, `worker-indexing`, `store` i `keycloak`
   zeskalowane do zera. Odtworzenie danych: `restic restore` na wolumen `backup-work` (`--delete`: lustro
   obiektów staje się stanem snapshotu), `DROP DATABASE … WITH (FORCE)` i `CREATE DATABASE` z właścicielami jak w
   `10-create-databases.sh`, `pg_restore --role=<właściciel>`, `rclone sync` do bucketu (obiekty spoza snapshotu znikają),
@@ -131,7 +131,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   decyzji: znalezisko to nowa reguła albo wyłączenie źródła. Test w `check` uruchamia prawdziwy Alloy (przypięty tagiem i
   digestem) na korpusie próbek logów każdego źródła z podłożonymi sekretami i danymi klientów.
 - **Błędy i trace'y aplikacji: Sentry SaaS (darmowy plan), organizacja w regionie UE (`*.ingest.de.sentry.io`), trzy projekty:
-  `api` (api, oba workery i Joby), `store` i `admin`.** Uzupełnia logi i metryki z Grafana Cloud: tamte mówią, co robi klaster,
+  `api` (api, workery i Joby), `store` i `admin`.** Uzupełnia logi i metryki z Grafana Cloud: tamte mówią, co robi klaster,
   Sentry, który kod się wywrócił i gdzie żądanie spędziło czas. Hostowanie własnego Sentry odpada z tych samych powodów co
   własny Prometheus. SDK (`sentry-symfony`, `@sentry/nextjs`, `@sentry/vue`) włączają się tylko przy niepustym DSN, a ten
   podaje chart jako zmienną środowiska kontenera (`sentry.dsn.<aplikacja>`), więc jeden obraz działa z Sentry i bez niego,

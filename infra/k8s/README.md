@@ -339,8 +339,12 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   więcej niż jeden shard (np. zbudowany przed modelem z jednym shardem; `setup` w Jobie `migrate` ostrzega o nim) i gdy indeks
   rozjechał się z bazą. Nowy indeks zawsze ma jeden shard (stała w kodzie API, bez wartości w chartcie). Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
   stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` (z jego shardami) i jeden shard nowego,
-  pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
-  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut, 10 mln ok. 7,3 h (limit Joba 12 h). Cel trzyma do końca blokadę
+  sprawdza, że Deployment `worker-indexing` ma gotową replikę (bez niej paczki czekałyby w kolejce: odmowa bez zmian), pyta o `tak`,
+  uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` (`catalog:reindex --async --wait`: Job startuje przebieg i czeka
+  na jego koniec, a paczki zapisują równolegle repliki `worker-indexing`, ich liczbę ustawia `workers.indexing.replicas`)
+  i sprawdza indeks po nim. Sklep działa w trakcie na starym indeksie. Czas zależy od liczby replik. Pomiary na serwerze
+  pochodzą sprzed przebudowy asynchronicznej (jedna pętla w jednym procesie): milion produktów ok. 17 minut, 10 mln ok. 7,3 h; tempa
+  z replikami jeszcze nie zmierzono (kryterium i pomiar: `docs/features/async-indexing/spec.md`, 12). Limit Joba to 12 h. Cel trzyma do końca blokadę
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
   Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
   a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
@@ -348,6 +352,16 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   są powodem odmowy), blokada `demo-data-lock` innego przebiegu albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
   komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
   dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba.
+  Job kończy się kodem 1, gdy alias zostaje na starym indeksie (także przy braku postępu przebiegu, np. gdy `worker-indexing` stanął w trakcie,
+  i przy aktywnym przebiegu innego procesu), i kodem 2, gdy stan aliasu jest nieznany (cel pokazuje wtedy, na którym indeksie alias jest).
+  Przerwanie trwającego przebiegu: **użytkownik** (agent nie ma na to celu), na serwerze
+  `sudo k3s kubectl -n shop exec deploy/worker-indexing -- php bin/console catalog:reindex:abort` (przebieg żywy wymaga `--force`);
+  alias zostaje na starym indeksie, a Job `reindex-*` kończy się błędem. Przebieg, który stoi w etapie finalizacji, bo jego
+  wiadomość zginęła (usunięta z `failed`): **użytkownik**, na serwerze
+  `sudo k3s kubectl -n shop exec deploy/worker-indexing -- php bin/console catalog:reindex:resume` (wysyła finalizację
+  ponownie od zapisanego etapu; idempotentne). Przebieg aktywny w odtwarzanej kopii bazy `make restore` przerywa sam
+  (`catalog:reindex:abort --restored` przed przebudową indeksu). Repliki `worker-indexing` konsumują kolejkę `indexing`
+  w RabbitMQ i transport `indexing_finalize` w Postgresie (finalizacja przebiegu jedną wiadomością, pierwsza w kolejności).
   Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
   nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Dodawanie
   produktów w panelu jest w jej trakcie wstrzymane (409 `search-rebuild-running`, komunikat w formularzu, szkic zostaje),
@@ -397,7 +411,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   zawisł albo nie nadąża). Log nieudanego Joba `queue-check` ma sekcja „logs of the failed jobs” wyniku
   `make -C infra/k8s status HOST=…` (bez treści wiadomości); ekran „Stan systemu” w panelu pokazuje, które kolejki stoją.
   1. **agent** – przegląd, tylko odczyt: `make -C infra/k8s failed HOST=…` (statystyki i do 200 najstarszych wiadomości: ID,
-     klasa, błąd, data) i `status` (pody `worker` i `worker-commands`, restarty, zdarzenia). Stoi kolejka bez wiadomości
+     klasa, błąd, data) i `status` (pody `worker`, `worker-commands` i `worker-indexing`, restarty, zdarzenia). Stoi kolejka bez wiadomości
      w `failed`: worker nie działa (`WorkloadNotReady`, log poda w Grafana Cloud), a nie wiadomość.
   2. **agent** – ustala przyczynę z błędu przy wiadomości (`failed` pokazuje go przy każdej) i logu `worker` w Grafana Cloud.
      Poprawka w kodzie albo konfiguracji idzie normalnym PR i wdrożeniem (**zgoda użytkownika**); ponawianie przed nią tylko
@@ -508,7 +522,7 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
   kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop` (przejdzie też, gdy jej już nie ma),
   wstrzymanie CronJobów (`cart-purge-expired`, `backup`, `rate-limit-check`, `queue-check`, `order-expiry`), ponowne sprawdzenie Jobów, także Jobów trzech ostatnich (nocna kopia mogła wystartować po pierwszym sprawdzeniu: `restore` czeka
   na nią do 2 godzin, `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, a potem kończy się błędem z działającymi aplikacjami), `api`, `worker`,
-  `worker-commands`, `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
+  `worker-commands`, `worker-indexing`, `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
   włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
   `pre-restore`. Sprawdzenie: `make -C infra/k8s status HOST=…` (aplikacje `Synced`/`Healthy`, pody `Running`), sklep i
   panel w przeglądarce (**użytkownik**: logowanie do panelu). Wynik (czas, snapshot, `pre-restore`) w komentarzu do #178.
@@ -627,7 +641,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
 (`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
 
 1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
-   `api` (PHP/Symfony; obejmuje api, oba workery i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   `api` (PHP/Symfony; obejmuje api, wszystkie workery i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
    i podaje go agentowi (DSN nie jest tajny).
 2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
    projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
@@ -645,7 +659,7 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
    nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
 5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
-   kontenery `api`, `worker`, `worker-commands`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   kontenery `api`, `worker`, `worker-commands`, `worker-indexing`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
    rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
    oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
 6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,
@@ -754,7 +768,7 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
 3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, bez blokady `demo-data-lock`, Job
    `demo-data-run` (poprzedniego przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty
-   i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden
+   i StatefulSety gotowe (generator potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, `worker-indexing`, Varnisha i sklepu), żaden
    Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
    60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli

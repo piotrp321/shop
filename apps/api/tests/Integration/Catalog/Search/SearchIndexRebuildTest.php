@@ -8,6 +8,9 @@ use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchIndexRebuildLock;
+use App\Catalog\Application\Port\SearchRebuildBatches;
+use App\Catalog\Application\Port\SearchRebuildRuns;
+use App\Catalog\Application\Search\AsyncProductSearchIndexRebuild;
 use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
 use App\Catalog\Application\Search\ProductIndexing;
@@ -465,7 +468,18 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $queryBus = self::getContainer()->get('query.bus');
         self::assertInstanceOf(MessageBusInterface::class, $queryBus);
         $application = new Application();
-        $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()), 500));
+        $runs = self::getContainer()->get(SearchRebuildRuns::class);
+        self::assertInstanceOf(SearchRebuildRuns::class, $runs);
+        $batches = self::getContainer()->get(SearchRebuildBatches::class);
+        self::assertInstanceOf(SearchRebuildBatches::class, $batches);
+        $application->addCommand(new ReindexCommand(
+            new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()),
+            new AsyncProductSearchIndexRebuild($lock, $maintenance, $runs, $source, $batches, new SystemClock()),
+            $runs,
+            $maintenance,
+            new SystemClock(),
+            500,
+        ));
 
         return new CommandTester($application->find('catalog:reindex'));
     }

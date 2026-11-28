@@ -2,8 +2,8 @@
 docs/features/async-reliability/spec.md, W9 and the criteria 3 to 5):
 
   - RabbitMQ scaled to zero with the CronJob order-expiry suspended: an order past its deadline with its ready message is cancelled by
-    worker-commands within two minutes; the broker comes back and every workload is ready again (the pod of `worker` is deleted, as it
-    waits in a back-off);
+    worker-commands within two minutes; the broker comes back and every workload is ready again (the pods of `worker` and `worker-indexing` are deleted, as they
+    wait in a back-off);
   - a message in `failed`: a Job from the CronJob queue-check fails, a Job from order-expiry cancels the order, and after the message is
     removed a Job from queue-check succeeds.
 
@@ -135,7 +135,7 @@ class Phase(unittest.TestCase):
         cancelled = self.index("SELECT status FROM ordering_order", ready)
         up = self.index("scale statefulset/rabbitmq --replicas=1", cancelled)
         rollout = self.index("rollout status statefulset/rabbitmq", up)
-        worker = self.index("delete pod -l app.kubernetes.io/name=worker", rollout)
+        worker = self.index("delete pod -l app.kubernetes.io/name in (worker,worker-indexing)", rollout)
         settled = self.index("wait_ready", worker)
         failed_message = self.index("SET queue_name = 'failed'", settled)
         failed_job = self.index("create job queue-check-smoke-failed --from=cronjob/queue-check", failed_message)

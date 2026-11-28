@@ -81,7 +81,7 @@ final class GenerateDemoScriptTest extends TestCase
         sort($orderWorkers);
         self::assertSame(['demo-data:orders '.$common.' --worker=0 --workers=2', 'demo-data:orders '.$common.' --worker=1 --workers=2'], $orderWorkers);
         self::assertSame(
-            ['demo-data:stock '.$common, 'demo-data:order-numbers '.$common, 'ordering:read-models:rebuild', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
+            ['demo-data:stock '.$common, 'demo-data:order-numbers '.$common, 'ordering:read-models:rebuild', 'demo-data:analyze', 'catalog:reindex --async --wait', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
             \array_slice($calls, 12),
         );
     }

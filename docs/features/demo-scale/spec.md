@@ -79,8 +79,10 @@ Przyjęte przez sesję; każde sprawdzone w kodzie albo eksperymentem na jednora
   `local-path`). Na serwerze wolumeny i warstwy kontenerów są na jednym systemie plików `/`.
 - **Z4. Generator potrzebuje działającego stosu.** `bin/seed-demo` czeka na indeksowanie przez `worker`, krok kont
   woła Keycloaka, a `storefront:cache:purge-all` kończy się błędem, gdy Varnish albo sklep nie odpowiada
-  (`PurgeAllStorefrontCacheCommand`). Dlatego wzorzec `restore` (skalowanie `api`, `worker`, `store`, `keycloak` do
-  zera) tu nie pasuje.
+  (`PurgeAllStorefrontCacheCommand`). Krok indeksowania generatora (`catalog:reindex --async --wait`,
+  `docs/features/async-indexing/spec.md`) zapisuje paczki przez `worker-indexing`: bez jego gotowej repliki `--wait` kończy się
+  błędem po braku postępu, a krok i Job razem z nim. Dlatego wzorzec `restore` (skalowanie `api`, `worker`,
+  `worker-indexing`, `store`, `keycloak` do zera) tu nie pasuje.
 - **Z5. Przebudowa indeksu sprząta po przerwanej.** `catalog:reindex` usuwa indeksy bez aliasu przed budową nowego
   (`ElasticsearchSearchIndexMaintenance`), więc przerwany przebieg nie zostawia trwale zajętego miejsca.
 - **Z6. `initialize` nie rusza wygenerowanych danych.** Przy niepustych produktach, cenach i stanach kończy się bez
@@ -180,7 +182,7 @@ Przebieg:
      profil wymaga zmiany wartości i wdrożenia;
    - CronJob `demo-data` istnieje i jest zawieszony; żaden Job przestrzeni nie jest aktywny, poza Jobami CronJobów
      krótkich sprawdzeń („Stan sklepu i blokada”); każdy Deployment i StatefulSet przestrzeni jest gotowy (generator
-     kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, Varnish albo sklep nie odpowiada);
+     kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, `worker-indexing`, Varnish albo sklep nie odpowiada);
    - gdy profil nie jest `seed`, a CronJob ma sekret puli zdjęć (`photosSecretName`): plik puli zdjęć
      (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`) ma cztery zmienne odczytu (brak: kod 2);
    - wolne miejsce każdego węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) da się odczytać jako liczbę
@@ -383,6 +385,7 @@ Odzyskiwanie jest ręczne (U8): `make status`, potem ponowny `generate`, powrót
 | Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job kończy się błędem i nie startuje ponownie (Z9); przy TERM skrypt zatrzymuje generator; sesje bazy generatora kończą się same także po zabiciu bez sygnału (Z11) | Dane niepełne, sklep zamknięty; ponowny `generate` albo seed; log z Grafana Cloud |
 | Restart Postgresa, Elasticsearcha albo Keycloaka w trakcie | Krok generatora kończy się błędem (przebudowa indeksu ponawia tylko błędy przejściowe), Job kończy się błędem | Jak wyżej |
 | Restart Traefika | Reguła działa dla nowych połączeń | Sklep nadal zamknięty |
+| `worker-indexing` stoi albo nie ma gotowej repliki w kroku indeksowania | `catalog:reindex --async --wait` kończy się po braku postępu kodem 1, alias zostaje na starym indeksie, krok i Job kończą się błędem | Przywrócić `worker-indexing` (`make status`), potem ponowny `generate` albo seed |
 | Restart serwera w trakcie Joba | Job kończy się błędem, jego pod i log kontenera znikają (Z10); reguła i sekret puli zdjęć zostają | Sklep zamknięty; ponowny `generate` albo seed; sekret puli usuwa `generate` przy wyjściu, a po jego zabiciu `open`; log z Grafana Cloud |
 | Restart serwera po udanym Jobie, przed otwarciem | Job `Complete`, reguła istnieje | `make open` |
 | Nieudane sprawdzenie w `open` | Sklep zamknięty, Job `Complete` | Ponowny `generate` albo seed (`open` powtarza te same sprawdzenia, więc po usunięciu przyczyny bez nowego generowania może przejść) |

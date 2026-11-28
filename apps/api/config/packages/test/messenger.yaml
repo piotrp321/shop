@@ -8,6 +8,9 @@ framework:
             payment_simulator: 'in-memory://'
             promotions: 'in-memory://'
             jobs: 'in-memory://'
+            indexing_finalize: 'in-memory://'
+            # Serialized, like `events`: the JSON serializer of the batches is exercised.
+            indexing: 'in-memory://?serialize=true'
             # Serialized, so the JSON serializer of `events` is exercised.
             events: 'in-memory://?serialize=true'
             failed: 'in-memory://'

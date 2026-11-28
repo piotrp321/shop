@@ -43,7 +43,7 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
 
         self::assertEquals(new BoundedCount(0, false), $queues->failed->count);
         self::assertNull($queues->failed->oldestAt);
-        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], array_map(static fn (TransportBacklog $transport): string => $transport->name, $queues->transports));
+        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs', 'indexing_finalize'], array_map(static fn (TransportBacklog $transport): string => $transport->name, $queues->transports));
         foreach ($queues->transports as $transport) {
             self::assertEquals(new TransportBacklog($transport->name, new BoundedCount(0, false), null), $transport);
         }
@@ -149,7 +149,7 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
 
     public function testTheRedeliveryTimeoutIsTheOneOfTheTransport(): void
     {
-        $timeouts = ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300, 'jobs' => 900];
+        $timeouts = ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300, 'jobs' => 900, 'indexing_finalize' => 3600];
         // Taken 10 minutes ago: back at a worker of `outbox` (300 s), still with one of `jobs` (900 s).
         MessengerRows::add($this->connection, 'outbox', $this->at('-1 hour'), deliveredAt: $this->at('-10 minutes'));
         MessengerRows::add($this->connection, 'jobs', $this->at('-1 hour'), deliveredAt: $this->at('-10 minutes'));
@@ -163,9 +163,9 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
     public function testATransportWithoutARedeliveryTimeoutIsRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('"jobs"');
+        $this->expectExceptionMessage('"indexing_finalize"');
 
-        $this->adapter($this->connection, ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300]);
+        $this->adapter($this->connection, ['outbox' => 300, 'scheduled' => 300, 'payment_simulator' => 300, 'promotions' => 300, 'jobs' => 300]);
     }
 
     public function testEveryQueueCountsOnlyItsOwnMessages(): void
@@ -183,6 +183,7 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
             new TransportBacklog('payment_simulator', new BoundedCount(0, false), null),
             new TransportBacklog('promotions', new BoundedCount(0, false), null),
             new TransportBacklog('jobs', new BoundedCount(1, false), 50),
+            new TransportBacklog('indexing_finalize', new BoundedCount(0, false), null),
         ], $transports);
     }
 
@@ -205,7 +206,7 @@ final class MessagingDatabaseQueuesTest extends KernelTestCase
         $this->connection->executeStatement('CREATE TEMP TABLE messenger_messages (LIKE public.messenger_messages INCLUDING ALL)');
         $this->connection->executeStatement(
             "INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at, delivered_at)
-             SELECT 'x', '{}', (ARRAY['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'])[1 + n % 5],
+             SELECT 'x', '{}', (ARRAY['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs', 'indexing_finalize'])[1 + n % 6],
                     '2026-11-20 11:00:00', timestamp '2026-11-20 11:00:00' + (n % 7000) * interval '1 second',
                     CASE WHEN n % 50 = 0 THEN timestamp '2026-11-20 11:59:00' END
              FROM generate_series(1, 100000) AS n",

@@ -36,8 +36,15 @@ serwera” i „Smoke test i check”).
   zmienia się razem z wyjątkiem w `tests/test_workloads.py` (`test_images_are_those_of_compose`), nie w `images.*`;
   obraz powtórzony w `dockerfile_inline` (`garage-init`: `dxflrs/garage` i `alpine`) musi mieć ten sam tag co `image:`
   tej usługi albo co `images.alpine`, więc w PR Dependabota sesja sprawdza oba miejsca w compose.
-- Nowy transport workera trafia do compose i chartu w tym samym PR (test
-  `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
+- Nowy transport workera trafia do compose i chartu w tym samym PR (testy `test_worker_consumes_the_transports_of_compose`
+  i `test_the_workers_consume_every_transport_but_failed` w `tests/test_workloads.py`: każdy transport z `messenger.yaml`
+  poza `failed` ma konsumenta w compose i w chartcie, a polecenie workera jest w obu takie samo).
+- `worker-indexing` (transporty `indexing_finalize indexing`, finalizacja pierwsza; `docs/features/async-indexing/spec.md`) to
+  jedyny worker, którego liczbę replik ustawia chart (`workers.indexing.replicas`, domyślnie 1; paczki pełnej przebudowy
+  idą równolegle na wszystkich replikach). Pozostałe workery mają jedną replikę. Rozmiar paczki to `search.indexBatchSize`
+  (`SEARCH_INDEX_BATCH_SIZE` każdego kontenera z kodem API). Zasoby jednej repliki to `resources.workerIndexing`; test
+  `test_prod_fits_the_server` pilnuje, że także cztery repliki mieszczą się w budżecie węzła `prod`. Zmiana
+  liczby replik na serwerze to zmiana wartości i wdrożenie, nie `kubectl scale` (Argo CD ją cofnie).
 - Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się
   nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
   wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
@@ -96,7 +103,8 @@ serwera” i „Smoke test i check”).
     operację, host i profil, a dla `medium` i `server` dopiero po wdrożeniu i weryfikacji poprawki L9 na serwerze,
     czego zgoda nie zastępuje), `open` (otwiera zamknięty sklep po sprawdzeniu danych, więc też zmienia serwer; zgoda
     nazywa operację, host i profil danych, które sklep dostaje; `generate` woła go sam) i `reindex` (przebudowuje indeks
-    wyszukiwarki przy otwartym sklepie i przepina na niego alias; zmiany zapisane w trakcie budowy trafiają też do nowego
+    wyszukiwarki przy otwartym sklepie i przepina na niego alias; Job woła `catalog:reindex --async --wait`, a paczki zapisują
+    repliki `worker-indexing`, więc cel odmawia bez gotowej repliki; zmiany zapisane w trakcie budowy trafiają też do nowego
     indeksu, więc przebudowa pod ruchem jest dozwolona, a dodawanie produktów w panelu jest w jej trakcie wstrzymane
     (409 `search-rebuild-running`); w trakcie przebudowy nie uruchamia się
     wdrożenia, bo jego Job `migrate` kończy się błędem; zgoda nazywa operację i host).

@@ -11,7 +11,8 @@
 #   objects     rclone     -                  -                          rclone sync back into product-images  -
 #   redis       redis      -                  -                          FLUSHALL                              -
 #   rabbitmq    rabbitmq   -                  -                          every queue purged                    -
-#   api         api        -                  -                          -                                     catalog:reindex
+#   api         api        -                  -                          -                                     catalog:reindex:abort --restored,
+#                                                                                                                catalog:reindex
 #
 # A snapshot whose manifest has a migration that is not a class of the deployed code (a snapshot newer than the code) is refused
 # before anything is restored. Every stage stops at its first error (set -e) and the pod runs them one after another, so a
@@ -186,6 +187,12 @@ stage_rabbitmq() {
 
 stage_api() {
   if [ "$mode" = reindex ]; then
+    # The restored database may hold an asynchronous rebuild run that was active at the time of the backup: it would make
+    # the lock of the rebuild refuse the synchronous one. It is aborted first, at whatever stage (its messages, restored with
+    # the database, then do nothing); no active run is no error.
+    echo "restore: catalog:reindex:abort --restored"
+    "$console" catalog:reindex:abort --restored || fail "catalog:reindex:abort --restored failed (exit code $?)"
+    # Synchronous: make restore has scaled every worker to zero (worker-indexing too), so the batches of an asynchronous run would have no consumer.
     echo "restore: catalog:reindex"
     "$console" catalog:reindex || fail "catalog:reindex failed (exit code $?)"
   fi

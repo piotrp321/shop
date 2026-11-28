@@ -29,7 +29,7 @@ image:
 # multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
 # compose and requires the digests.
 # `kubectl` is the image of the initContainers of the jobs initialize, purge-caches and backfill that wait for the rollout of the
-# deployments they need (api, varnish, store, worker, worker-commands), and of the one that reads the identifier of the cluster for the backup.
+# deployments they need (api, varnish, store, worker, worker-commands, worker-indexing), and of the one that reads the identifier of the cluster for the backup.
 # `restic` and `rclone` are the tools of the backup.
 images:
   postgres: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
@@ -225,6 +225,20 @@ elasticsearch:
   # the index of the cluster with the next deployment (catalog:search-index:setup of the Job migrate), without a rebuild.
   refreshInterval: 1s
 
+# The rebuild of the search index on the queue (docs/features/async-indexing/spec.md): the batches and the finalization are
+# consumed by the Deployment worker-indexing.
+search:
+  # SEARCH_INDEX_BATCH_SIZE of every container with the code of the API: the number of products in one batch (1 to 5000;
+  # the option --batch-size of catalog:reindex overrides it for one run).
+  indexBatchSize: 500
+
+workers:
+  indexing:
+    # The replicas of worker-indexing, which write the batches of a rebuild in parallel (the demand on Postgres and Elasticsearch
+    # grows with them: the measurement of the rebuild compares 1, 2 and 4). The finalization of a run is one message, so it is
+    # handled by one of them.
+    replicas: 1
+
 # The suspended CronJob reindex: its Jobs (make -C infra/k8s reindex) rebuild the search index with catalog:reindex of the deployed
 # revision. Every profile has it and it never runs by itself.
 reindex:
@@ -259,9 +273,11 @@ resources:
   keycloak: { requests: { cpu: 250m, memory: 768Mi }, limits: { memory: 1280Mi } }
   mailpit: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
   api: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
-  # The workers (docs/features/async-reliability/spec.md, W1): `worker` the events, `workerCommands` the commands.
+  # The workers (docs/features/async-reliability/spec.md, W1): `worker` the events, `workerCommands` the commands,
+  # `workerIndexing` the batches of the rebuild of the search index and its finalization (one replica's resources).
   worker: { requests: { cpu: 100m, memory: 192Mi }, limits: { memory: 640Mi } }
   workerCommands: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+  workerIndexing: { requests: { cpu: 100m, memory: 192Mi }, limits: { memory: 384Mi } }
   store: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
   admin: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 768Mi } }

@@ -33,11 +33,20 @@ parameters:
         payment_simulator: 300
         promotions: 300
         jobs: 300
+        indexing_finalize: 3600
     # ordering:expire-overdue cancels a new order only this many seconds after its expiry (the deadline and the window of the
     # webhooks), so the delayed ExpireUnpaidOrder handles the usual case (docs/features/async-reliability/spec.md, W5).
     app.ordering.expiry_grace_seconds: 600
-    # Products per bulk request in catalog:reindex (overridden by --batch-size).
-    app.search.batch_size: 500
+    # Products per batch of a full rebuild of the search index, synchronous (one bulk request) or asynchronous (one
+    # message, one bulk request): SEARCH_INDEX_BATCH_SIZE of the environment, 500 without it; overridden by --batch-size of
+    # catalog:reindex, which refuses a value outside 1..5000 (docs/features/async-indexing/spec.md, "Rozmiar paczki").
+    env(SEARCH_INDEX_BATCH_SIZE): '500'
+    app.search.indexing_batch_size: '%env(int:SEARCH_INDEX_BATCH_SIZE)%'
+    # An asynchronous rebuild run that has not moved (no batch counted, no beat of its producer, no stage of its
+    # finalization) for this many seconds is stalled: catalog:reindex --wait gives up, catalog:reindex:abort needs no --force.
+    app.search.rebuild_stall_seconds: 1800
+    # How often catalog:reindex --wait reads the run.
+    app.search.rebuild_poll_seconds: 5.0
     # The client never retries; timeouts are in seconds.
     app.search.connect_timeout: 1.0
     # Search, count, single writes and alias operations.
@@ -172,6 +181,12 @@ services:
 
     # Logs the progress of the rebuild on the same channel as the retries of ElasticsearchSearchIndexMaintenance.
     App\Catalog\Application\Search\ProductSearchIndexRebuilder:
+        arguments:
+            $logger: '@monolog.logger.search_rebuild'
+    App\Catalog\Application\Search\ProductRebuildBatch:
+        arguments:
+            $logger: '@monolog.logger.search_rebuild'
+    App\Catalog\Application\Command\FinalizeSearchRebuildHandler:
         arguments:
             $logger: '@monolog.logger.search_rebuild'
 
@@ -313,6 +328,8 @@ services:
     App\Catalog\Application\Port\ProductDetailsSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductDetailsSource'
     App\Catalog\Application\Port\SitemapProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource'
     App\Catalog\Application\Port\CategoryReindexRuns: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalCategoryReindexRuns'
+    App\Catalog\Application\Port\SearchRebuildRuns: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalSearchRebuildRuns'
+    App\Catalog\Application\Port\SearchRebuildBatches: '@App\Catalog\Infrastructure\Messaging\MessengerSearchRebuildBatches'
     App\Catalog\Application\Port\CategoryReindexBatches: '@App\Catalog\Infrastructure\Messaging\MessengerCategoryReindexBatches'
     App\Catalog\Application\Port\SubtreeProductIds: '@App\Catalog\Infrastructure\Search\ElasticsearchSubtreeProductIds'
     App\Catalog\Application\Port\StorefrontCatalogCache: '@App\Catalog\Infrastructure\Storefront\HttpStorefrontCatalogCache'
@@ -365,6 +382,9 @@ when@test: &test
         app.sitemap.row_limit: 10
         # A subtree of a few products takes several batches of the reindexing chain.
         app.catalog.category_reindex_batch_size: 2
+        # catalog:reindex --wait of the tests reads the run often and gives up soon.
+        app.search.rebuild_stall_seconds: 3
+        app.search.rebuild_poll_seconds: 0.05
 
     services:
         _defaults:
@@ -427,6 +447,15 @@ when@test: &test
             public: true
         test.App\Catalog\Infrastructure\Search\ElasticsearchClientFactory:
             alias: App\Catalog\Infrastructure\Search\ElasticsearchClientFactory
+            public: true
+        App\Catalog\Application\Port\SearchRebuildRuns:
+            alias: App\Catalog\Infrastructure\Persistence\Doctrine\DbalSearchRebuildRuns
+            public: true
+        App\Catalog\Application\Port\SearchRebuildBatches:
+            alias: App\Catalog\Infrastructure\Messaging\MessengerSearchRebuildBatches
+            public: true
+        test.App\Catalog\Application\Search\AsyncProductSearchIndexRebuild:
+            alias: App\Catalog\Application\Search\AsyncProductSearchIndexRebuild
             public: true
         test.App\Catalog\Application\Search\ProductSearchIndexRebuilder:
             alias: App\Catalog\Application\Search\ProductSearchIndexRebuilder

@@ -494,7 +494,7 @@ jobs:
 
       # An app image the registry does not have is built from the GitHub Actions cache that the `apps` part of `checks-part` writes
       # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
-      # garage-init. Both workers (`worker` and `worker-commands`) run one image of the api (same context and target) tagged
+      # garage-init. All workers (`worker`, `worker-commands` and `worker-indexing`) run one image of the api (same context and target) tagged
       # `shop-worker` (infra/docker-compose.yml), hence the second tag; no third image is built.
       # `missing` lists the images the registry does not have: the steps below build and push them.
       - name: Wait for the prebuilt images

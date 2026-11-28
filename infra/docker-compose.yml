@@ -259,6 +259,9 @@ services:
       # The refresh interval of the product index (a whole number with ms or s; SEARCH_REFRESH_INTERVAL of .env, 1s without
       # it): catalog:search-index:setup sets it on the index that exists, a rebuild sets it once the new index is filled.
       SEARCH_REFRESH_INTERVAL: ${SEARCH_REFRESH_INTERVAL:-1s}
+      # The products in one batch of the rebuild of the search index (catalog:reindex --async: one message and one bulk request; 1 to 5000,
+      # checked by the API, which also defaults to 500). --batch-size of the command overrides it for one run.
+      SEARCH_INDEX_BATCH_SIZE: ${SEARCH_INDEX_BATCH_SIZE:-500}
       # Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
       KEYCLOAK_PUBLIC_URL: http://localhost:${KEYCLOAK_PORT:-8080}
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
@@ -327,10 +330,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # The two workers run the same image and differ in the transports they consume (docs/features/async-reliability/spec.md,
-  # W1 and W2). `make up` starts both last, once the migrations have created the tables, and recreates them every time,
-  # so that they always run the code (and handler wiring) as of that moment. `worker-commands` repeats `build` and
-  # `image` of this definition: both services use one image, built once (the second build is a cache hit, and CI
+  # The workers run the same image and differ in the transports they consume (docs/features/async-reliability/spec.md,
+  # W1 and W2). `make up` starts them all last, once the migrations have created the tables, and recreates them every time,
+  # so that they always run the code (and handler wiring) as of that moment. `worker-commands` and `worker-indexing` repeat
+  # `build` and `image` of this definition: the three services use one image, built once (the second build is a cache hit, and CI
   # preloads the image as `shop-worker`, so it builds nothing).
   # The events: the relay of the outbox to RabbitMQ and the events of RabbitMQ; the outbox goes first. The only one that
   # needs the broker.
@@ -385,6 +388,24 @@ services:
     command: ["bin/console", "messenger:consume", "payment_simulator", "scheduled", "promotions", "jobs", "--time-limit=86400", "--memory-limit=192M"]
     healthcheck:
       test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume payment_simulator scheduled promotions jobs --time-limit=86400 --memory-limit=192M'"]
+      interval: 10s
+      start_interval: 1s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # The batches of the full rebuild of the search index and its finalization (catalog:reindex --async, docs/features/async-indexing/spec.md):
+  # the transport indexing_finalize (Postgres) goes first, so that a finalization never waits behind the batches of the AMQP
+  # transport indexing. It is a worker of its own, so that it scales independently of the others and the events of the shop
+  # (worker) never wait behind a rebuild. It needs the broker.
+  worker-indexing:
+    <<: *worker
+    environment:
+      <<: *api-environment
+      APP_CACHE_DIR: /tmp/cache-indexing
+    command: ["bin/console", "messenger:consume", "indexing_finalize", "indexing", "--time-limit=86400", "--memory-limit=192M"]
+    healthcheck:
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume indexing_finalize indexing --time-limit=86400 --memory-limit=192M'"]
       interval: 10s
       start_interval: 1s
       timeout: 3s

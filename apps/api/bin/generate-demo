@@ -18,9 +18,9 @@
 # categories of the tail, the parts of the products and, after the photos, the parts of the prices (one process per part
 # group, run in parallel, each awaited), the promotions and discount codes, the staff and customer accounts in Keycloak
 # (the administrator of the stack from the environment), the parts of the orders (like the prices), the stock after the
-# orders, the order number sequence, the read models of the orders, ANALYZE of the filled tables, the search index, the
-# caches of the store and the consistency check (also of the accounts). The first failing step stops the script with its exit code, so the
-# later steps do not run; a failing part stops the other parts first.
+# orders, the order number sequence, the read models of the orders, ANALYZE of the filled tables, the search index (rebuilt on the queue
+# by worker-indexing: catalog:reindex --async --wait), the caches of the store and the consistency check (also of the accounts). The first
+# failing step stops the script with its exit code, so the later steps do not run; a failing part stops the other parts first.
 set -eu
 
 here="$(dirname "$0")"
@@ -202,8 +202,10 @@ run_parts demo-data:orders || exit "$?"
 "$console" ordering:read-models:rebuild
 "$console" demo-data:analyze
 
-# The seed's own events do not index the generated products: the index and the caches are rebuilt at the end.
-"$console" catalog:reindex
+# The seed's own events do not index the generated products: the index and the caches are rebuilt at the end. The rebuild
+# runs on the queue (--async): the batches are written by worker-indexing, which has to be running (the stack of compose and
+# the cluster have it); without progress (no worker, no consumer) --wait gives up with a non-zero exit code instead of hanging.
+"$console" catalog:reindex --async --wait
 "$console" storefront:cache:purge-all
 
 # shellcheck disable=SC2086

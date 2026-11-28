@@ -35,7 +35,7 @@ pamięci.
   próbie), więc ponowienie Joba `migrate` przechodzi. Zasada jest w `apps/api/CLAUDE.md`. Migracje nie wołają kodu
   aplikacji i nie aktualizują dużych tabel.
 - Pierwsze wypełnienie danych (rekordy stanów z `product_id`, szacunek liczby produktów, modele odczytu sprzedaży
-  i klientów) robi komenda `app:backfill` (Shared UI), uruchamiana **po rolloucie** `api` i obu workerów (`worker`, `worker-commands`): w klastrze Job
+  i klientów) robi komenda `app:backfill` (Shared UI), uruchamiana **po rolloucie** `api` i workerów (`worker`, `worker-commands`, `worker-indexing`): w klastrze Job
   `backfill` w fali po `waitRollout` (jak `purge-caches`; własny limit czasu `jobs.backfillActiveDeadlineSeconds`,
   21 600 s), lokalnie na końcu `bin/seed-demo` (z `--force`). Komenda uruchamia po kolei zarejestrowane kroki
   (`BackfillStep`, kolejność z priorytetu): `inventory:stock-records:sync`, `catalog:analyze-products`

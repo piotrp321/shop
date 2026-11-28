@@ -31,7 +31,7 @@ check:
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing and RateLimitsOff without the absent for a metric that is gone, NodeDiskFull
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended (also only in prod),
 # its script without the check of DEMO_DATA_CONFIRM, without the space guard or stopping only the generator and not its process group,
-# a load CronJob that is not suspended, a reindex CronJob that is not suspended, make reindex going on without tak, a k6 image of the
+# a load CronJob that is not suspended, a reindex CronJob that is not suspended, make reindex going on without tak, a transport of messenger.yaml that no worker consumes, worker-indexing without its queue, a k6 image of the
 # chart with another digest than load/k6.sh).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).

@@ -367,6 +367,96 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertSame(1, $counter->count() - $before);
     }
 
+    public function testFindManyReadsTheSameSnapshotsAsThePageInIdOrder(): void
+    {
+        $root = $this->savedCategory();
+        $main = $this->savedCategory($root);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$this->savedCategory()], 'imageAlts' => ['front']]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+        $ids = [...$this->createProducts(3), $product->id()->toString()];
+        sort($ids);
+        $page = $this->source->page(null, 10);
+
+        $chosen = [$ids[3], $ids[0], $ids[2]];
+
+        self::assertEquals([$page[0], $page[2], $page[3]], $this->source->findMany($chosen));
+    }
+
+    public function testFindManyAcceptsUpperCaseIdsAndSkipsDuplicatesAndUnknownProducts(): void
+    {
+        $ids = $this->createProducts(2);
+        sort($ids);
+
+        $found = $this->source->findMany([strtoupper($ids[1]), $ids[1], '00000000-0000-4000-8000-0000000000ff', $ids[0]]);
+
+        self::assertSame($ids, array_map(static fn (ProductSearchSnapshot $s): string => $s->id, $found));
+    }
+
+    public function testFindManyOfNoIdsIsEmptyWithoutAStatement(): void
+    {
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+        $before = $counter->count();
+
+        self::assertSame([], $this->source->findMany([]));
+        self::assertSame(0, $counter->count() - $before);
+    }
+
+    public function testFindManyRejectsAnIdThatIsNotAUuid(): void
+    {
+        $id = $this->createProducts(1)[0];
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->findMany([$id, "abc') OR (1=1"]);
+    }
+
+    public function testFindManyIssuesOneStatement(): void
+    {
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+        $ids = $this->createProducts(3);
+
+        $before = $counter->count();
+        $this->source->findMany($ids);
+
+        self::assertSame(1, $counter->count() - $before);
+    }
+
+    public function testIdsAfterPagesThroughTheSameIdsAsThePage(): void
+    {
+        $ids = $this->createProducts(5);
+        sort($ids);
+
+        self::assertSame(\array_slice($ids, 0, 2), $this->source->idsAfter(null, 2));
+        self::assertSame(\array_slice($ids, 2, 2), $this->source->idsAfter(strtoupper($ids[1]), 2));
+        self::assertSame([$ids[4]], $this->source->idsAfter($ids[3], 2));
+        self::assertSame([], $this->source->idsAfter($ids[4], 2));
+    }
+
+    public function testIdsAfterRejectsALimitBelowOneAndACursorThatIsNotAUuid(): void
+    {
+        foreach ([[null, 0], ['abc', 1]] as [$after, $limit]) {
+            try {
+                $this->source->idsAfter($after, $limit);
+                self::fail('Expected a refusal.');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+        $this->addToAssertionCount(1);
+    }
+
+    public function testIdsAfterReadsOnlyTheKeysOfTheProductTable(): void
+    {
+        $this->createProducts(2);
+        $plan = $this->connection->fetchFirstColumn('EXPLAIN (FORMAT TEXT) '.DbalProductSearchSource::ID_PAGE_SQL, ['after' => '00000000-0000-4000-8000-000000000000', 'limit' => 500]);
+
+        $text = implode("\n", array_map(static fn (mixed $line): string => \is_string($line) ? $line : '', $plan));
+        self::assertStringContainsString('catalog_product', $text);
+        self::assertStringNotContainsString('catalog_product_variant', $text);
+        self::assertStringNotContainsString('catalog_category', $text);
+    }
+
     public function testCursorPageUsesAnIndexConditionOnTheKeyEvenUnderAGenericPlan(): void
     {
         $this->connection->executeStatement('SET plan_cache_mode = force_generic_plan');

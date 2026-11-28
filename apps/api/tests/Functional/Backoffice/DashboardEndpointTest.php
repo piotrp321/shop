@@ -104,7 +104,7 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertFalse($messages['healthy']);
         self::assertSame(['count' => 2, 'capped' => false, 'oldestAt' => '2026-11-19T08:30:00+00:00'], $messages['failed']);
         $byName = $this->transports($messages);
-        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'], array_keys($byName));
+        self::assertSame(['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs', 'indexing_finalize'], array_keys($byName));
         self::assertSame(['name', 'ready', 'capped', 'oldestReadyAgeSeconds', 'stalled'], array_keys($byName['outbox']));
         self::assertSame(['ready' => 2, 'capped' => false, 'stalled' => false], array_intersect_key($byName['outbox'], array_flip(['ready', 'capped', 'stalled'])));
         self::assertEqualsWithDelta(90, $byName['outbox']['oldestReadyAgeSeconds'], 5);
@@ -219,7 +219,7 @@ final class DashboardEndpointTest extends WebTestCase
      */
     private function messages(array $body): array
     {
-        self::assertIsArray($body['system']);
+        self::assertIsArray($body['system'] ?? null, json_encode($body, \JSON_THROW_ON_ERROR));
         self::assertIsArray($body['system']['messages']);
 
         /** @var array<string, mixed> $messages */

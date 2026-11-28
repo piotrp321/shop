@@ -12,6 +12,10 @@ use Doctrine\DBAL\ParameterType;
  * A session-level PostgreSQL advisory lock: held until released or until the connection ends, so a process that
  * dies releases it. One key per search alias. The share is a transaction-level shared lock on the same key: it and the
  * exclusive session lock of a rebuild exclude each other.
+ *
+ * An asynchronous rebuild holds the lock only while it starts: it writes its active run under it. So both methods also
+ * refuse while a run is active (docs/features/async-indexing/plan.md, "Dostosowanie do PERF-2B"); the run is read by a
+ * statement of its own after the lock is taken, so it sees a run committed before the lock was released.
  */
 final readonly class PostgresSearchIndexRebuildLock implements SearchIndexRebuildLock
 {
@@ -21,12 +25,27 @@ final readonly class PostgresSearchIndexRebuildLock implements SearchIndexRebuil
 
     public function tryAcquire(): bool
     {
-        return true === $this->connection->fetchOne('SELECT pg_try_advisory_lock(:key)', ['key' => $this->key()], ['key' => ParameterType::INTEGER]);
+        if (true !== $this->connection->fetchOne('SELECT pg_try_advisory_lock(:key)', ['key' => $this->key()], ['key' => ParameterType::INTEGER])) {
+            return false;
+        }
+        if ($this->runIsActive()) {
+            $this->release();
+
+            return false;
+        }
+
+        return true;
     }
 
     public function tryShareInTransaction(): bool
     {
-        return true === $this->connection->fetchOne('SELECT pg_try_advisory_xact_lock_shared(:key)', ['key' => $this->key()], ['key' => ParameterType::INTEGER]);
+        return true === $this->connection->fetchOne('SELECT pg_try_advisory_xact_lock_shared(:key)', ['key' => $this->key()], ['key' => ParameterType::INTEGER])
+            && !$this->runIsActive();
+    }
+
+    private function runIsActive(): bool
+    {
+        return false !== $this->connection->fetchOne('SELECT 1 FROM catalog_search_rebuild_run WHERE finished_at IS NULL LIMIT 1');
     }
 
     public function release(): void

@@ -6,8 +6,9 @@ serwerze demo (profil `server`, 10 mln produktów, pomiar z 2026-11-26) szła z 
 (RabbitMQ): przebudowę dzieli na paczki o konfigurowalnym rozmiarze, które obsługuje dowolna liczba workerów
 równolegle, a alias przełącza dopiero po ostatniej udanej paczce.
 
-Status: **szkic do akceptacji**. Użytkownik zaakceptował rekomendacje D1–D5 pod warunkami: rozwiązanie jest możliwie
-proste, tryb synchroniczny i asynchroniczny dzielą logikę indeksowania, a logika domenowa Catalog nie trafia do `Shared`.
+Status: **zaimplementowana** (zadania 2–6), pomiar po wdrożeniu (zadanie 7) czeka. D1–D5 zaakceptowane pod warunkami:
+rozwiązanie jest możliwie proste, tryb synchroniczny i asynchroniczny dzielą logikę indeksowania, a logika domenowa
+Catalog nie trafia do `Shared`.
 
 Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml`, `infra/k8s`, `apps/api/bin/generate-demo`,
 `docs/features/search/spec.md`, `docs/features/demo-scale/spec.md`, `apps/api/CLAUDE.md`.
@@ -93,8 +94,9 @@ tylko to, kto ją tworzy.
 
 ### D5. Granice modułów
 
-W `Shared` tylko cienka, ogólna warstwa: wiadomość `IndexDocuments`, port `DocumentIndexer`, rejestr `DocumentIndexers`
-i `IndexDocumentsHandler`, który wybiera indeksator po kluczu i oddaje mu wiadomość. Wszystko, co jest wiedzą o indeksie
+W `Shared\Infrastructure\Indexing` tylko cienka, ogólna warstwa: wiadomość `IndexDocuments`, port `DocumentIndexer`
+(tag z interfejsu) i `IndexDocumentsHandler`, który jest zarazem rejestrem typów: wybiera indeksator po kluczu i oddaje mu
+wiadomość, a nieznany klucz to `UnknownDocumentType` jako błąd trwały. Wszystko, co jest wiedzą o indeksie
 wyszukiwania i produkcie, zostaje w Catalog: dokument, budowanie dokumentu, zapis, przebieg przebudowy
 (`SearchRebuildRun`), jego rejestr w Postgresie, finalizacja i przełączenie aliasu. `Shared` nie zna Elasticsearcha,
 produktu ani przebiegu; implementacja `DocumentIndexer` dla klucza `product` jest w Catalog i sama rozlicza paczkę
@@ -106,7 +108,7 @@ przejść reguły bez edycji `deptrac.yaml`; gdy się nie da, zadanie wraca do u
 Tryb synchroniczny i asynchroniczny używają tego samego kodu zapisu i przełączenia; asynchroniczność zmienia tylko to, kto
 woła go i kiedy:
 
-- `ProductBatchIndexer::write(string $index, list<ProductSearchSnapshot>): int` (Catalog Application): fakty ofert
+- `ProductBatchIndexer::write(string $index, list<ProductSearchSnapshot>, int $version): int` (Catalog Application): fakty ofert
   (`ProductOfferFacts::of`), wersja dokumentu (czas przed odczytem), budowa dokumentów, zapis jednym bulkiem
   i sprawdzenie `allIndexed()` (błąd, gdy cokolwiek się nie zapisało). To dzisiejsza treść pętli `fill`; `fill` woła ją
   na stronie z `page`, handler paczki woła ją na wyniku `findMany(ids)`.
@@ -154,7 +156,7 @@ IndexDocuments {
   `app.search.batch_size`), dostępna dla wszystkich kontenerów z kodem API (compose, chart). Wartość spoza `1..5000` kończy
   start komendy błędem z nazwą zmiennej (jak `SEARCH_REFRESH_INTERVAL`).
 - Opcja `--batch-size` komendy nadpisuje domyślną dla jednego przebiegu i jest zapisana w przebiegu; zmiana zmiennej
-  w trakcie przebiegu go nie zmienia.
+  w trakcie przebiegu go nie zmienia. Ten sam parametr i ten sam zakres obowiązują przebudowę synchroniczną.
 - To liczba elementów jednej **wiadomości**; jedna wiadomość to jeden bulk do Elasticsearcha. Podział na mniejsze bulki
   w ramach wiadomości jest poza zakresem, dopóki pomiar go nie uzasadni.
 
@@ -186,16 +188,18 @@ IndexDocuments {
   (`verify` z `refresh` i liczeniem dokumentów oraz usunięcie indeksu 10 mln dokumentów trwają minuty, a przy błędach dłużej)
   wstrzymałaby webhooki symulatora płatności, wygaszanie zamówień i granice promocji. Na `worker-indexing` finalizacja
   nie blokuje niczego poza paczkami tej samej przebudowy, które w tym czasie już się skończyły. Obsługuje ją handler
-  na `indexing.bus`: nadawca wysyła ją przez `command.bus` z jawnym `BusNameStamp('indexing.bus')`,
-  więc wiadomość powstaje w transakcji nadawcy, a po stronie workera trafia na szynę bez transakcji. Zadanie 3 zaczyna od
-  testu tego mechanizmu (wiadomość w wycofanej transakcji nie istnieje, w zatwierdzonej istnieje i jest obsłużona na
-  `indexing.bus`); jeśli `BusNameStamp` tak nie działa, handler finalizacji zostaje na `command.bus` i wykonuje ES poza
-  transakcją przez wydzieloną komendę (decyzja zapisana w specyfikacji po teście).
+  na `indexing.bus`: `DbalSearchRebuildRuns` wysyła ją przez `indexing.bus` w jawnej transakcji DBAL przejścia do
+  `finalizing`; transport Doctrine zapisuje wiersz na tym samym połączeniu, więc wiadomość istnieje dokładnie wtedy, gdy
+  przejście jest zatwierdzone, a `BusNameStamp('indexing.bus')` kieruje ją u workera na szynę bez transakcji
+  (`FinalizationTransactionTest`).
 
 ### Przebieg (`SearchRebuildRun`) i rejestr
 
-Tabela `catalog_search_rebuild_run` (jeden wiersz na przebieg) i `catalog_search_rebuild_batch` (jeden wiersz na wykonaną
-paczkę, klucz główny `(run_id, batch)`):
+Tabela `catalog_search_rebuild_run` (jeden wiersz na przebieg) i `catalog_search_rebuild_batch` (jeden wiersz na paczkę
+wysłaną przez producenta, klucz główny `(run_id, batch)`: `ids_hash` to SHA-256 identyfikatorów paczki złączonych
+przecinkami, `documents` jest puste do rozliczenia). Producent zapisuje wiersz paczki przed jej wysłaniem. Przebieg nie ma agregatu ORM: stan i przejścia zmienia `DbalSearchRebuildRuns`
+warunkowymi `UPDATE` (rekordy tylko definiują schemat), statusy są w `SearchRebuildStatus`. Przebieg aktywny to wiersz bez
+`finished_at` (ustawiany przy statusie końcowym); unikalny indeks częściowy na `document_type` `WHERE finished_at IS NULL`:
 
 | Pole przebiegu | Znaczenie |
 |---|---|
@@ -224,9 +228,13 @@ w `DbalCatalogReset`) wykluczają się wzajemnie jedną regułą:
 
 **Rozliczenie paczki** (po udanym zapisie do ES, jedna krótka transakcja, bez operacji na ES w środku):
 
-1. `INSERT` wiersza paczki `ON CONFLICT DO NOTHING`. Brak wstawionego wiersza (powtórka) kończy rozliczenie: licznik nie rośnie.
-2. `UPDATE` przebiegu: `done_batches = done_batches + 1`, `documents = documents + :n`, `heartbeat_at = now()`, warunek
-   `status IN ('producing','running')`.
+1. `UPDATE` przebiegu: `done_batches = done_batches + 1`, `documents = documents + :n`, `heartbeat_at = now()`, warunek
+   `status IN ('producing','running')`; 0 wierszy kończy rozliczenie bez skutku.
+2. `UPDATE` wiersza paczki: `documents = :n` z warunkiem `ids_hash` równym odciskowi identyfikatorów wiadomości
+   i `documents IS NULL`. 0 wierszy: paczka już rozliczona (ten sam odcisk) kończy rozliczenie bez skutku, a paczka,
+   której producent nie wysłał (nieznany numer albo inne identyfikatory, np. poprawny UUID nieistniejącego produktu),
+   wycofuje transakcję i trafia od razu do `failed` (`ForeignRebuildBatch`); prawdziwa paczka o tym numerze rozlicza się
+   nadal.
 3. Jeśli po zmianie `total_batches IS NOT NULL AND done_batches = total_batches` i status `running`, ta sama transakcja
    przestawia `running → finalizing` warunkowym `UPDATE` (`WHERE status = 'running'`) i wysyła `FinalizeSearchRebuild`
    transportem `indexing_finalize`. Wiersz przebiegu jest blokowany przez `UPDATE` (blokada wiersza do końca transakcji), więc współbieżne
@@ -258,10 +266,10 @@ krótką transakcją, a każdy etap jest idempotentny, więc ponowienie wiadomo�
 
 | Status przy starcie | Co robi | Stan po awarii w tym miejscu |
 |---|---|---|
-| `finalizing` | `verify(target, documents)` (przywraca `refresh_interval`, `refresh`, zdrowie, liczbę dokumentów, skrót definicji; idempotentne), potem status `verified` | powtórzony `verify`; niepowodzenie weryfikacji to `failed`, nowy indeks usunięty (nie wskazuje go alias), alias bez zmian |
+| `finalizing` | porównuje `documents` z liczbą produktów katalogu (`SELECT count(*)`: w trakcie przebiegu blokada odmawia tworzenia produktów, a usuwania produktów nie ma), potem `verify(target, liczba produktów)` (przywraca `refresh_interval`, `refresh`, zdrowie, liczbę dokumentów, skrót definicji; idempotentne), potem status `verified` | powtórzony `verify`; niepowodzenie weryfikacji to `failed`, nowy indeks usunięty (nie wskazuje go alias), alias bez zmian |
 | `verified` | status `activating` (zapis przed wysłaniem żądania) | bez zmiany aliasu |
-| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią). Inny albo nieczytelny: `failed`, oba indeksy zachowane, jak dziś kod wyjścia 2 | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
-| `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się jako usunięty (wymaga testu i ewentualnej poprawki `deleteIndex`) |
+| `activating` | czyta `activeIndex()`. Równy `previous_index`: woła `activate(target, previous)` (jedno atomowe żądanie), potem czyta alias; nadal `previous_index` (przełączenie odrzucone albo niewysłane): błąd przejściowy, ponowienie etapu, nowy indeks zostaje. Równy `target_index`: alias już przełączony (żądanie zdążyło przed awarią albo zrobił to drugi handler). Inny: `failed`, oba indeksy zachowane, kod wyjścia 2. Nieczytelny: błąd przejściowy, ponowienie wiadomości od tego etapu | `activate` powtórzony nie przełączy dwa razy: oczekuje poprzedniego indeksu |
+| `activated` (alias na `target`) | `deleteIndex(previous)`, potem `succeeded`. Błąd usunięcia to ostrzeżenie (indeks osierocony), przebieg i tak `succeeded`, jak dziś | powtórzone usunięcie; brak indeksu (404) liczy się w `deleteIndex` jako usunięty |
 | `succeeded`, `failed`, `aborted` | koniec bez skutku | — |
 
 **Dwie wiadomości finalizacji naraz.** Zdarza się to przy zwykłym użyciu: `redeliver_timeout` minął, a pierwszy handler
@@ -291,38 +299,57 @@ wskazuje go alias (sprawdza to `deleteIndex`). Przebieg w `finalizing` i dalej: 
 dokańcza ponowienie jej wiadomości (jeśli wiadomość jest w `failed`, ponawia ją `app:messaging:failed-retry`). Przebieg
 żywy (heartbeat nie starszy niż limit) wymaga `--force`; martwy (limit domyślnie 30 minut) nie.
 
+**Wznowienie finalizacji** (`catalog:reindex:resume`): gdy wiadomość finalizacji zginęła (usunięta z `failed`), komenda
+w jednej transakcji odświeża heartbeat przebiegu w etapie finalizacji (`finalizing`, `verified`, `activating`,
+`activated`) i zapisuje nową `FinalizeSearchRebuild`; handler rusza od zapisanego etapu. Finalizacja jest idempotentna,
+więc kopia w drodze albo powtórzona komenda niczego nie psuje. Dla przebiegu, który przyjmuje paczki, i bez aktywnego
+przebiegu kończy się kodem 1.
+
+**Po odtworzeniu bazy z kopii** (`catalog:reindex:abort --restored`, woła go Job `restore` w trybie `reindex` przed
+synchronicznym `catalog:reindex`): kopia może mieć przebieg aktywny w chwili backupu, który zablokowałby przebudowę.
+Komenda ustawia go na `aborted` w dowolnym etapie (workery są wtedy zatrzymane, kolejki RabbitMQ wyczyszczone)
+i usuwa jego nowy indeks, jeśli nie wskazuje go alias. Jego wiadomości odtworzone z bazą (finalizacja, paczki w `failed`)
+działają tylko na przebieg niekońcowy, więc nie robią nic. Bez aktywnego przebiegu kończy się kodem 0.
+
 **Paczki a stan przebiegu (paczka w trakcie zapisu podczas abortu lub finalizacji).** Handler paczki ma stałą kolejność:
-(1) czyta przebieg bez blokady i kończy bez zapisu, gdy nie jest `producing`/`running`; (2) zapisuje do `target_index`
+(1) czyta przebieg bez blokady i kończy bez zapisu, gdy nie jest `producing`/`running`, a paczkę, której producent nie
+zarejestrował z tymi identyfikatorami, odrzuca do `failed` bez zapisu (rozliczenie sprawdza to jeszcze raz w swojej
+transakcji); (2) zapisuje do `target_index`
 (bez transakcji); (3) rozlicza warunkowym `UPDATE … WHERE status IN ('producing','running')` i wiersz paczki w jednej
 transakcji; 0 zmienionych wierszy (przebieg już `aborted`, `failed` albo `finalizing`) kończy się bez skutku.
 `abort` nie czeka na paczki w trakcie zapisu. Skutki, bez dodatkowego mechanizmu:
 
-- **Abort w trakcie zapisu paczki.** Paczka zapisana już po usunięciu `target_index` może w Elasticsearchu (domyślne
-  `action.auto_create_index`, repo go nie zmienia) odtworzyć pusty indeks o tej nazwie z dynamicznym mapowaniem. To indeks
-  bez aliasu, którego nikt nie czyta; `catalog:reindex --async` i `setup` wykrywają indeksy bez aliasu jako osierocone, a start
-  przebiegu usuwa je przed budową nowego (`docs/features/demo-scale/spec.md`, Z5). Ryzyko: tymczasowy osierocony indeks
-  do następnego startu; nie wpływa na sklep.
+- **Abort w trakcie zapisu paczki.** Paczka zapisana już po usunięciu `target_index` odtwarza w Elasticsearchu
+  (domyślne `action.auto_create_index`) indeks o tej nazwie. Rozliczenie takiej paczki kończy się bez skutku, a handler,
+  który widzi przebieg `aborted` albo `failed` przed kompletem paczek, usuwa `target_index` ponownie (`deleteIndex`
+  odmawia, gdy wskazuje go alias). Usuwa po własnym zapisie, więc ostatni piszący sprząta ostatni.
 - **Paczka w trakcie zapisu, gdy rusza finalizacja.** Finalizacja startuje dopiero po rozliczeniu wszystkich paczek, więc
   w trakcie zapisu może być tylko **kopia już rozliczonej paczki** (redelivery po restarcie albo ponowieniu). Taka kopia
   czyta aktualny stan produktów, zapisuje te same identyfikatory z nowszą wersją (`external_gte`), więc nie zmienia liczby
   dokumentów, `verify` ani wyniku; po przełączeniu aliasu to zapis do żywego indeksu aktualnych danych, poprawny jak
-  zapis `ProductIndexing`. Rozliczenie takiej kopii kończy się bez skutku (`ON CONFLICT`, status).
+  zapis `ProductIndexing`. Rozliczenie takiej kopii kończy się bez skutku (paczka już rozliczona, status).
 - Po `failed` przebiegu kopie w kolejce kończą się bez zapisu (krok 1).
 
-Testy: abort w trakcie zapisu paczki (atrapa ES wstrzymuje zapis): rozliczenie bez skutku, indeks aliasu nietknięty;
-kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokumentów i alias bez zmian.
+Testy (prawdziwy ES): abort przed i po żądaniu bulk paczki: rozliczenie bez skutku, nowy indeks nie zostaje, alias
+nietknięty; kopia rozliczonej paczki po przełączeniu: liczba dokumentów i alias bez zmian; worker zabity po zapisie,
+przed rozliczeniem: paczka liczy się raz po ponownym doręczeniu; nieudana paczka (przejściowo i trwale) i jej ponowienie:
+przebieg kończy się `succeeded`; obca paczka i produkt pominięty przez paczki; utracona finalizacja i `resume`; baza
+odtworzona z przebiegiem w każdym etapie.
 
 ### Przebieg komendy
 
 1. **Start** (`catalog:reindex --async [--batch-size N] [--wait]`): blokada i sprawdzenie aktywnego przebiegu (wyżej),
-   `activeIndex`, usunięcie osieroconych indeksów jak dziś (`docs/features/demo-scale/spec.md`, Z5), `createIndex`, zapis
-   przebiegu `producing`, zwolnienie blokady, produkcja.
+   `activeIndex`, `createIndex` (z aliasem przebudowy), zapis
+   przebiegu `producing`, zwolnienie blokady, produkcja. Indeks osierocony po przerwanym przebiegu wypisuje `setup`; nowy
+   start zdejmuje z niego alias przebudowy (jak przebudowa synchroniczna).
 2. **Produkcja** jak wyżej; producent odświeża `heartbeat_at` co kilkadziesiąt paczek i co kilkanaście sekund. Błąd publikacji
    do RabbitMQ (potwierdzenie) kończy przebieg jako `failed` (warunkowy `UPDATE`), usuwa nowy indeks i zwraca błąd.
-   Producent zabity w trakcie zostawia przebieg `producing` bez heartbeatu: martwy po limicie, usuwa go `abort`.
+   Producent zabity w trakcie zostawia przebieg `producing` bez heartbeatu: martwy po limicie, usuwa go `abort`. Producent,
+   którego przebieg przerwano (`abort --force`), kończy wysyłanie przy najbliższym heartbeacie.
 3. **`--wait`** odpytuje wiersz przebiegu aż do stanu końcowego i wypisuje postęp (paczki, dokumenty, tempo); kończy się
-   błędem, gdy `heartbeat_at` nie rusza dłużej niż limit (np. brak workera). Kody wyjścia jak dziś: 0 alias na nowym
-   indeksie, 1 alias bez zmian, 2 stan aliasu nieznany.
+   błędem, gdy `heartbeat_at` nie rusza dłużej niż limit (`app.search.rebuild_stall_seconds`, 30 minut; ten sam limit
+   uznaje przebieg za martwy w `abort`), np. bez workera. Kody wyjścia jak dziś według stanu aliasu po końcu albo po
+   limicie: 0 alias na nowym indeksie, 1 alias bez zmian (także odmowa startu), 2 stan aliasu nieznany.
 4. Bez `--async` komenda działa jak dziś (D4), z tą różnicą, że przy aktywnym przebiegu odmawia.
 
 ### Integracje i pomiar
@@ -353,10 +380,13 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Zdarzenie | Skutek |
 |---|---|
 | Przejściowy błąd ES albo ofert w paczce | Ponowienie transportu (1, 3, 9, 27, 81 s), potem `failed`; przebieg `running`, alias bez zmian |
-| Bulk z częściowym błędem (część dokumentów odrzucona) | Przejściowe pozycje ponawia `write`; po wyczerpaniu prób albo przy trwałym odrzuceniu paczka rzuca błąd, nie jest rozliczona, ponowienie zapisuje całą paczkę z nową wersją (idempotentne) |
+| Bulk z częściowym błędem (część dokumentów odrzucona) | Przejściowe pozycje ponawia `write`; po wyczerpaniu prób paczka z samymi pozycjami przejściowymi to błąd przejściowy (ponowienie transportu), a z pozycją trwale odrzuconą błąd trwały (`failed`); paczka nie jest rozliczona, ponowienie zapisuje całą paczkę z nową wersją (idempotentne) |
 | Błąd trwały paczki (`SearchIndexError`, nieznany typ, zła wiadomość, `ids` ponad limit) | Od razu `failed`; przebieg `running`, alias bez zmian |
 | Paczka z `failed` naprawiona przez `app:messaging:failed-retry` | Wykonuje się i jest rozliczona raz |
-| Worker zabity po zapisie do ES, przed rozliczeniem albo ack | Wiadomość wraca, paczka zapisuje się ponownie (wersja zewnętrzna), wiersz paczki powstaje raz (`ON CONFLICT`), licznik rośnie raz |
+| Worker zabity po zapisie do ES, przed rozliczeniem albo ack | Wiadomość wraca, paczka zapisuje się ponownie (wersja zewnętrzna), wiersz paczki rozlicza się raz (`documents IS NULL`), licznik rośnie raz |
+| Paczka, której producent nie wysłał (inny numer albo inne identyfikatory) | Odrzucona do `failed` bez rozliczenia; prawdziwa paczka o tym numerze rozlicza się nadal |
+| Produkt pominięty przez paczki (zapis z pominięciem blokady, błąd licznika) | `verify` porównuje z liczbą produktów katalogu: `failed`, nowy indeks usunięty, alias bez zmian |
+| Baza odtworzona z kopii z aktywnym przebiegiem | Job `restore` (tryb `reindex`) woła `catalog:reindex:abort --restored`, potem synchroniczną przebudowę |
 | Dwie kopie tej samej paczki naraz | Obie zapisują dokumenty (nieszkodliwe), rozliczenie przechodzi raz |
 | Wszystkie paczki rozliczone przed końcem produkcji | Komplet wykrywa producent w swojej końcowej transakcji i wysyła finalizację |
 | Pusty katalog | `total_batches = 0`; producent od razu finalizuje, indeks pusty, alias przełączony |
@@ -364,10 +394,11 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Utrata finalizacji między commitem a publikacją | Niemożliwa: wiadomość jest wierszem tabeli transportu `indexing_finalize` w tej samej transakcji co przejście `running → finalizing` |
 | Awaria w trakcie finalizacji (każdy etap) | Ponowienie wiadomości wznawia od zapisanego statusu (tabela „Finalizacja”); alias przełącza się najwyżej raz |
 | Dwie wiadomości finalizacji naraz (redelivery przy długim etapie, ręczne ponowienie) | Etapy idempotentne, przejścia statusu warunkowe; alias przełączony najwyżej raz, `succeeded` nie jest nadpisany; zbędna praca możliwa |
-| Paczka w trakcie zapisu podczas abortu | Rozliczenie bez skutku; zapis po usunięciu indeksu może odtworzyć osierocony indeks, sprzątany przy następnym starcie |
+| Paczka w trakcie zapisu podczas abortu | Rozliczenie bez skutku; indeks odtworzony przez ten zapis handler usuwa ponownie |
 | Kopia rozliczonej paczki zapisuje się podczas finalizacji | Te same identyfikatory, nowsza wersja; liczba dokumentów i alias bez zmian |
 | Długa finalizacja (minuty) | Obsługuje ją `worker-indexing`; `worker-commands` (webhooki, wygaszanie zamówień, promocje) jej nie widzi |
 | Finalizacja w `failed` (po ponowieniach) | Status zostaje etapem (np. `activating`), alias bez zmian albo już przełączony; operator ponawia wiadomość (`app:messaging:failed-retry`) |
+| Wiadomość finalizacji usunięta z `failed` | Przebieg czeka w etapie finalizacji (`abort` odmawia, tworzenie produktu też); `catalog:reindex:resume` wysyła finalizację ponownie od zapisanego etapu |
 | `verify` nie przechodzi | `failed`, nowy indeks usunięty, alias bez zmian |
 | `activate` w stanie nieznanym | `failed`, oba indeksy zachowane, kod wyjścia 2 |
 | Abort w trakcie przejścia `running → finalizing` | Warunkowe `UPDATE`: wygrywa jedno; abort przegrany odmawia i nie usuwa niczego; abort nigdy nie usuwa indeksu aliasu |

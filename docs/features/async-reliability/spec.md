@@ -237,9 +237,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   wszystkich profilach; w `prod` i `load` suma requestów obu workerów i suma ich limitów pamięci nie przekraczają
   dzisiejszego jednego workera (500m, 512Mi, limit 1Gi), np. `worker` 300m/320Mi/640Mi i `workerCommands`
   200m/192Mi/384Mi; budżet węzła z `make -C infra/k8s check` przechodzi.
-- Test `test_worker_consumes_the_transports_of_compose` porównuje komendy obu workerów z compose (`prod` i `ci`) i ich
-  sondy; zbiór transportów obu workerów razem to wszystkie transporty z `messenger.yaml` poza `failed` (nowy transport
-  bez workera kończy test błędem).
+- Test `test_worker_consumes_the_transports_of_compose` porównuje komendy workerów z compose (`prod` i `ci`) i ich
+  sondy; zbiór transportów wszystkich workerów razem (także `worker-indexing`, `docs/features/async-indexing/spec.md`) to
+  wszystkie transporty z `messenger.yaml` poza `failed` (nowy transport bez workera kończy test błędem).
 - Wszędzie, gdzie skrypty i szablony wymieniają `worker`, dochodzi `worker-commands`: oczekiwanie na rollout w Jobach
   `initialize` i `backfill` (`templates/jobs.yaml:157-158,218`), skalowanie do zera i przywracanie w `restore.sh`
   (`:67,255,309,317`; `worker-commands` zapisuje w bazie, więc odtworzenie musi go zatrzymać), listy podów w teście dymnym
@@ -370,7 +370,7 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
     kolejka, gotowe (`1000+` przy `capped`), najstarsza gotowa, stan „W normie” albo „Zator” (`stalled`).
   - Etykiety (`labels.ts`; nieznana nazwa zostaje jak z API): `outbox` „Zdarzenia do wysłania”, `scheduled` „Komendy
     opóźnione”, `payment_simulator` „Webhooki symulatora płatności”, `promotions` „Granice promocji”, `jobs` „Zadania
-    w tle”.
+    w tle”, `indexing_finalize` „Finalizacja przebudowy indeksu”.
   - Wiek: „—” przy `null`, „N s” poniżej minuty, „N min” poniżej godziny, „N h” powyżej (zaokrąglenie w dół).
   - Podsumowanie z `healthy`: „Kolejki działają” albo „Wymaga uwagi”.
 - Panel nie liczy progu: wyświetla `stalled` i `healthy` z API. Pulpit nie pokazuje stanu systemu (bez zmian, decyzja

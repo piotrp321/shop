@@ -37,6 +37,7 @@ resources:
   # Together as much as the one worker before: 500m, 512Mi of requests, 1Gi of limits.
   worker: { requests: { cpu: 300m, memory: 320Mi }, limits: { memory: 640Mi } }
   workerCommands: { requests: { cpu: 200m, memory: 192Mi }, limits: { memory: 384Mi } }
+  workerIndexing: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 384Mi } }
   # ephemeral-storage guards the disk of the node against writes to the writable layer (the ISR cache stays in memory);
   # over the limit the pod is evicted (small-fixes spec, D4).
   store: { requests: { cpu: 500m, memory: 512Mi, ephemeral-storage: 256Mi }, limits: { memory: 1536Mi, ephemeral-storage: 2Gi } }

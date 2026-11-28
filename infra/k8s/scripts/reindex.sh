@@ -1,13 +1,17 @@
 #!/bin/sh
 # The rebuild of the search index on the cluster: `make -C infra/k8s reindex KUBE_DIR=<directory>` (docs/features/search/spec.md,
 # "Infrastruktura"). The Job comes from the suspended CronJob reindex of the deployed chart, so catalog:reindex runs with the image, the
-# environment and the secrets of the deployed revision (the new index has one primary shard, set in the code of the API). The shop
-# stays open: the command builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. A change
+# environment and the secrets of the deployed revision (the new index has one primary shard, set in the code of the API). The Job runs
+# `catalog:reindex --async --wait` (docs/features/async-indexing/spec.md): it starts a run, whose batches are written by the replicas of
+# the Deployment worker-indexing (in parallel; how many: workers.indexing.replicas of the values), and waits for its end (exit code 0 the
+# alias is on the new index, 1 it is where it was, 2 its state is unknown). The shop
+# stays open: the run builds a new index, checks it and only then moves the alias products, and a run that failed leaves the alias where it was. A change
 # of a product, a price or a stock level written while the index is built reaches the new index too, through the alias products-rebuild
 # (docs/features/search/spec.md, "Zapisy w trakcie przebudowy"). A deployment started while the Job runs fails at its Job migrate (catalog:search-index:setup refuses
 # while a rebuild holds the lock of the index): it is run again after the rebuild (make rerun).
 # Steps:
-#   1. checks without changes: the CronJob reindex is there; nobody holds the lock demo-data-lock
+#   1. checks without changes: the CronJob reindex is there; the Deployment worker-indexing has a ready replica (without one the
+#      batches would wait in the queue until the Job gives up for lack of progress); nobody holds the lock demo-data-lock
 #      (make generate and make open: scripts/shop-closed.sh); no Job of the namespace is active, except one of the CronJobs
 #      rate-limit-check, queue-check and order-expiry (short checks that run every five minutes and do not touch the index; active_jobs
 #      of scripts/shop-closed.sh); the index of the alias products can
@@ -17,7 +21,7 @@
 #   3. takes the lock demo-data-lock and holds it to its end (the trap releases it; a KILL leaves it), so that make generate and make
 #      open refuse without changes while the index is rebuilt, and reads the Jobs again: one that started while the script waited for
 #      the answer is a refusal; then the Job reindex-<UTC time> from the CronJob, waited for until it completes or fails (at most its
-#      activeDeadlineSeconds);
+#      activeDeadlineSeconds; a run that is already active, in this Job or another process, refuses it with exit code 1);
 #   4. the end of the log of the Job; after a Job that completed the index of the alias is read again: a new index with one
 #      primary shard is the success, anything else a failure.
 #
@@ -103,6 +107,13 @@ kubectl -n "$namespace" get cronjob "$cronjob" -o json > /dev/null ||
 # The primary shards of every index (ProductIndexDefinition::SHARDS): the facets of the search model are exact only on one shard.
 shards=1
 
+# The batches of the run are written by worker-indexing: with no ready replica they would wait in the queue.
+indexing_ready="$(kubectl -n "$namespace" get deployment worker-indexing -o 'jsonpath={.status.readyReplicas}')" ||
+  refuse "cannot read the Deployment worker-indexing of the namespace $namespace"
+case "$indexing_ready" in
+  '' | 0 | *[!0-9]*) refuse "the Deployment worker-indexing has no ready replica: the batches of the rebuild would wait in the queue (wait for its rollout or scale it up)" ;;
+esac
+
 lock_read || refuse "cannot read the lock $lock_name"
 [ -z "$lock_held_token" ] || refuse "the lock $lock_name is held by $lock_holder: make generate, make open and make reindex run one at a time; $(lock_message)"
 
@@ -121,8 +132,9 @@ cat <<EOF
 reindex: in the namespace $namespace of the cluster of $KUBE_DIR/config:
   - the alias $alias_name is on the index $before_index: $before_shards primary shard(s), $before_documents Lucene documents (the
     nested documents of the variants count too, so more than the products);
-  - a Job of the CronJob $cronjob runs catalog:reindex of the deployed revision: a new index with $shards primary shard(s) is built from
-    the database, checked, and only then the alias moves to it and the index $before_index is deleted;
+  - a Job of the CronJob $cronjob runs catalog:reindex --async --wait of the deployed revision: a new index with $shards primary shard(s)
+    is built from the database by $indexing_ready replica(s) of worker-indexing in parallel, checked, and only then the alias moves to it
+    and the index $before_index is deleted;
   - the shop stays open and is served by the index $before_index until then; a run that fails leaves the alias on it.
   - a change of a product, a price or a stock level written during the build reaches the new index too (the alias
     $alias_name-rebuild); the admin panel cannot create products until the build ends (409 search-rebuild-running);
@@ -158,7 +170,7 @@ wait_job "$job" || status=1
 # ---------------------------------------------------------------------------------------------------------------
 job_logs "$job" reindex
 if [ "$status" -ne 0 ]; then
-  echo "reindex: FAILED: the Job $job did not complete (its log is above); catalog:reindex moves the alias only to an index it built and checked" >&2
+  echo "reindex: FAILED: the Job $job did not complete (its log is above; exit code 1: the alias is where it was, 2: its state was unknown); catalog:reindex moves the alias only to an index it built and checked" >&2
   after="$(alias_index)" && echo "reindex: the alias $alias_name is on (index, primary shards, Lucene documents): $after" >&2
   exit 1
 fi

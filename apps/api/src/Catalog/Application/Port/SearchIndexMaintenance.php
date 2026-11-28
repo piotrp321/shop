@@ -88,6 +88,8 @@ interface SearchIndexMaintenance
     public function activate(string $index, string $expectedCurrent): ActivationResult;
 
     /**
+     * Deletes the index with its aliases; an index that does not exist counts as deleted.
+     *
      * @throws SearchIndexError  when the alias points to the index (or that cannot be ruled out), or the deletion fails
      * @throws SearchUnavailable
      */
