@@ -59,7 +59,8 @@ final class ProductCategoryEquivalenceTest extends KernelTestCase
      */
     public function testPagesAndCountsAreTheSameWhateverTheBudgetOfTheWalkIs(): void
     {
-        foreach ([1, 2, 3, 5, 7, 13, 100] as $budget) {
+        // The walk of a category is a tenth of the budget: walks of 1 to 13 rows, and of 100 rows (the end of the order).
+        foreach ([10, 20, 30, 50, 70, 130, 1000] as $budget) {
             $this->budget = $budget;
             $this->assertEveryListEquivalent();
         }

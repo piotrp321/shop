@@ -47,6 +47,10 @@ final class ProductCategoryPlanTest extends KernelTestCase
     private const string DEPARTMENT = '00000000-0000-4000-8000-000000000001';
     private const string SMALL = '00000000-0000-4000-8000-000000000002';
     private const string BIG = '00000000-0000-4000-8000-000000000003';
+    private const string MOSTLY = '00000000-0000-4000-8000-000000000004';
+    /** The memberships of the department (11 000, 1 000 of its products are in two leaves) and of the category that has mostly additional members. */
+    private const int DEPARTMENT_MEMBERS = 11_000;
+    private const int MOSTLY_MEMBERS = 5_000;
 
     private Connection $connection;
     private RecordingConnection $recording;
@@ -65,7 +69,8 @@ final class ProductCategoryPlanTest extends KernelTestCase
             "INSERT INTO catalog_category (id, name, slug, path, parent_id, position, version) VALUES
                 ('".self::DEPARTMENT."', 'Dział', 'dzial', '/".self::DEPARTMENT."/', NULL, 0, 1),
                 ('".self::SMALL."', 'Mała', 'mala', '/".self::SMALL."/', NULL, 1, 1),
-                ('".self::BIG."', 'Duża późna', 'duza', '/".self::BIG."/', NULL, 2, 1)",
+                ('".self::BIG."', 'Duża późna', 'duza', '/".self::BIG."/', NULL, 2, 1),
+                ('".self::MOSTLY."', 'Głównie dodatkowa', 'glownie', '/".self::MOSTLY."/', NULL, 3, 1)",
         );
         $this->connection->executeStatement(
             "INSERT INTO catalog_category (id, name, slug, path, parent_id, position, version)
@@ -83,6 +88,7 @@ final class ProductCategoryPlanTest extends KernelTestCase
                     CASE WHEN n % 25 = 12 THEN '[]'::jsonb ELSE '[{\"key\": \"originals/a.jpg\", \"alt\": \"a\"}]'::jsonb END,
                     CASE WHEN n > 99985 THEN '".self::SMALL."'::uuid
                          WHEN n BETWEEN 70001 AND 90000 THEN '".self::BIG."'::uuid
+                         WHEN n BETWEEN 60001 AND 60500 THEN '".self::MOSTLY."'::uuid
                          WHEN n % 6 = 0 THEN {$leaf('(n / 6) % 20 + 1')}
                          ELSE {$other('n % 30 + 1')} END,
                     1, '[]'::jsonb, CASE WHEN n % 25 = 0 THEN 'draft' ELSE 'published' END,
@@ -99,6 +105,12 @@ final class ProductCategoryPlanTest extends KernelTestCase
         $this->connection->executeStatement(
             "INSERT INTO catalog_product_category (product_id, category_id)
              SELECT ('00000000-0000-4000-8003-'||lpad(n::text, 12, '0'))::uuid, {$leaf('(n / 10 + 7) % 20 + 1')} FROM generate_series(3, :products, 100) n",
+            ['products' => self::PRODUCTS],
+        );
+        // The category that has 500 products by its main category and 5 000 by additional ones (every 20th product, none of its own).
+        $this->connection->executeStatement(
+            "INSERT INTO catalog_product_category (product_id, category_id)
+             SELECT ('00000000-0000-4000-8003-'||lpad(n::text, 12, '0'))::uuid, '".self::MOSTLY."'::uuid FROM generate_series(9, :products, 20) n WHERE n NOT BETWEEN 60001 AND 60500",
             ['products' => self::PRODUCTS],
         );
         foreach (['catalog_category', 'catalog_product', 'catalog_product_category'] as $table) {
@@ -125,62 +137,68 @@ final class ProductCategoryPlanTest extends KernelTestCase
     }
 
     /**
-     * @return iterable<string, array{string, int, ?ProductStatus, bool, bool}> the category, its categories, the status, without images, whether the count is checked by the rows
+     * @return iterable<string, array{string, int, ?ProductStatus, bool, int, bool}> the category, its categories, the status, without images, the memberships of its subtree, whether the count is checked by the rows
      */
     public static function categories(): iterable
     {
-        yield 'a small category at the end of the order' => [self::SMALL, 1, null, false, true];
-        yield 'a big leaf at the end of the order' => [self::BIG, 1, null, false, true];
-        yield 'the department' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, null, false, true];
-        yield 'the department, the published ones' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, ProductStatus::Published, false, true];
-        yield 'the department, the drafts' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, ProductStatus::Draft, false, true];
+        yield 'a small category at the end of the order' => [self::SMALL, 1, null, false, 0, true];
+        yield 'a big leaf at the end of the order' => [self::BIG, 1, null, false, 0, true];
+        yield 'a category that has mostly additional members' => [self::MOSTLY, 1, null, false, self::MOSTLY_MEMBERS, true];
+        yield 'a category that has mostly additional members, the published ones' => [self::MOSTLY, 1, ProductStatus::Published, false, self::MOSTLY_MEMBERS, true];
+        yield 'the department' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, null, false, self::DEPARTMENT_MEMBERS, true];
+        yield 'the department, the published ones' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, ProductStatus::Published, false, self::DEPARTMENT_MEMBERS, true];
+        yield 'the department, the drafts' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, ProductStatus::Draft, false, self::DEPARTMENT_MEMBERS, true];
         // The count of the products without images reads them through their partial index of the category by an index only scan, which the
         // planner prefers to the partial index by id only for a table that has been vacuumed (the table of the test has not, and cannot be in
-        // its transaction); the plan on a vacuumed copy of `medium` is in the report of PERF-7-3.
-        yield 'the department, without images' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, null, true, false];
+        // its transaction: VACUUM does not run in one): there it reads the partial index by id once for each category. So the rows are not
+        // bounded for this case, but the table must not be scanned; the plan on a vacuumed copy of `medium` is in the report of PERF-7-3.
+        yield 'the department, without images' => [self::DEPARTMENT, self::DEPARTMENT_CATEGORIES, null, true, self::DEPARTMENT_MEMBERS, false];
     }
 
     #[DataProvider('categories')]
-    public function testThePagesOfACategoryReadAsMuchAsItsClassAllowsAndNotTheTable(string $category, int $categories, ?ProductStatus $status, bool $withoutImages, bool $countChecked): void
+    public function testThePagesOfACategoryReadAsMuchAsItsClassAllowsAndNotTheTable(string $category, int $categories, ?ProductStatus $status, bool $withoutImages, int $members, bool $countChecked): void
     {
         $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording));
         $path = CategoryPath::fromString('/'.$category.'/');
-        // The walk of the budget (the rows of the global index and the lookup of each of them to check the membership) that comes first and fills
-        // the page of a dense category, then a branch per category of the subtree (a page and one more row each). The products that are in the subtree only by an additional
-        // category are a set of their own (the CTE `additional`), linear in the memberships of the subtree (or in the table when the
-        // planner hash joins it): the cost of K1 that the specification accepts, measured on `medium` in the report, not bounded here.
-        $bound = 2 * self::DEFAULT_BUDGET + $categories * (self::PAGE + 1) + self::SLACK;
+        // The walk of the budget that comes first (not for the drafts and the products without images) (the rows of the global index and the lookup of each),
+        // a branch per category of the subtree (a page and one more row each), and the products that are in the subtree only by an additional
+        // category (the CTE `additional`): the lookup of the product of each membership of the subtree.
+        $walk = ProductStatus::Draft !== $status && !$withoutImages ? 2 * self::DEFAULT_BUDGET : 0;
+        $bound = $walk + $categories * (self::PAGE + 1) + (int) ceil(1.3 * $members) + self::SLACK;
 
         foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
             $this->recording->forget();
             $first = $source->page(null, $path, $status, null, $sort, self::PAGE, $withoutImages);
-            $read = $this->rowsRead('additional');
+            $read = $this->rowsRead();
             self::assertNotSame([], $first, $sort->value);
             self::assertLessThanOrEqual($bound, $read, \sprintf("first page by %s read %d rows of %d (class bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
 
             $this->recording->forget();
             $source->page(null, $path, $status, ProductCursor::after($first[\count($first) - 1], $sort), $sort, self::PAGE, $withoutImages);
-            $read = $this->rowsRead('additional');
+            $read = $this->rowsRead();
             self::assertLessThanOrEqual($bound, $read, \sprintf("second page by %s read %d rows of %d (class bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
         }
     }
 
     #[DataProvider('categories')]
-    public function testTheCountOfACategoryReadsAsMuchAsItsClassAllowsAndNotTheTable(string $category, int $categories, ?ProductStatus $status, bool $withoutImages, bool $checked): void
+    public function testTheCountOfACategoryReadsAsMuchAsItsClassAllowsAndNotTheTable(string $category, int $categories, ?ProductStatus $status, bool $withoutImages, int $members, bool $checked): void
     {
-        if (!$checked) {
-            self::markTestSkipped('The plan of this count depends on a vacuumed table, see the data provider.');
-        }
         $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording));
 
         $this->recording->forget();
         $count = $source->count(null, CategoryPath::fromString('/'.$category.'/'), $status, $withoutImages);
 
         self::assertGreaterThan(0, $count->value);
-        $read = $this->rowsRead('additional');
-        // The count stops at the limit: a branch reads at most the limit (and the planner reads a whole category when it has fewer).
-        // A branch that is ordered (the status, without images) is read whole, so the count may go over the limit by one leaf of the department.
-        $bound = min($count->value, self::COUNT_LIMIT + 1) + $categories + self::LEAF + self::SLACK;
+        if (!$checked) {
+            self::assertDoesNotMatchRegularExpression('/Seq Scan on catalog_product(?![_a-z])/', $this->plans(), 'the table is scanned');
+
+            return;
+        }
+        $read = $this->rowsRead();
+        // The count stops at the limit: a branch reads at most the limit (and the planner reads a whole category when it has fewer), and the
+        // additional members are read (the lookup of their products) when the branches did not reach the limit. A branch that is ordered
+        // (the status, without images) is read whole, so the count may go over the limit by one leaf of the department.
+        $bound = min($count->value, self::COUNT_LIMIT + 1) + $categories + self::LEAF + (int) ceil(1.3 * $members) + self::SLACK;
         self::assertLessThanOrEqual($bound, $read, \sprintf("count read %d rows of %d (class bound %d)\n%s", $read, self::PRODUCTS, $bound, $this->plans()));
     }
 
@@ -199,17 +217,19 @@ final class ProductCategoryPlanTest extends KernelTestCase
         $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording), phraseBudget: $budget);
         $path = CategoryPath::fromString('/'.self::DEPARTMENT.'/');
 
-        foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
-            $this->recording->forget();
-            $first = $source->page(null, $path, null, null, $sort, self::PAGE);
-            $read = $this->rowsRead();
-            self::assertCount(self::PAGE, $first);
-            self::assertLessThanOrEqual($bound, $read, \sprintf("first page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
+        foreach ([null, ProductStatus::Published] as $status) {
+            foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
+                $this->recording->forget();
+                $first = $source->page(null, $path, $status, null, $sort, self::PAGE);
+                $read = $this->rowsRead();
+                self::assertCount(self::PAGE, $first);
+                self::assertLessThanOrEqual($bound, $read, \sprintf("first page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
 
-            $this->recording->forget();
-            $source->page(null, $path, null, ProductCursor::after($first[self::PAGE - 1], $sort), $sort, self::PAGE);
-            $read = $this->rowsRead();
-            self::assertLessThanOrEqual($bound, $read, \sprintf("second page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
+                $this->recording->forget();
+                $source->page(null, $path, $status, ProductCursor::after($first[self::PAGE - 1], $sort), $sort, self::PAGE);
+                $read = $this->rowsRead();
+                self::assertLessThanOrEqual($bound, $read, \sprintf("second page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
+            }
         }
     }
 

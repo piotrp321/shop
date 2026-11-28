@@ -68,7 +68,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         if (null !== $after && $after->sort !== $sort) {
             throw new \InvalidArgumentException('The cursor is of another sort.');
         }
-        if (null !== $term && self::byPhrase($status, $withoutImages)) {
+        if (null !== $term && self::denseInTheOrder($status, $withoutImages)) {
             [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
 
             return $this->phrases->page($term, $conditions, $parameters, $after, $sort, $limit);
@@ -77,7 +77,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         if (null === $term && null !== $category) {
             [$conditions, $parameters] = self::otherFilters(null, $status, $withoutImages);
 
-            return $this->categories->page(Like::escape($category->toString()).'%', $conditions, $parameters, $after, $sort, $limit);
+            return $this->categories->page(Like::escape($category->toString()).'%', $conditions, $parameters, $after, $sort, $limit, self::denseInTheOrder($status, $withoutImages));
         }
 
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
@@ -104,7 +104,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
 
     public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = BoundedCounter::DEFAULT_LIMIT): BoundedCount
     {
-        if (null !== $term && self::byPhrase($status, $withoutImages)) {
+        if (null !== $term && self::denseInTheOrder($status, $withoutImages)) {
             [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
 
             return $this->phrases->count($term, $conditions, $parameters, $limit);
@@ -161,10 +161,11 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     }
 
     /**
-     * Whether a term is looked for by PhraseSearch: with the drafts or the products without images it stays a filter of the
-     * statement, over the partial indexes of those.
+     * Whether the products of the filters are dense in the order of the sorts, so that a walk of the global index finds a page of them (the
+     * phrase and the category): the drafts and the products without images are not, they have partial indexes of their own, and stay with
+     * the statement (a phrase) or with the branches of the category.
      */
-    private static function byPhrase(?ProductStatus $status, bool $withoutImages): bool
+    private static function denseInTheOrder(?ProductStatus $status, bool $withoutImages): bool
     {
         return ProductStatus::Draft !== $status && !$withoutImages;
     }

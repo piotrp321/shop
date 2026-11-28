@@ -27,6 +27,13 @@ use Doctrine\DBAL\Connection;
  * The branches are disjoint, so the rows are put together and sorted (the categories times a page of them, and the page of the
  * additional ones), and the first rows are the page. The count is the rows of both parts up to the limit, and goes by the same
  * conditions.
+ *
+ * A category that is a good part of the table (a department) has its page in the first rows of the global index of the sort, so a page
+ * (but not the one of the drafts or of the products without images) starts with a walk of them: the first rows of the index (after the cursor), each looked up for
+ * the membership of the subtree (the condition of the statement before the branches). The walk is a tenth of the first walk of a
+ * phrase (PhraseSearch), because a miss costs the rows and the lookup of each of them; it fills the page of a department and misses for
+ * a small category, which the branches then read. The drafts and the products without images are not walked (they are not dense in the order): the partial indexes of the
+ * category hold only them, and the walk of the global index with them reads all the index when they are fewer than the budget.
  */
 final readonly class CategoryList
 {
@@ -52,16 +59,17 @@ final readonly class CategoryList
      * @param string               $prefix     the path of the category, escaped for LIKE, with the trailing `%`
      * @param list<string>         $conditions the other filters on `p` (status, without images), constant fragments
      * @param array<string, mixed> $parameters the values they bind
+     * @param bool                 $walk       whether the page may start with the walk of the global index (not for the drafts and the products without images)
      *
      * @return list<BackofficeProduct> at most $limit products, in the order of the sort, the ones after the cursor
      */
-    public function page(string $prefix, array $conditions, array $parameters, ?ProductCursor $after, ProductSort $sort, int $limit): array
+    public function page(string $prefix, array $conditions, array $parameters, ?ProductCursor $after, ProductSort $sort, int $limit, bool $walk = true): array
     {
         // A category that is a good part of the table (a department) has its page in the first rows of the global index of the sort, and the
         // walk of them is the cheapest way; the branches below cost the products that are in the category only by additional categories.
-        // Only without the status and without images: those have a partial index of the category (the branches read only those products), and
-        // the walk of the global index with them would read the whole index when they are fewer than the budget.
-        if ([] === $conditions) {
+        // Not for the drafts and the products without images: the partial indexes of the category hold only them (the branches read only those
+        // products), and the walk of the global index with them reads all the index when they are fewer than the budget.
+        if ($walk) {
             $products = $this->walk($prefix, $conditions, $parameters, $after, $sort, $limit);
             if (\count($products) >= $limit) {
                 return $products;
@@ -96,9 +104,9 @@ final readonly class CategoryList
     }
 
     /**
-     * The first rows of the order of the sort (the budget of them, after the cursor, with the status or without images done by the index
-     * that holds only those products) that are in the subtree, as the statement before the branches had them: the membership is the
-     * condition of that statement. It reads the budget at most, and stops at the page.
+     * The first rows of the order of the sort (the budget of them, after the cursor) that are in the subtree, as the statement before the
+     * branches had them: the membership (and the status) is the condition of that statement. It reads the budget of the index and looks up
+     * every row it reads, and stops at the page.
      *
      * @param list<string>         $conditions
      * @param array<string, mixed> $parameters
@@ -110,16 +118,15 @@ final readonly class CategoryList
         $column = $sort->byUpdatedAt() ? 'updated_at' : 'name';
         $direction = $sort->isDescending() ? 'DESC' : 'ASC';
         $values = $parameters + ['prefix' => $prefix];
-        // The conditions are on `p` in the statement of the branches; here they are on the walk, `w0`.
-        $inner = array_map(static fn (string $condition): string => (string) preg_replace('/\bp\./', 'w0.', $condition), $conditions);
+        $where = '';
         if (null !== $after) {
             [$cursor, $cursorValues] = Keyset::after('w0', $sort, $after);
-            $inner[] = $cursor;
+            $where = ' WHERE '.$cursor;
             $values += $cursorValues;
         }
-        $sql = 'SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name'.($sort->byUpdatedAt() ? ', w0.updated_at' : '').' FROM catalog_product w0'
-            .([] === $inner ? '' : ' WHERE '.implode(' AND ', $inner))
+        $sql = 'SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name'.($sort->byUpdatedAt() ? ', w0.updated_at' : '')." FROM catalog_product w0{$where}"
             ." ORDER BY w0.{$column} {$direction}, w0.id {$direction} LIMIT {$this->walkBudget}) w JOIN catalog_product p ON p.id = w.id WHERE ".self::MEMBERSHIP
+            .([] === $conditions ? '' : ' AND '.implode(' AND ', $conditions))
             ." ORDER BY w.{$column} {$direction}, w.id {$direction} LIMIT {$limit}";
 
         return array_map(static function (array $row): BackofficeProduct {
