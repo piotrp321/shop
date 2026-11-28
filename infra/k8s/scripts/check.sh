@@ -155,18 +155,23 @@ do_schema() {
       -f environments/ci/values.yaml --set image.tag=$rev --set demoData.terminationGracePeriodSeconds=30
     expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
       --set-string demoData.enabled=true
-    # The shards of the search index (docs/features/search/spec.md, "Infrastruktura"): a whole number from 1, never a text, zero or
-    # a fraction, which the API would refuse only when it builds an index; the CronJob reindex has a time limit like load.
-    expect_failure "zero shards of the search index" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
-      --set elasticsearch.shards=0
-    expect_failure "shards of the search index that are a text" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
-      --set-string elasticsearch.shards=4
-    expect_failure "shards of the search index that are a fraction" "/elasticsearch/shards" -f environments/ci/values.yaml \
-      --set image.tag=$rev --set-json elasticsearch.shards=1.5
-    expect_failure "more shards than Elasticsearch allows" "/elasticsearch/shards" -f environments/ci/values.yaml --set image.tag=$rev \
-      --set elasticsearch.shards=1025
-    expect_failure "search index values without the shards" "missing property 'shards'" -f environments/ci/values.yaml \
-      --set image.tag=$rev --set elasticsearch.shards=null
+    # The shards of the search index are not a value (docs/features/search/spec.md, M3 and "Infrastruktura"): the index has one, set in
+    # the code of the API, so the chart refuses elasticsearch.shards whatever its value (1, more than one, 0, a text).
+    for shards in 1 2 4 0; do
+      expect_failure "elasticsearch.shards $shards, the search index has one shard that no value changes" "'shards' not allowed" \
+        -f environments/ci/values.yaml --set image.tag=$rev --set elasticsearch.shards=$shards
+    done
+    expect_failure "shards of the search index that are a text" "'shards' not allowed" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string elasticsearch.shards=4
+    # The refresh interval of the search index: a whole number with ms or s, which the API would refuse only at its start.
+    for interval in "" 5 -1 1m 1.5s 0s 1S often; do
+      expect_failure "refresh interval of the search index '$interval'" "/elasticsearch/refreshInterval" -f environments/ci/values.yaml \
+        --set image.tag=$rev --set-string "elasticsearch.refreshInterval=$interval"
+    done
+    expect_failure "refresh interval of the search index that is a number" "/elasticsearch/refreshInterval" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.refreshInterval=5
+    expect_failure "search index values without the refresh interval" "missing property 'refreshInterval'" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set elasticsearch.refreshInterval=null
     expect_failure "a time limit of the rebuild that is not a number" "/reindex/activeDeadlineSeconds" -f environments/ci/values.yaml \
       --set image.tag=$rev --set-string reindex.activeDeadlineSeconds=1h
     expect_failure "a value of reindex that does not exist" "'schedule' not allowed" -f environments/ci/values.yaml --set image.tag=$rev \
@@ -263,7 +268,8 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh ../../.github/scripts/merge-override.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
+    ../../.github/scripts/deploy-ref.sh ../../.github/scripts/merge-override.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh \
+    ../../load/writes.sh ../../load/test/write-state.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.

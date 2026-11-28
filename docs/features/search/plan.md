@@ -4,23 +4,29 @@ Specyfikacja: `docs/features/search/spec.md` (decyzje M1–M8, „Weryfikacja wy
 zmian i dokumentacja (PERF-2 etap B)”). Epik prowadzi główna sesja Claude Code z natywnymi subagentami. Epik ma jedną
 gałąź (poza `epic/*`) z PR-em do `main` otwartym od początku jako szkic. Każde zadanie realizuje subagent we własnym
 worktree na gałęzi zadania; sesja orkiestrująca merguje gotowe gałęzie zadań do gałęzi epiku i wypycha ją. Zadania nie
-mają własnych PR, z jednym wyjątkiem ze specyfikacji („Kolejność zmian”, punkt 1): PERF-2B-1 idzie osobnym PR do
+mają własnych PR, z jednym wyjątkiem (M7 przed modelem): PERF-2B-1 idzie osobnym PR do
 `main`, który merguje właściciel, a gałąź epiku powstaje z `main` po tym merge'u. Zadania jednej fali z listą
 `parallel_with` mogą iść naraz. Kroki po merge'u epiku (wdrożenie PERF-2B-1 i modelu, przebudowa na worf.pl, pomiary
-z kryterium 13, raport) są w specyfikacji, „Kolejność zmian”, punkt 3, każdy za zgodą właściciela. Pomiary lokalne i na
+z kryterium 13, raport) są niżej, „Po merge'u epiku”, każdy za zgodą właściciela. Pomiary lokalne i na
 worf.pl uzgadnia sesja prowadząca z sesją PERF-0. Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
 ## Status
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-2B-1, PERF-2B-2, PERF-2B-3 | |
-| 2 | PERF-2B-4 | |
-| 3 | PERF-2B-5, PERF-2B-6 | |
-| 4 | PERF-2B-7 | |
-| 5 | PERF-2B-8 | |
+| 1 | PERF-2B-1, PERF-2B-2, PERF-2B-3 | zmergowane: PERF-2B-1 do `main` (#977, f54ca9c9), PERF-2B-2 (866d86e0), PERF-2B-3 (8747078e) |
+| 2 | PERF-2B-4 | zmergowane (c3e6081b) |
+| 3 | PERF-2B-5, PERF-2B-6 | zmergowane: PERF-2B-5 (7124689d), PERF-2B-6 (bffcb571) |
+| 4 | PERF-2B-7 | zmergowane (1cdd4a81) |
+| 5 | PERF-2B-8 | zmergowane (92bd1337); poprawka PERF-2B-FIX1 (c9e9b601) |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
+
+## Po merge'u epiku
+
+Każdy krok za zgodą właściciela: wdrożenie i przebudowa na worf.pl (okno serwisowe, M7), odczyt rozmiaru indeksu
+i gorących danych oraz przebieg W8 przy obecnych limitach dla PERF-1 (D2, D3), wdrożenie wartości PERF-1, pomiary
+z kryterium 13 i raport w `docs/reports/`; pomiary lokalne i na worf.pl uzgadniane z sesjami PERF-0, PERF-1 i PERF-7.
 
 ## Zadania
 

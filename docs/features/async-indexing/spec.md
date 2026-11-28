@@ -26,9 +26,9 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
   (finalizacja), idzie istniejącym transportem transakcyjnym (zob. „Finalizacja”: transport `indexing_finalize`).
 - Poza zakresem: zmiana tego, co jest w dokumencie, zapytań, shardów, ustawień Elasticsearcha i pamięci Postgresa
   (jeśli pomiar wskaże je jako wąskie gardło, to osobne zadanie), indeksowanie pojedynczych zmian produktu (zostaje
-  przez zdarzenia i outbox, `docs/features/search/spec.md`, „Wyzwalacze”), przebudowa online (zmiana produktu, ceny albo stanu w trakcie budowy może nie trafić do nowego indeksu aż do następnej
-  zmiany albo przebudowy, jak dziś: `docs/features/walking-skeleton/spec.md`, „Ograniczenia tej przebudowy”; to na etapie demo
-  zostaje bez zmian, a dłuższy przebieg tylko wydłuża to okno), nowy framework pomiarowy (pomiar: Grafana, logi i istniejące narzędzia).
+  przez zdarzenia i outbox, `docs/features/search/spec.md`, „Wyzwalacze”), przebudowa online (dziś zapis pojedynczy idzie do aliasu i do aliasu przebudowy, więc zmiana produktu, ceny albo stanu
+  w trakcie budowy trafia do nowego indeksu: `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”; produkt
+  utworzony w trakcie poniżej kursora odczytu kończy przebudowę błędem weryfikacji, #979), nowy framework pomiarowy (pomiar: Grafana, logi i istniejące narzędzia).
 
 ## Stan wyjściowy (do zachowania albo zmiany)
 
@@ -40,7 +40,7 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
   powstaje dopiero po poprzedniej), więc nie daje równoległości; nowa funkcja potrzebuje wachlarza (fan-out), a nie
   łańcucha.
 - Przyczyna tempa 391 dokumentów/s nie jest ustalona. Hipotezy: odczyt produktów (`page`), doliczanie ofert
-  (`ProductOfferFacts::of`, wywołanie przez `query.bus`), zapis do Elasticsearcha (4 shardy, heap 2 GiB), pamięć
+  (`ProductOfferFacts::of`, wywołanie przez `query.bus`), zapis do Elasticsearcha (w pomiarze bazowym: 4 shardy, heap 2 GiB), pamięć
   Postgresa (2 GiB, ustawienia domyślne). Równoległość pomoże tylko w tej części, która się skaluje na dodatkowe procesy
   (zob. „Skala” i kryterium 12); specyfikacja nie obiecuje żadnego tempa.
 
@@ -152,7 +152,7 @@ IndexDocuments {
 
 - Zmienna środowiskowa `SEARCH_INDEX_BATCH_SIZE` (parametr `app.search.indexing_batch_size`, domyślnie 500, jak dzisiejszy
   `app.search.batch_size`), dostępna dla wszystkich kontenerów z kodem API (compose, chart). Wartość spoza `1..5000` kończy
-  start komendy błędem z nazwą zmiennej (jak `SEARCH_SHARDS`).
+  start komendy błędem z nazwą zmiennej (jak `SEARCH_REFRESH_INTERVAL`).
 - Opcja `--batch-size` komendy nadpisuje domyślną dla jednego przebiegu i jest zapisana w przebiegu; zmiana zmiennej
   w trakcie przebiegu go nie zmienia.
 - To liczba elementów jednej **wiadomości**; jedna wiadomość to jeden bulk do Elasticsearcha. Podział na mniejsze bulki
@@ -343,7 +343,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 - Przy paczce 500: 20 000 wiadomości, 20 000 wierszy paczek i 20 000 krótkich aktualizacji jednego wiersza przebiegu
   (w skali godzin, nie sekund); producent czyta 10 mln identyfikatorów po kursorze (same klucze, pamięć zależy od rozmiaru
   paczki). Rejestr nie ma zapytań rosnących z liczbą paczek.
-- Równoległość zależy od liczby replik i od wąskiego gardła. Zapis do ES (4 shardy, heap 2 GiB), odczyt z Postgresa
+- Równoległość zależy od liczby replik i od wąskiego gardła. Zapis do ES (w pomiarze bazowym: 4 shardy, heap 2 GiB), odczyt z Postgresa
   (2 GiB) i doliczanie ofert mogą się nasycić; to hipotezy do zmierzenia, nie fakty. Specyfikacja nie twierdzi, że wymagania
   wydajnościowe są spełnione, dopóki nie potwierdzą tego pomiary.
 - Rozmiar paczki dobiera się pomiarem: za mała zwiększa narzut, za duża wydłuża paczkę, pamięć handlera i koszt ponowienia.
@@ -376,7 +376,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Wiadomości paczek utracone w brokerze | Przebieg nie dochodzi do kompletu; martwy po limicie heartbeatu; `abort` i powtórzenie od początku |
 | Jednoczesne `catalog:reindex` (sync/async), `setup`, `reset` | Wzajemnie wykluczone blokadą i wierszem przebiegu (wyżej); druga odmawia z przyczyną |
 | Restart całego stosu w trakcie | Kolejka trwała, rejestr i finalizacja w Postgresie; przebieg kończy się, gdy workery wrócą |
-| Produkt zmieniony w trakcie przebiegu | Bez zmian względem dziś (przebudowa online poza zakresem): zapis przez alias idzie do poprzedniego indeksu |
+| Produkt zmieniony w trakcie przebiegu | Jak dziś (`docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”): zapis pojedynczy idzie do aliasu i do aliasu przebudowy, więc trafia też do nowego indeksu; produkt utworzony w trakcie poniżej kursora kończy przebieg błędem weryfikacji (#979) |
 
 ## Model zagrożeń
 

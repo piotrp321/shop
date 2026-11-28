@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex measure backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open reindex measure backups seal-secrets bootstrap kubeconfig status failed failed-retry failed-remove search-cache-clear reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -162,11 +162,11 @@ measure:
 # Only after the consent of the user in the conversation that names the operation and the host. Refuses without changes when a Job of
 # the namespace is active (not one of the CronJobs rate-limit-check, queue-check and order-expiry), make generate or make open holds
 # the lock demo-data-lock, or the index of the alias products cannot be read;
-# says which index the alias is on and how many shards the new one gets (SEARCH_SHARDS of the deployed revision: elasticsearch.shards)
+# says which index the alias is on (and its shards) and that the new one gets one shard (ProductIndexDefinition::SHARDS)
 # and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
 # suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written
-# during the build may be missing from the new index until the next change of that product, and no deployment may start until the Job
-# ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
+# during the build reaches the new index too (alias products-rebuild), a product created during the build fails the check (the alias
+# stays, run it again; #979), and no deployment may start until the Job ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
 # without KUBE_DIR. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 reindex:
 	@sh scripts/ao-guard.sh reindex
@@ -223,6 +223,16 @@ failed-retry:
 # make -C infra/k8s failed-remove HOST=<user>@<address> ID=<id>. Needs the consent of the user.
 failed-remove:
 	@sh scripts/failed-remove.sh "$$HOST" "$$ID"
+
+# Empties the request cache of the product index in Elasticsearch over SSH (docs/features/search/spec.md, "Weryfikacja wydajności
+# (PERF-2 etap B)", "Zimny request cache"): make -C infra/k8s search-cache-clear HOST=<user>@<address>. Only POST /products/_cache/clear?request=true
+# against the alias products, read from the pod elasticsearch: no data, no other cache, no other index; the next searches fill the cache
+# again. It is part of a measurement on the server: needs the consent of the user (no tak: nothing is lost). Exit 0 emptied; 1 the server
+# or Elasticsearch cannot be reached, the alias is missing or not on exactly one index, Elasticsearch answered with an error or a failed
+# shard (the message says which; the one change is the clear call, so before it nothing was changed); 2 no HOST or a HOST that is not
+# <user>@<address>.
+search-cache-clear:
+	@sh scripts/search-cache-clear.sh "$$HOST"
 
 # Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
 # question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).

@@ -1,0 +1,15 @@
+NAME                         IMAGE                              COMMAND                  SERVICE           CREATED          STATUS                    PORTS
+perf2b-8-admin-1             perf2b-8-admin                     "docker-entrypoint.s…"   admin             19 seconds ago   Up 17 seconds (healthy)   127.0.0.1:41801->5173/tcp
+perf2b-8-api-1               perf2b-8-api:prod                  "docker-php-entrypoi…"   api               19 seconds ago   Up 17 seconds (healthy)   127.0.0.1:41802->80/tcp
+perf2b-8-elasticsearch-1     perf2b-8-elasticsearch             "/bin/tini -- /usr/l…"   elasticsearch     19 seconds ago   Up 17 seconds (healthy)   9200/tcp, 9300/tcp
+perf2b-8-garage-1            dxflrs/garage:v2.4.0               "/garage server"         garage            19 seconds ago   Up 18 seconds (healthy)   
+perf2b-8-imgproxy-1          darthsim/imgproxy:v3.31.1          "/bin/sh -c 'export …"   imgproxy          18 seconds ago   Up 15 seconds (healthy)   127.0.0.1:41804->8080/tcp
+perf2b-8-keycloak-1          quay.io/keycloak/keycloak:26.8.2   "/bin/bash -c 'expor…"   keycloak          18 seconds ago   Up 16 seconds (healthy)   127.0.0.1:41803->8080/tcp
+perf2b-8-mailpit-1           axllent/mailpit:v1.27.11           "/mailpit"               mailpit           19 seconds ago   Up 17 seconds (healthy)   127.0.0.1:41805->8025/tcp
+perf2b-8-postgres-1          postgres:18.6                      "docker-entrypoint.s…"   postgres          19 seconds ago   Up 17 seconds (healthy)   5432/tcp
+perf2b-8-rabbitmq-1          rabbitmq:4.4.0-management          "docker-entrypoint.s…"   rabbitmq          19 seconds ago   Up 17 seconds (healthy)   127.0.0.1:41806->15672/tcp
+perf2b-8-redis-1             redis:8.10.3                       "docker-entrypoint.s…"   redis             19 seconds ago   Up 17 seconds (healthy)   6379/tcp
+perf2b-8-store-1             perf2b-8-store                     "docker-entrypoint.s…"   store             18 seconds ago   Up 16 seconds (healthy)   127.0.0.1:41800->3000/tcp
+perf2b-8-varnish-1           varnish:9.1.0                      "/usr/local/bin/dock…"   varnish           18 seconds ago   Up 17 seconds (healthy)   80/tcp, 8443/tcp
+perf2b-8-worker-1            perf2b-8-api:prod                  "docker-php-entrypoi…"   worker            2 seconds ago    Up 1 second (healthy)     80/tcp, 443/tcp, 2019/tcp, 443/udp
+perf2b-8-worker-commands-1   perf2b-8-api:prod                  "docker-php-entrypoi…"   worker-commands   2 seconds ago    Up 1 second (healthy)     80/tcp, 443/tcp, 2019/tcp, 443/udp

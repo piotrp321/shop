@@ -703,20 +703,20 @@
     },
     "elasticsearch": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "javaOpts",
-        "shards"
+        "refreshInterval"
       ],
       "properties": {
         "javaOpts": {
           "type": "string",
           "minLength": 1
         },
-        "shards": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1024,
-          "description": "The primary shards of a new product index (SEARCH_SHARDS); Elasticsearch allows at most 1024."
+        "refreshInterval": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*(ms|s)$",
+          "description": "The refresh interval of the product index (SEARCH_REFRESH_INTERVAL): a whole number with the unit ms or s."
         }
       }
     },

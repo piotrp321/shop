@@ -35,6 +35,7 @@ final class ProductDocumentFactory extends ObjectFactory
             'slug' => self::faker()->unique()->slug(3),
             'shortDescription' => self::faker()->sentence(),
             'mainCategoryId' => $main,
+            'mainCategoryPath' => $main,
             'categoryIds' => [$main],
             'categoryAncestorIds' => [$main],
             'mainImage' => null,

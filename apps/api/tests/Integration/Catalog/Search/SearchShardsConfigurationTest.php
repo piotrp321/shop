@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Catalog\Search;
 
+use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * The number of primary shards of a new product index comes from SEARCH_SHARDS of the environment (spec:
- * docs/features/search/spec.md, "Infrastruktura"); without the variable an index has one shard.
+ * A product index always has one primary shard (spec: docs/features/search/spec.md, M3 and "Infrastruktura"): the exact
+ * facets of the search model and the ranking need it. The variable SEARCH_SHARDS no longer exists, so a container that
+ * still has it with a value other than 1 (compose, .env, the chart or a hand-set variable) refuses to build the index
+ * definition, with the name of the variable.
  */
 final class SearchShardsConfigurationTest extends KernelTestCase
 {
@@ -34,13 +38,55 @@ final class SearchShardsConfigurationTest extends KernelTestCase
         unset($_SERVER[self::VARIABLE], $_ENV[self::VARIABLE]);
         putenv(self::VARIABLE);
 
-        self::assertSame(1, self::getContainer()->getParameter('app.search.shards'));
+        self::assertSame(1, $this->shardsOfTheNewIndex());
     }
 
-    public function testTheVariableSetsTheNumberOfShards(): void
+    public function testTheVariableSetToOneIsAccepted(): void
     {
-        $_SERVER[self::VARIABLE] = '4';
+        $_SERVER[self::VARIABLE] = '1';
 
-        self::assertSame(4, self::getContainer()->getParameter('app.search.shards'));
+        self::assertSame(1, $this->shardsOfTheNewIndex());
+    }
+
+    public function testAnEmptyVariableCountsAsNotSet(): void
+    {
+        // The default processor of the container (env(default::SEARCH_SHARDS)) treats an empty value like a missing one.
+        $_SERVER[self::VARIABLE] = '';
+
+        self::assertSame(1, $this->shardsOfTheNewIndex());
+    }
+
+    #[DataProvider('valuesOtherThanOne')]
+    public function testAnyOtherValueOfTheVariableIsRefusedWithItsName(string $value): void
+    {
+        $_SERVER[self::VARIABLE] = $value;
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage(self::VARIABLE);
+
+        $this->shardsOfTheNewIndex();
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function valuesOtherThanOne(): iterable
+    {
+        yield 'two' => ['2'];
+        yield 'four' => ['4'];
+        yield 'zero' => ['0'];
+        yield 'negative' => ['-1'];
+        yield 'not a number' => ['many'];
+        yield 'one with a leading zero' => ['01'];
+        yield 'one with a space' => [' 1'];
+        yield 'one with a newline' => ["1\n"];
+    }
+
+    private function shardsOfTheNewIndex(): mixed
+    {
+        $definition = self::getContainer()->get(ProductIndexDefinition::class);
+        self::assertInstanceOf(ProductIndexDefinition::class, $definition);
+
+        return $definition->body()['settings']['number_of_shards'];
     }
 }

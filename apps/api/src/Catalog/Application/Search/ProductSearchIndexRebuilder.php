@@ -16,8 +16,8 @@ use Psr\Log\NullLogger;
  * Synchronous rebuild of the search index from the database and the offer facts: a new physical index is filled in
  * batches, verified and the alias is switched to it in one request. A failure of the offer facts stops the rebuild.
  * Every written batch is logged with the documents done so far and their rate.
- * Not an online rebuild: writes made through the alias while it runs go to the previous index (see the spec,
- * "Ograniczenia tej przebudowy").
+ * Single writes made while it runs reach the new index through its rebuild alias, which the index has from its creation
+ * until the switch (spec docs/features/search/spec.md, "Zapisy w trakcie przebudowy (W19a, M5)").
  */
 final readonly class ProductSearchIndexRebuilder
 {
@@ -119,8 +119,8 @@ final readonly class ProductSearchIndexRebuilder
      *
      * @return int the number of documents written
      *
-     * @throws SearchUnavailable|SearchIndexError on the first failed request or item, including a stale item
-     *                                            (a fresh index should never have one)
+     * @throws SearchUnavailable|SearchIndexError on the first failed request or item; a stale item (a
+     *                                            single write through the rebuild alias was newer) is correct
      * @throws OfferFactsUnavailable              when the offers of a batch could not be read
      */
     private function fill(string $index, int $batchSize): int
@@ -139,7 +139,7 @@ final readonly class ProductSearchIndexRebuilder
                 fn (ProductSearchSnapshot $snapshot): ProductDocument => $this->builder->build($snapshot, $facts[$snapshot->id] ?? null, $version),
                 $page,
             ));
-            if (!$result->allIndexed()) {
+            if ($result->hasFailures()) {
                 throw new SearchIndexError(\sprintf('Writing to "%s" failed: %s.', $index, $result->describeProblems()));
             }
             $written += \count($page);

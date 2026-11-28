@@ -13,6 +13,8 @@ use App\Catalog\Domain\Product\ProductStatus;
 final readonly class ProductDocument
 {
     /**
+     * @param string                               $mainCategoryPath    the ids of the main category's path from the root to the category inclusive,
+     *                                                                  joined with "/": the sort key of the index (spec M3)
      * @param list<string>                         $categoryIds         every category of the product, the main one first
      * @param list<string>                         $categoryAncestorIds the product's categories and all their ancestors, without duplicates
      * @param array{key: string, alt: string}|null $mainImage
@@ -27,6 +29,7 @@ final readonly class ProductDocument
         public string $slug,
         public string $shortDescription,
         public string $mainCategoryId,
+        public string $mainCategoryPath,
         public array $categoryIds,
         public array $categoryAncestorIds,
         public ?array $mainImage,

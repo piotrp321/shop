@@ -50,7 +50,7 @@ trait UsesTemporarySearchAlias
         return new ElasticsearchSearchIndexMaintenance(
             null === $httpClient ? $factory->create(2.0) : $factory->createWith($httpClient),
             null === $longHttpClient ? $factory->create(30.0) : $factory->createWith($longHttpClient),
-            $definition ?? new ProductIndexDefinition(1, 0),
+            $definition ?? new ProductIndexDefinition(0),
             $this->alias(),
             $sleeper,
         );
@@ -61,8 +61,24 @@ trait UsesTemporarySearchAlias
      */
     protected function aliasTargets(): array
     {
+        return $this->targetsOf($this->alias());
+    }
+
+    /**
+     * @return list<string> the indexes the rebuild alias (<alias>-rebuild) points to, sorted
+     */
+    protected function rebuildAliasTargets(): array
+    {
+        return $this->targetsOf($this->alias().'-rebuild');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function targetsOf(string $alias): array
+    {
         $client = self::esClient();
-        $response = ElasticsearchErrorClassifier::request('read alias', fn () => $client->indices()->getAlias(['name' => $this->alias()]), [404]);
+        $response = ElasticsearchErrorClassifier::request('read alias', static fn () => $client->indices()->getAlias(['name' => $alias]), [404]);
         if (404 === $response->getStatusCode()) {
             return [];
         }

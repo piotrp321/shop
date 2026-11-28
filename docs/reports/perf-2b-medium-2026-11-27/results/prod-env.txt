@@ -1,0 +1,3 @@
+api: APP_ENV=prod APP_DEBUG=0 no-phpunit
+worker: APP_ENV=prod APP_DEBUG=0 no-phpunit
+worker-commands: APP_ENV=prod APP_DEBUG=0 no-phpunit

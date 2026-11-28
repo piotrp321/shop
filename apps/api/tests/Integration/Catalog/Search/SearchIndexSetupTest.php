@@ -29,7 +29,7 @@ final class SearchIndexSetupTest extends KernelTestCase
         $targets = $this->aliasTargets();
         self::assertCount(1, $targets);
         self::assertMatchesRegularExpression('/^'.preg_quote($this->alias(), '/').'_\d{17}_[0-9a-f]{6}$/', $targets[0]);
-        self::assertSame(new ProductIndexDefinition(1, 0)->hash(), $this->definitionHash($targets[0]));
+        self::assertSame(new ProductIndexDefinition(0)->hash(), $this->definitionHash($targets[0]));
 
         self::assertEquals(new SetupResult(), $this->maintenance()->setup());
 
@@ -75,9 +75,106 @@ final class SearchIndexSetupTest extends KernelTestCase
         self::assertSame('another', $this->definitionHash($index));
     }
 
-    public function testDefinitionHashIgnoresShardsAndReplicas(): void
+    public function testIndexWithMoreThanOneShardIsReportedAsOutdatedAndLeftAlone(): void
     {
-        self::assertSame(new ProductIndexDefinition(1, 0)->hash(), new ProductIndexDefinition(3, 2)->hash());
+        $index = $this->createIndexWithShards(4);
+
+        $result = $this->maintenance()->setup();
+
+        self::assertSame($index, $result->outdatedIndex);
+        self::assertSame([$index], $this->aliasTargets());
+        self::assertSame([$index], $this->aliasIndexes());
+    }
+
+    public function testCommandWarnsAboutAnIndexWithMoreThanOneShardWithTheReindexInstructionAndSucceeds(): void
+    {
+        $index = $this->createIndexWithShards(4);
+        $tester = $this->commandTester();
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+
+        $display = $tester->getDisplay();
+        self::assertStringContainsString($index, $display);
+        self::assertStringContainsString('catalog:reindex', $display);
+        self::assertStringContainsString('WARNING', $display);
+        self::assertSame([$index], $this->aliasTargets());
+    }
+
+    public function testIndexOfAnotherDefinitionWithMoreThanOneShardIsReportedOnceAndLeftAlone(): void
+    {
+        $index = $this->createIndexWithShards(4);
+        $this->markAsBuiltFromAnotherDefinition($index);
+
+        $result = $this->maintenance()->setup();
+
+        self::assertSame($index, $result->outdatedIndex);
+        self::assertSame([$index], $this->aliasTargets());
+    }
+
+    public function testDefinitionHashIgnoresShardsReplicasAndTheRefreshInterval(): void
+    {
+        self::assertSame(new ProductIndexDefinition(0)->hash(), new ProductIndexDefinition(2, '5s')->hash());
+    }
+
+    public function testSetupCreatesTheIndexWithTheRefreshIntervalOfTheDefinition(): void
+    {
+        $this->maintenance(definition: new ProductIndexDefinition(0, '5s'))->setup();
+
+        self::assertSame('5s', $this->refreshInterval($this->aliasTargets()[0]));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOfTheDefinitionOnAnExistingIndexWithoutRebuildingIt(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        self::assertSame('1s', $this->refreshInterval($index));
+        self::esClient()->index(['index' => $this->alias(), 'id' => 'x', 'body' => $this->document('x'), 'refresh' => 'true']);
+
+        $result = $this->maintenance(definition: new ProductIndexDefinition(0, '5s'))->setup();
+
+        self::assertEquals(new SetupResult(), $result);
+        self::assertSame([$index], $this->aliasTargets());
+        self::assertSame([$index], $this->aliasIndexes());
+        self::assertSame('5s', $this->refreshInterval($index));
+        self::assertSame(1, $this->documentCount($index));
+
+        $this->maintenance(definition: new ProductIndexDefinition(0, '500ms'))->setup();
+
+        self::assertSame('500ms', $this->refreshInterval($index));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOnAnIndexWithoutAnExplicitOneToo(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        self::esClient()->indices()->putSettings(['index' => $index, 'body' => ['index' => ['refresh_interval' => null]]]);
+        self::assertNull($this->refreshInterval($index));
+
+        $this->maintenance()->setup();
+
+        self::assertSame('1s', $this->refreshInterval($index));
+    }
+
+    public function testSetupSetsTheRefreshIntervalOnAnIndexFromAnotherDefinitionToo(): void
+    {
+        $this->maintenance()->setup();
+        [$index] = $this->aliasTargets();
+        $this->markAsBuiltFromAnotherDefinition($index);
+
+        $result = $this->maintenance(definition: new ProductIndexDefinition(0, '5s'))->setup();
+
+        self::assertSame($index, $result->outdatedIndex);
+        self::assertSame('5s', $this->refreshInterval($index));
+    }
+
+    public function testSetupLeavesTheIndexOfARebuildInProgressWithItsDisabledRefresh(): void
+    {
+        $this->maintenance()->setup();
+        $rebuilt = $this->maintenance()->createIndex();
+
+        $this->maintenance(definition: new ProductIndexDefinition(0, '5s'))->setup();
+
+        self::assertSame('-1', $this->refreshInterval($rebuilt));
     }
 
     public function testOrphanedIndexIsReportedNotDeleted(): void
@@ -246,6 +343,20 @@ final class SearchIndexSetupTest extends KernelTestCase
         }
     }
 
+    /**
+     * An index of the current definition, but with more primary shards than the definition allows, behind the alias:
+     * what an environment that still built indexes with several shards left behind.
+     */
+    private function createIndexWithShards(int $shards): string
+    {
+        $body = new ProductIndexDefinition(0)->body();
+        $body['settings']['number_of_shards'] = $shards;
+        $index = $this->alias().'_20260101000000000_'.bin2hex(random_bytes(3));
+        self::esClient()->indices()->create(['index' => $index, 'body' => $body + ['aliases' => [$this->alias() => new \stdClass()]]]);
+
+        return $index;
+    }
+
     private function markAsBuiltFromAnotherDefinition(string $index): void
     {
         self::esClient()->indices()->putMapping(['index' => $index, 'body' => ['_meta' => ['definition_hash' => 'another']]]);
@@ -291,6 +402,18 @@ final class SearchIndexSetupTest extends KernelTestCase
         \assert(\is_array($mapping) && \is_array($mapping['mappings']) && \is_array($mapping['mappings']['_meta']));
 
         return $mapping['mappings']['_meta']['definition_hash'] ?? null;
+    }
+
+    private function refreshInterval(string $index): ?string
+    {
+        $response = self::esClient()->indices()->getSettings(['index' => $index]);
+        \assert($response instanceof Elasticsearch);
+        $settings = $response->asArray();
+        \assert(\is_array($settings[$index]) && \is_array($settings[$index]['settings']) && \is_array($settings[$index]['settings']['index']));
+        $value = $settings[$index]['settings']['index']['refresh_interval'] ?? null;
+        \assert(null === $value || \is_string($value));
+
+        return $value;
     }
 
     private function documentCount(string $index): int

@@ -11,7 +11,8 @@ final readonly class BulkResult
 {
     /**
      * @param list<string>          $indexed
-     * @param list<string>          $stale             rejected because the index holds a newer version
+     * @param list<string>          $stale             rejected because the index holds a newer version; correct in a rebuild,
+     *                                                 where a single write through the rebuild alias was newer
      * @param array<string, string> $transientFailures id => reason; retrying later may succeed
      * @param array<string, string> $permanentFailures id => reason; retrying will not help
      */
@@ -21,6 +22,14 @@ final readonly class BulkResult
         public array $transientFailures = [],
         public array $permanentFailures = [],
     ) {
+    }
+
+    /**
+     * Whether an item failed; a stale item is not a failure.
+     */
+    public function hasFailures(): bool
+    {
+        return [] !== $this->transientFailures || [] !== $this->permanentFailures;
     }
 
     public function allIndexed(): bool

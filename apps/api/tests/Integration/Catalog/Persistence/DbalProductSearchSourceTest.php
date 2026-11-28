@@ -252,8 +252,8 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
     public function testRowsInsertedWhilePagingAreSeenOnlyWhenTheirIdIsAboveTheCursor(): void
     {
-        // This pins the documented limitation of the offline rebuild (spec "Ograniczenia tej przebudowy"): keyset
-        // paging by id cannot see a product inserted below the cursor, only one above it.
+        // This pins the paging behind a documented limitation of the rebuild (spec "Ograniczenia tej przebudowy"):
+        // keyset paging by id cannot see a product inserted below the cursor, only one above it.
         $this->createProducts(6);
         $first = $this->source->page(null, 3);
         $cursor = $first[2]->id;
