@@ -186,6 +186,7 @@ stage_rabbitmq() {
 
 stage_api() {
   if [ "$mode" = reindex ]; then
+    # Synchronous: make restore has scaled every worker to zero (worker-indexing too), so the batches of an asynchronous run would have no consumer.
     echo "restore: catalog:reindex"
     "$console" catalog:reindex || fail "catalog:reindex failed (exit code $?)"
   fi

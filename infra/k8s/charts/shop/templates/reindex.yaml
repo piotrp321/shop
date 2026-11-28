@@ -1,9 +1,11 @@
 {{- /*
 The CronJob reindex (docs/features/search/spec.md, "Infrastruktura"): the rebuild of the search index on the cluster. It never runs by
 itself (suspend: true): make -C infra/k8s reindex creates its Jobs (kubectl create job --from=cronjob/reindex), so a rebuild runs
-catalog:reindex with the image, the environment and the secrets of the deployed revision. The
-command builds a new index, checks it and only then moves the alias, so the shop is served by the old index until the new one is ready
-and a failed run leaves the alias where it was. A failed run is reported, never repeated. The pod has no token of the Kubernetes API.
+catalog:reindex --async --wait with the image, the environment and the secrets of the deployed revision (docs/features/async-indexing/spec.md):
+the Job only starts the run and waits for its end, the batches are written by the Deployment worker-indexing (make reindex refuses
+without a ready replica of it, and --wait gives up without progress). The run builds a new index, checks it and only then moves the alias,
+so the shop is served by the old index until the new one is ready and a failed run leaves the alias where it was (exit code 1; 2 when the
+state of the alias is unknown). A failed run is reported, never repeated. The pod has no token of the Kubernetes API.
 */ -}}
 apiVersion: batch/v1
 kind: CronJob
@@ -36,7 +38,7 @@ spec:
             - name: reindex
               image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
-              command: ["php", "bin/console", "catalog:reindex"]
+              command: ["php", "bin/console", "catalog:reindex", "--async", "--wait"]
               env:
                 {{- include "shop.apiEnv" . | nindent 16 }}
               {{- include "shop.envFromSecret" . | nindent 14 }}

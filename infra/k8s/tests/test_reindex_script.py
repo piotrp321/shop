@@ -69,6 +69,12 @@ if verb == "get" and rest[1] == "cronjob":
     env = [{"name": "ELASTICSEARCH_URL", "value": "http://elasticsearch:9200"}] + [{"name": k, "value": v} for k, v in state["cronjob"].items()]
     print(json.dumps({"kind": "CronJob", "metadata": {"name": "reindex"},
                       "spec": {"jobTemplate": {"spec": {"template": {"spec": {"containers": [{"name": "reindex", "env": env}]}}}}}}))
+elif verb == "get" and rest[1] == "deployment":
+    assert rest[2:] == ["worker-indexing", "-o", "jsonpath={.status.readyReplicas}"], rest
+    if state["indexing_ready"] is None:
+        fail('Error from server (NotFound): deployments.apps "worker-indexing" not found')
+    # kubectl prints nothing for a Deployment with no ready replica (the field is absent).
+    print(state["indexing_ready"] or "", end="")
 elif verb == "get" and rest[1] == "jobs":
     print(json.dumps({"items": [job_doc(name) for name in state["jobs"]]}))
     # The Jobs that start after the first listing: while the script waits for the answer.
@@ -138,6 +144,8 @@ def initial_state(**changes):
     state = {
         "namespace": "shop",
         "cronjob": {},
+        # The ready replicas of the Deployment worker-indexing: a number, or None for a cluster without it.
+        "indexing_ready": 2,
         "jobs": {
             "migrate-2b": {"state": "Complete"},
             "backfill-6f": {"state": "Complete"},
@@ -222,14 +230,16 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertIn("[reindex] Search index rebuilt: 1000191 documents.", result.stdout)
         self.assertIn(f"reindex: done: the alias products is on the index {NEW_INDEX}: 1 primary shard(s), 2401957 Lucene documents", result.stdout)
         self.assertIn(f"before: {OLD_INDEX}, 4 primary shard(s)", result.stdout)
+        self.assertIn("catalog:reindex --async --wait", result.stdout)
+        self.assertIn("by 2 replica(s) of worker-indexing in parallel", result.stdout)
 
     def test_the_job_is_created_only_after_the_checks_and_the_answer(self):
         self.run_script()
 
         verbs = [" ".join(call[:2]) for call in self.calls()]
         # The checks (the CronJob, the lock, the Jobs, the index), then after the answer the lock and the Jobs once more, then the Job.
-        self.assertEqual(["get cronjob", "get configmap", "get jobs", "exec statefulset/elasticsearch", "create -f", "get jobs", "create job", "create -f"],
-                         verbs[:8])
+        self.assertEqual(["get cronjob", "get deployment", "get configmap", "get jobs", "exec statefulset/elasticsearch", "create -f", "get jobs",
+                          "create job", "create -f"], verbs[:9])
 
     def test_it_says_what_happens_to_writes_during_the_build(self):
         result = self.run_script()
@@ -280,6 +290,19 @@ class ReindexScriptTest(unittest.TestCase):
         result = self.run_script(initial_state(cronjob=None))
 
         self.assert_refused(result, "cannot read the CronJob reindex")
+
+    def test_a_cluster_without_a_ready_worker_indexing_is_refused_before_the_question(self):
+        # Without the worker the batches would wait in the queue: the Job would only give up for lack of progress, after the lock and the question.
+        for ready in (0, None):
+            with self.subTest(ready=ready):
+                self.log.write_text("")
+                result = self.run_script(initial_state(indexing_ready=ready))
+
+                self.assert_refused(result, "worker-indexing")
+                self.assertNotIn("type tak", result.stdout)
+                self.assertEqual([], self.changes())
+        self.assert_refused(self.run_script(initial_state(indexing_ready=0)), "has no ready replica")
+        self.assert_refused(self.run_script(initial_state(indexing_ready=None)), "cannot read the Deployment worker-indexing")
 
     def test_a_cluster_that_does_not_answer_is_refused(self):
         result = self.run_script(initial_state(unreachable=True))
@@ -355,6 +378,7 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("[reindex] Another rebuild or setup of the search index is running.", result.stdout)
         self.assertRegex(result.stderr, r"FAILED: the Job reindex-[0-9]{14} did not complete")
+        self.assertIn("exit code 1: the alias is where it was, 2: its state was unknown", result.stderr)
         self.assertIn(f"the alias products is on (index, primary shards, Lucene documents): {OLD_INDEX} 1 1000191", result.stderr)
         self.assertNotIn("reindex: done", result.stdout)
         self.assertEqual(["lock taken", "job created", "lock released"], self.changes())

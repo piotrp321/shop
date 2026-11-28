@@ -43,7 +43,7 @@ class ShardsOfTheIndexTest(unittest.TestCase):
             found = api_containers(case)
             names = {name for name, _ in found}
             # The API, both workers and the CronJob of the rebuild at least; the Jobs of the version carry a hash in their name.
-            self.assertLessEqual({"api", "worker", "worker-commands", "reindex"}, names, case)
+            self.assertLessEqual({"api", "worker", "worker-commands", "worker-indexing", "reindex"}, names, case)
             for name, one in found:
                 self.assertNotIn("SEARCH_SHARDS", env_of(one), f"{case}: {name}/{one['name']}")
 
@@ -91,7 +91,7 @@ class ReindexCronJobTest(unittest.TestCase):
             one = container(case)
             (api,) = containers(by_logical(case, "Deployment")["api"])
             self.assertEqual(api["image"], one["image"], case)
-            self.assertEqual(["php", "bin/console", "catalog:reindex"], one["command"], case)
+            self.assertEqual(["php", "bin/console", "catalog:reindex", "--async", "--wait"], one["command"], case)
             self.assertNotIn("args", one, case)
         self.assertRegex(container("prod")["image"], DIGEST)
 
