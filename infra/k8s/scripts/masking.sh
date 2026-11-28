@@ -49,7 +49,7 @@ done
     printf 'loki.source.file "%s" {\n  targets = [\n' "$pipeline"
     for source_name in $sources; do
       if [ "$pipeline" = pods ]; then path="pods-$source_name.log"; else path="$source_name.log"; fi
-      printf '    {"__path__" = "/work/%s", "source" = "%s"},\n' "$path" "$source_name"
+      printf '    {"__path__" = "/work/%s", "source" = "%s", "container" = "%s"},\n' "$path" "$source_name" "$source_name"
     done
     printf '  ]\n  forward_to = [loki.process.%s.receiver]\n}\n\n' "$pipeline"
     printf 'loki.process "%s" {\n' "$pipeline"

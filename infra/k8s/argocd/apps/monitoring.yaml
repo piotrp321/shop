@@ -142,6 +142,27 @@ spec:
                 drop_counter_reason = "postgres_detail_statement"
               }
 
+              // The main message of a data error of Postgres (SQLSTATE class 22: invalid input syntax for type ..., invalid input value for
+              // enum ..., value "..." is out of range, ...) carries the value of the input in quotes after a colon or after `value`. Everything
+              // after the opening quote up to the end of the line is replaced, not up to the closing quote: the value is not escaped in the
+              // message, so a quote, a backslash or the text of another message inside it would end the match too early. The text before the
+              // quote (the kind of error, the type) stays, and so do the names of constraints, columns, relations and tables, which are
+              // not after a colon or `value` (violates unique constraint "uniq_customer_email").
+              stage.replace {
+                expression = `(?:^|\]\s)\s*(?:ERROR|FATAL|PANIC|WARNING):\s+[^\n]*?(?::\s+|\bvalue\s+)"(.*)$`
+                replace    = "[REDACTED]"
+              }
+
+              // The continuation lines of a message of Postgres of more lines (a value with a newline in it) start with a tab and have
+              // no prefix to recognize them by, so the whole line of the container postgres is replaced.
+              stage.match {
+                selector = `{container="postgres"} |~ "^\t"`
+                stage.replace {
+                  expression = `^(\t.*)$`
+                  replace    = "[REDACTED]"
+                }
+              }
+
               // JWT.
               stage.replace {
                 expression = `(eyJ[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)+)`

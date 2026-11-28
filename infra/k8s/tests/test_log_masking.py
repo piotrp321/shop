@@ -94,11 +94,13 @@ def output_entries():
     """The entries of loki.echo as (pipeline, source, line)."""
     entries = []
     for text in (RENDER / "masking-output.log").read_text().splitlines():
-        match = re.search(r'component_id=loki\.echo\.(\w+) labels="((?:[^"\\]|\\.)*)" entry="((?:[^"\\]|\\.)*)" entry_timestamp=', text)
+        # logfmt quotes a value that has a space or a special character and leaves a bare word as it is (a line that is only [REDACTED]).
+        match = re.search(r'component_id=loki\.echo\.(\w+) labels="((?:[^"\\]|\\.)*)" entry=(?:"((?:[^"\\]|\\.)*)"|(\S+)) entry_timestamp=', text)
         assert match, f"a line of loki.echo that this test cannot read: {text[:200]}"
         labels = json.loads('"' + match.group(2) + '"')
         source = re.search(r'source="([^"]*)"', labels).group(1)
-        entries.append((match.group(1), source, json.loads('"' + match.group(3) + '"')))
+        entry = json.loads('"' + match.group(3) + '"') if match.group(3) is not None else match.group(4)
+        entries.append((match.group(1), source, entry))
     return entries
 
 
