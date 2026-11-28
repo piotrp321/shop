@@ -36,6 +36,20 @@ metadata:
 data:
   10-create-databases.sh: |
     {{- .Files.Get "files/10-create-databases.sh" | nindent 4 }}
+  20-monitoring.sh: |
+    {{- .Files.Get "files/20-monitoring.sh" | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "postgres") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  postgresql.conf: |
+    {{- .Files.Get "files/postgresql.conf" | nindent 4 }}
 ---
 apiVersion: v1
 kind: ConfigMap

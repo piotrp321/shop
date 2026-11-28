@@ -5,3 +5,27 @@
 2026-11-11 10:00:02.000 UTC [89] LOG:  connection received: host=2001:db8:85a3::8a2e:370:7334 port=51235
 2026-11-11 10:00:03.000 UTC [90] FATAL:  password authentication failed for user "shop"
 DETAIL:  Key (sku)=(PL-SECRET-SKU-9) is not present in table "product".
+2026-11-27 22:01:57.958 UTC [1388] ERROR:  invalid input syntax for type integer: "qty-v-pg-data-1" at character 8
+2026-11-27 22:01:58.178 UTC [1395] ERROR:  invalid input syntax for type uuid: "id-v-pg-data-2" at character 8
+2026-11-27 22:01:58.413 UTC [1402] ERROR:  invalid input syntax for type json at character 8
+2026-11-27 22:01:58.703 UTC [1409] ERROR:  invalid input value for enum status: "state-v-pg-data-4" at character 8
+2026-11-27 22:01:58.932 UTC [1415] ERROR:  value "99999v-pg-data-5" is out of range for type smallint at character 8
+2026-11-27 22:01:59.117 UTC [1422] ERROR:  invalid input syntax for type numeric: "price-v-pg-data-6" at character 8
+2026-11-27 22:01:59.364 UTC [1429] ERROR:  date/time field value out of range: "2026-13-45" at character 8
+2026-11-27 22:01:59.588 UTC [1435] ERROR:  value "99999999999" is out of range for type integer at character 8
+2026-11-28 09:00:01.100 UTC [1500] ERROR:  invalid input syntax for type integer: "q"uote-v-pg-quote-7" at character 8
+2026-11-28 09:00:01.200 UTC [1501] ERROR:  invalid input syntax for type uuid: "back\slash-v-pg-bslash-8\"
+2026-11-28 09:00:01.300 UTC [1502] ERROR:  invalid input syntax for type integer: "zażółć jaźń-v-pg-polish-9" at character 8
+2026-11-28 09:00:01.400 UTC [1503] ERROR:  invalid input syntax for type integer: "first-line-v-pg-multi-10
+	second-line-v-pg-multi-11
+	"third-line-v-pg-multi-12" at character 8
+2026-11-28 09:00:01.500 UTC [1504] ERROR:  invalid input value for enum status: "x: "v-pg-colon-13"
+2026-11-28 09:00:01.600 UTC [1505] ERROR:  value "9" is out of range for type integer v-pg-fake-suffix-14" is out of range for type integer
+2026-11-28 09:00:01.700 UTC [1506] ERROR:  null value in column "name" of relation "customer" violates not-null constraint
+2026-11-28 09:00:01.800 UTC [1507] ERROR:  new row for relation "product" violates check constraint "chk_price_positive"
+2026-11-28 09:00:01.900 UTC [1508] ERROR:  insert or update on table "order_line" violates foreign key constraint "fk_order_line_order"
+2026-11-28 10:00:01.100 UTC [1600] ERROR:  "9e999-v-pg-real-15" is out of range for type double precision
+2026-11-28 10:00:01.200 UTC [1601] ERROR:  time zone "Mars-v-pg-zone-16" not recognized
+2026-11-28 10:00:01.300 UTC [1602] ERROR:  invalid input syntax for type integer: "x column "v-pg-kw-17" constraint "v-pg-kw-18"
+2026-11-28 10:00:01.400 UTC [1603] ERROR:  invalid value for parameter "work_mem": "v-pg-param-19"
+2026-11-28 10:00:01.500 UTC [1604] ERROR:  invalid input syntax for type uuid: "v-pg-last-20"

@@ -9,6 +9,7 @@ use App\Shared\Domain\Exception\InvalidInput;
 use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
 use App\Shared\Domain\Exception\Unavailable;
+use Doctrine\DBAL\Exception\DriverException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
@@ -25,6 +26,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  *   input; it wins over an HttpExceptionInterface of the same class,
  * - AuthenticationException 401, AccessDeniedException 403 (thrown outside a firewall),
  * - framework HTTP exceptions: their status,
+ * - a statement of the database that its time limit cancelled (SQLSTATE 57014), also as the `previous` of another
+ *   exception: 503, the client can try again later,
  * - anything else: 500.
  *
  * A Messenger HandlerFailedException that wraps exactly one exception stands for that exception, repeatedly for nested
@@ -44,6 +47,8 @@ final class ExceptionStatus
 
     private const int MAX_UNWRAP_DEPTH = 10;
 
+    private const string QUERY_CANCELED = '57014';
+
     private function __construct()
     {
     }
@@ -58,8 +63,24 @@ final class ExceptionStatus
             $exception instanceof AuthenticationException => Response::HTTP_UNAUTHORIZED,
             $exception instanceof AccessDeniedException => Response::HTTP_FORBIDDEN,
             $exception instanceof HttpExceptionInterface => $exception->getStatusCode(),
+            self::isCancelledStatement($exception) => Response::HTTP_SERVICE_UNAVAILABLE,
             default => Response::HTTP_INTERNAL_SERVER_ERROR,
         };
+    }
+
+    /**
+     * Whether the exception, or one of its `previous` chain, is the cancellation of a statement by the time limit of
+     * the database (`query_canceled`, 57014: statement_timeout).
+     */
+    public static function isCancelledStatement(\Throwable $exception): bool
+    {
+        for ($current = $exception; null !== $current; $current = $current->getPrevious()) {
+            if ($current instanceof DriverException && self::QUERY_CANCELED === $current->getSQLState()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

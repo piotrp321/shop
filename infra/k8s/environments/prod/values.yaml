@@ -105,6 +105,14 @@ elasticsearch:
   # gets them with make -C infra/k8s reindex.
   shards: 4
 
+# The settings of Postgres that depend on the memory of the pod (docs/features/runtime-config/spec.md, D2): the starting configuration for a
+# limit of 3.75 GiB, 25% of it for shared_buffers and 3 GB of effective_cache_size. The limit below is still the earlier 2Gi, which does not
+# hold shared_buffers + 4 x maintenance_work_mem + 3 x autovacuum_work_mem + the processes (about 2.6 GiB): the limit is raised by the task
+# of the resources (RUNTIME-CONFIG-4) and the two go to the server together.
+postgres:
+  sharedBuffers: 1GB
+  effectiveCacheSize: 3GB
+
 keycloak:
   javaHeap: -Xms512m -Xmx1g
   # E-mail verification, password reset and create-admin go out through Brevo.

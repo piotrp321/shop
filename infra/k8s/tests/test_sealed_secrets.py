@@ -14,6 +14,8 @@ EXPECTED_KEYS = {
     "shop-origin-tls": {"tls.crt", "tls.key"},
     "shop-backup": {"RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"},
     "grafana-cloud": {"GRAFANA_CLOUD_TOKEN", "GRAFANA_ALERTING_TOKEN"},
+    # The DSN of the role exporter of Postgres, which Alloy reads (argocd/apps/monitoring.yaml); sealed with EXPORTER_DB_PASSWORD.
+    "shop-exporter": {"POSTGRES_EXPORTER_DSN"},
 }
 
 
@@ -37,6 +39,14 @@ def problems(sealed, certificate_present, keys):
             found.append(f"{name}: has plain data")
         if name in EXPECTED_KEYS and not EXPECTED_KEYS[name] <= set(encrypted):
             found.append(f"{name}: lacks {sorted(EXPECTED_KEYS[name] - set(encrypted))}")
+    shop = next((d for d in sealed if d.get("metadata", {}).get("name") == SECRETS_NAME and d.get("kind") == "SealedSecret"), None)
+    if shop and "EXPORTER_DB_PASSWORD" in (shop.get("spec", {}).get("encryptedData") or {}):
+        exporter = next((d for d in sealed if d.get("metadata", {}).get("name") == "shop-exporter" and d.get("kind") == "SealedSecret"), None)
+        if not exporter or "POSTGRES_EXPORTER_DSN" not in (exporter.get("spec", {}).get("encryptedData") or {}):
+            found.append(
+                "shop-secrets has EXPORTER_DB_PASSWORD but there is no shop-exporter with POSTGRES_EXPORTER_DSN next to it: the DSN of the "
+                "exporter of Alloy is sealed with the password (make seal-secrets WHAT=shop; the line EXPORTER_DB_PASSWORD is removed first)"
+            )
     if certificate_present:
         encrypted = next((d["spec"]["encryptedData"] for d in sealed if d.get("metadata", {}).get("name") == SECRETS_NAME and d.get("kind") == "SealedSecret"), {})
         missing = [key for key in keys if not encrypted.get(key)]
@@ -126,6 +136,18 @@ class TheCheckItself(unittest.TestCase):
         self.assertTrue(problems([sealed_doc("shop-brevo-smtp", ["BREVO_SMTP_LOGIN"])], False, []))
         self.assertTrue(problems([sealed_doc("shop-origin-tls", ["tls.crt"])], False, []))
         self.assertEqual([], problems([sealed_doc("shop-origin-tls", ["tls.crt", "tls.key"])], False, []))
+
+    def test_the_password_of_the_exporter_needs_the_secret_of_the_exporter_next_to_it(self):
+        # The DSN of shop-exporter is sealed with the password of shop-secrets and cannot be made from it later: the one without the other
+        # is a repository that Alloy cannot start from (it reads shop-exporter), whatever the certificate says.
+        keys = ["A_KEY", "EXPORTER_DB_PASSWORD"]
+        for certificate in (False, True):
+            found = problems([sealed_doc(SECRETS_NAME, keys)], certificate, keys)
+            self.assertTrue(any("shop-exporter" in line for line in found), (certificate, found))
+        self.assertEqual([], problems([sealed_doc(SECRETS_NAME, keys), sealed_doc("shop-exporter", ["POSTGRES_EXPORTER_DSN"])], True, keys))
+        self.assertTrue(problems([sealed_doc(SECRETS_NAME, keys), sealed_doc("shop-exporter", ["OTHER"])], True, keys))
+        # No password sealed (no certificate yet, or an older repository): nothing to pair.
+        self.assertEqual([], problems([sealed_doc(SECRETS_NAME, ["A_KEY"])], False, keys))
 
     def test_the_backup_secret_needs_its_three_keys_when_present(self):
         keys = ["RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"]

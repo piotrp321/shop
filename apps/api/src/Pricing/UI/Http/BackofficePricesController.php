@@ -73,7 +73,7 @@ final class BackofficePricesController
             ),
             new OA\Response(
                 response: 503,
-                description: 'The keys of the token issuer cannot be fetched (problem details without detail).',
+                description: 'The keys of the token issuer cannot be fetched (problem details without detail). A query of the database ran longer than its time limit (90 s) and was cancelled: problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt (only with a cancelled query).', schema: new OA\Schema(type: 'integer', minimum: 1))],
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
         ],

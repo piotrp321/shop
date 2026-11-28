@@ -230,6 +230,22 @@ reindex:
   # (docs/reports/demo-scale-medium-worf-2026-11-20.md).
   activeDeadlineSeconds: 21600
 
+# Postgres: the settings that do not depend on the memory are in infra/postgres/postgresql.conf (a ConfigMap, the same file as in compose); the
+# two that do are -c arguments of the command, set per environment: shared_buffers is 25% of the memory limit of the pod, effective_cache_size
+# is shared_buffers plus the file cache that the limit leaves (the limit minus the processes, `maintenance_work_mem` and `autovacuum_work_mem`).
+# The values here are those of the profile ci (the pod has no limit, requests of 128Mi); prod and load set their own.
+# The memory of the pod is at least shared_buffers + 4 x maintenance_work_mem (the four COPY processes of the generator build indexes) +
+# autovacuum_max_workers (3) x autovacuum_work_mem + about 250 MB of the processes of the connections; /dev/shm (an emptyDir in memory, 1Gi)
+# comes on top while a parallel query uses it.
+#
+# The budget of the connections (max_connections 100, superuser_reserved_connections 3 of them): the API 16 (a connection per request, at
+# most one per thread, num_threads 16), the workers 2 (worker, worker-commands), the cron jobs 3, a reindex or the generator 4, the backup 1,
+# the exporter of Alloy 1, Keycloak 20 (KC_DB_POOL_MAX_SIZE), the reserve of the superuser 3: 50 of 100. Another replica or worker adds its
+# connections here; the sum stays under max_connections with the margin of a job that runs besides.
+postgres:
+  sharedBuffers: 128MB
+  effectiveCacheSize: 512MB
+
 keycloak:
   javaHeap: -Xms256m -Xmx768m
   # The mail of the realms shop and backoffice (e-mail verification, password reset, make -C infra/k8s create-admin),

@@ -109,7 +109,7 @@ Przyjęte przez sesję; każde sprawdzone w kodzie albo eksperymentem na jednora
 Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
 
 - **Zamknięty** znaczy: w przestrzeni `shop` istnieje NetworkPolicy `shop-closed` (ruch przychodzący do każdego poda
-  tylko z podów tej przestrzeni). Wszystkie hosty (`worf.pl`, `api.`, `admin.`, `auth.`, `img.`) odpowiadają 502.
+  tylko z podów tej przestrzeni, a z Alloy z przestrzeni `monitoring` wyłącznie na TCP 5432 i 9200: eksportery metryk baz). Wszystkie hosty (`worf.pl`, `api.`, `admin.`, `auth.`, `img.`) odpowiadają 502.
   Pody działają, więc alert `WorkloadNotReady` się nie odzywa. Regułę zakłada `generate`, usuwa wyłącznie `open`; nie
   jest częścią chartu i nie ma etykiet ani adnotacji śledzenia Argo CD, więc wdrożenie ani synchronizacja jej nie
   usuną (Z7). Cel `status` pokazuje, czy reguła istnieje.

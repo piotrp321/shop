@@ -4,7 +4,8 @@
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
 # k8s-monitoring of the pinned version (downloaded once, its sha256 checked) with the values of argocd/apps/monitoring.yaml
 # (kubeconform with the schema of Alloy, the access to Secrets, the metrics of the alerts, the budget of the node) and the log
-# masking in a real Alloy (the stages of the manifest on tests/log-corpus). The alert rules of the prod render go through promtool
+# masking in a real Alloy (the stages of the manifest on tests/log-corpus) and the exporters of the databases in a real Alloy against
+# databases that are not there (scripts/exporters.sh: it must run on, send the other metrics and say pg_up 0). The alert rules of the prod render go through promtool
 # (check rules and the scenarios of tests/alerts). Needs Docker and the network once for the charts,
 # and git for the last step.
 check:
@@ -32,7 +33,8 @@ check:
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended (also only in prod),
 # its script without the check of DEMO_DATA_CONFIRM, without the space guard or stopping only the generator and not its process group,
 # a load CronJob that is not suspended, a reindex CronJob that is not suspended, make reindex going on without tak, a k6 image of the
-# chart with another digest than load/k6.sh).
+# chart with another digest than load/k6.sh, the link of infra/postgres/postgresql.conf missing from the chart, a command of
+# Postgres that reads another file than the mounted one).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
@@ -58,7 +60,7 @@ smoke:
 # node-exporter, or with a priority class of the system; Services of the types NodePort, LoadBalancer and ExternalName or with
 # external IPs; a Secret with a token of a service account) and plain ones they must let through; every pod of monitoring made again
 # under the policies; a masked log line of a pod in shop, a cluster event and the metrics of kube-state-metrics, node-exporter, the
-# kubelet and cAdvisor at a receiver on the Docker network of the cluster (the addresses of the destinations are the one overlay), no
+# kubelet, cAdvisor and the exporters of the databases (which are not there: pg_up 0) at a receiver on the Docker network of the cluster (the addresses of the destinations are the one overlay), no
 # forbidden in the logs, and kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and node-exporter
 # (no Secret of shop or kube-system, no bind, escalate, impersonate or change of RBAC objects, no exec, attach, port-forward,
 # ephemeral container or token in shop and kube-system, no proxy of a node; the operator without DaemonSets, StatefulSets, pods and

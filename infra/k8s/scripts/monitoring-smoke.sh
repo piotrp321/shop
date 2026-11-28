@@ -11,7 +11,8 @@
 #                                                         ValidatingAdmissionPolicies and their bindings: the test must fail
 #   MONITORING_SMOKE_TIMEOUT=600                          seconds to wait for each of the phases that wait
 #
-# Phases: the cluster (k3d, the k3s of tools.sh); the namespace shop with dummy Secrets grafana-cloud, shop-backup and
+# Phases: the cluster (k3d, the k3s of tools.sh); the namespace shop with dummy Secrets grafana-cloud, shop-exporter (a DSN of a
+# Postgres that is not there: the exporters of the databases of the manifest must not stop Alloy), shop-backup and
 # shop-secrets and a pod that logs a line with a password and an e-mail address; a receiver outside the cluster, a container
 # on its Docker network (Grafana Alloy of ALLOY_IMAGE: loki.source.api and prometheus.receive_http, printed by loki.echo and
 # prometheus.echo; inside the cluster Alloy would collect the log of the receiver and send it to the receiver again); the
@@ -30,7 +31,8 @@
 # Service are not; then every pod of monitoring is deleted and must come back
 # ready under the policies (node-exporter among them). Then the receiver must get the line of the pod masked ([REDACTED], neither
 # the password nor the address), a cluster event and the metrics of kube-state-metrics, node-exporter, the kubelet and cAdvisor
-# (the metrics after the pods came back); no log of the operator, Alloy or kube-state-metrics, before and after, says forbidden.
+# (the metrics after the pods came back), and pg_up and elasticsearch_node_stats_up of the exporters of the databases, which are not there;
+# no log of the operator, Alloy or kube-state-metrics, before and after, says forbidden.
 # Last, kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and node-exporter: no Secret of shop
 # or kube-system, no bind, escalate or impersonate, no change of RBAC objects, no pod in shop, no exec, attach, port-forward,
 # ephemeral container or token of a service account in shop and kube-system, no proxy of a node; Alloy reads only the Secret
@@ -172,7 +174,7 @@ prometheus.receive_http "in" {
 prometheus.relabel "wanted" {
   rule {
     source_labels = ["__name__"]
-    regex         = "kube_deployment_spec_replicas|node_filesystem_avail_bytes|kubelet_running_pods|container_cpu_usage_seconds_total"
+    regex         = "kube_deployment_spec_replicas|node_filesystem_avail_bytes|kubelet_running_pods|container_cpu_usage_seconds_total|pg_up|elasticsearch_node_stats_up"
     action        = "keep"
   }
   forward_to = [prometheus.echo.out.receiver]
@@ -216,6 +218,14 @@ metadata:
   namespace: shop
 stringData:
   GRAFANA_CLOUD_TOKEN: dummy-grafana-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shop-exporter
+  namespace: shop
+stringData:
+  POSTGRES_EXPORTER_DSN: postgresql://exporter:dummy-exporter-password@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable
 ---
 apiVersion: v1
 kind: Secret
@@ -281,6 +291,12 @@ failures=0
 fail() { echo "monitoring-smoke: FAIL $1" >&2; failures=$((failures + 1)); }
 operator=monitoring-alloy-operator
 alloy=monitoring-alloy
+# The NetworkPolicy shop-closed of make generate (scripts/generate.sh) lets Alloy through by these labels of its pod: exactly one pod has
+# them (not the operator, kube-state-metrics or node-exporter), and no other pod of monitoring has the label name alloy.
+alloy_pods="$(mkc get pods -l app.kubernetes.io/name=alloy,app.kubernetes.io/instance=monitoring-alloy -o name | wc -l | tr -d ' ')"
+[ "$alloy_pods" = 1 ] || fail "$alloy_pods pods of monitoring have the labels of Alloy that the rule shop-closed names (one expected)"
+named_alloy="$(mkc get pods -l app.kubernetes.io/name=alloy -o name | wc -l | tr -d ' ')"
+[ "$named_alloy" = 1 ] || fail "$named_alloy pods of monitoring have the label app.kubernetes.io/name=alloy (one expected)"
 
 log "the admission policies of monitoring (requests with --dry-run=server)"
 host_policy=monitoring-no-host-access
@@ -495,7 +511,9 @@ masked_marker() { fetch_receiver && grep -- "$marker user logged in" "$receiver_
 event() { fetch_receiver && grep 'integrations/kubernetes/eventhandler' "$receiver_log" | grep -q -- "$marker"; }
 wait_for "the line of the pod, masked" masked_marker
 wait_for "a cluster event of the pod" event
-for metric in kube_deployment_spec_replicas node_filesystem_avail_bytes kubelet_running_pods container_cpu_usage_seconds_total; do
+# pg_up and elasticsearch_node_stats_up: the exporters of the databases (the DSN of the Secret shop-exporter names a Postgres that is
+# not in this cluster, and there is no Elasticsearch): they say 0 and the rest of the metrics goes on.
+for metric in kube_deployment_spec_replicas node_filesystem_avail_bytes kubelet_running_pods container_cpu_usage_seconds_total pg_up elasticsearch_node_stats_up; do
   wait_for "the metric $metric" received_again "$metric"
 done
 fetch_receiver
@@ -562,6 +580,10 @@ for account in $operator $alloy monitoring-kube-state-metrics monitoring-node-ex
 done
 # Alloy: its token and what it reads in the cluster, and nothing in monitoring it would not need.
 can yes $alloy get secret/grafana-cloud -n shop
+can yes $alloy get secret/shop-exporter -n shop
+for account in $operator monitoring-kube-state-metrics monitoring-node-exporter; do
+  can no "$account" get secret/shop-exporter -n shop
+done
 for check in "list nodes" "get nodes --subresource=metrics" "list pods --all-namespaces" "get pods --subresource=log -n shop" "list events --all-namespaces" \
   "list endpoints -n monitoring" "list prometheusrules.monitoring.coreos.com --all-namespaces"; do
   # shellcheck disable=SC2086 # the words of the check are arguments

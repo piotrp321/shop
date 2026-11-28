@@ -41,19 +41,50 @@ PLANTED = {
     "Doctrine parameters": ["Jan Kowalski", "ul. Długa 5", "00-001 Warszawa", "129.99"],
     "DETAIL of Postgres": ["PL-SECRET-SKU-9"],
     "STATEMENT of Postgres": ["INSERT INTO customer (email, name) VALUES"],
+    # The main message of a data error (SQLSTATE class 22) carries the value of the input in quotes after a colon or after `value`.
+    "value in the message of Postgres": ["qty-v-pg-data-1", "id-v-pg-data-2", "state-v-pg-data-4", "99999v-pg-data-5", "price-v-pg-data-6",
+                                          "2026-13-45", "99999999999"],
+    # The ways round the rule: a quote or a backslash inside the value, Polish letters, a value of more lines, a colon or `value`
+    # inside the value, a text that looks like the end of the message.
+    "a quote in the value of Postgres": ["v-pg-quote-7"],
+    "a backslash in the value of Postgres": ["v-pg-bslash-8"],
+    "Polish letters in the value of Postgres": ["zażółć jaźń-v-pg-polish-9"],
+    "a value of more lines in Postgres": ["v-pg-multi-10", "v-pg-multi-11", "v-pg-multi-12"],
+    "a colon in the value of Postgres": ["v-pg-colon-13"],
+    "the end of a message in the value of Postgres": ["v-pg-fake-suffix-14"],
+    # The class, not the cases: a literal first after ERROR, after a word that is not the name of an object (a time zone, a colon,
+    # `value`), the name of an object inside the value, and the message of Doctrine in the log of the API (its quotes are escaped and
+    # the message has no line of its own).
+    "a literal first in the message of Postgres": ["9e999-v-pg-real-15"],
+    "a literal after a word that is not an object in Postgres": ["Mars-v-pg-zone-16"],
+    "the name of an object inside the value in Postgres": ["v-pg-kw-17", "v-pg-kw-18"],
+    "a value after the name of a parameter in Postgres": ["v-pg-param-19", "v-pg-last-20"],
+    "a value in the message of Doctrine": ["id-v-api-uuid-21", "v-api-real-23"],
+    "a quote and a backslash in the value in the message of Doctrine": ["v-api-quote-22"],
 }
 # What is needed to diagnose and must stay: the level, the message, the channel, the code of the response.
 KEPT = {
     "api": [
         '"level_name":"ERROR"', '"channel":"doctrine"', "UniqueConstraintViolationException", "duplicate key value violates unique constraint",
         '"message":"Authentication failed"', '"channel":"security"', '"level_name":"WARNING"', '"channel":"request"', '"status_code":403',
-        '"message":"Request finished"', '"method":"GET"', '"uri":"/api/v1/orders?page=2&', '"channel":"cache"', "Redis is down",
+        '"message":"Request finished"', '"method":"GET"',
+        # The message of Doctrine keeps what failed and the names, and the line stays a JSON object.
+        "SQLSTATE[22P02]: Invalid text representation: 7 ERROR:  invalid input syntax for type uuid: ",
+        "SQLSTATE[22003]: Numeric value out of range: 7 ERROR:  ",
+        r'ERROR:  null value in column \"name\" of relation \"customer\" violates not-null constraint',
+        r'Doctrine\\DBAL\\Exception\\DriverException', '"datetime":"2026-11-28T10:00:03.123456+00:00"', '"uri":"/api/v1/orders?page=2&', '"channel":"cache"', "Redis is down",
         '"channel":"mailer"', '"message":"Request headers"', '"status_code":429', "failed: smtp://", '"channel":"http_client"', "Keycloak returned 400", "invalid_grant", "SQLSTATE[23505]",
     ],
     "keycloak": ['WARN  [org.keycloak.events]', 'type="LOGIN_ERROR"', 'error="invalid_user_credentials"', 'clientId="store"', 'realmId="shop"',
                  'error="user_not_found"', 'INFO  [org.keycloak.events]', 'userId="5b0c6bb1-1111-2222-3333-444455556666"', 'type="LOGIN"'],
     "postgres": ['ERROR:  duplicate key value violates unique constraint "uniq_customer_email"', "LOG:  connection received: host=",
-                 'FATAL:  password authentication failed for user "shop"'],
+                 'FATAL:  password authentication failed for user "shop"',
+                 # What says what failed stays: the kind of the error, the type, the names of constraints, columns, relations and tables.
+                 "invalid input syntax for type integer: ", "invalid input syntax for type uuid: ", "invalid input value for enum status: ",
+                 "date/time field value out of range: ", 'ERROR:  value "', 'ERROR:  null value in column "name" of relation "customer" violates not-null constraint',
+                 'violates check constraint "chk_price_positive"', 'new row for relation "product"',
+                 'insert or update on table "order_line" violates foreign key constraint "fk_order_line_order"',
+                 'ERROR:  "[REDACTED]', 'ERROR:  time zone "', 'invalid value for parameter "work_mem": "'],
     "store": ["GET /auth/callback?", "302 in 45ms", "failed with status 401", "ready - started server on port 3000", "fetch failed"],
     "admin": ["GET /assets/app.js?", 'HTTP/1.1" 200 5123', 'POST /api/v1/admin/login HTTP/1.1" 502 157', "[error]", "Connection refused"],
     "imgproxy": ["INFO[0012] Completed in 12.3ms", "status=200", "WARN[0013] Request failed", "status=403"],
@@ -78,11 +109,13 @@ def output_entries():
     """The entries of loki.echo as (pipeline, source, line)."""
     entries = []
     for text in (RENDER / "masking-output.log").read_text().splitlines():
-        match = re.search(r'component_id=loki\.echo\.(\w+) labels="((?:[^"\\]|\\.)*)" entry="((?:[^"\\]|\\.)*)" entry_timestamp=', text)
+        # logfmt quotes a value that has a space or a special character and leaves a bare word as it is (a line that is only [REDACTED]).
+        match = re.search(r'component_id=loki\.echo\.(\w+) labels="((?:[^"\\]|\\.)*)" entry=(?:"((?:[^"\\]|\\.)*)"|(\S+)) entry_timestamp=', text)
         assert match, f"a line of loki.echo that this test cannot read: {text[:200]}"
         labels = json.loads('"' + match.group(2) + '"')
         source = re.search(r'source="([^"]*)"', labels).group(1)
-        entries.append((match.group(1), source, json.loads('"' + match.group(3) + '"')))
+        entry = json.loads('"' + match.group(3) + '"') if match.group(3) is not None else match.group(4)
+        entries.append((match.group(1), source, entry))
     return entries
 
 
@@ -162,6 +195,14 @@ class Output(unittest.TestCase):
             lines = lines_of(pipeline, "postgres")
             self.assertEqual([], [line for line in lines if re.search(r"(^|\]\s)\s*(DETAIL|STATEMENT):", line)], pipeline)
             self.assertEqual(len(corpus_lines("postgres")) + 1 - DROPPED["postgres"], len(lines), f"{pipeline}: other lines of Postgres were lost")
+
+    def test_the_lines_of_the_api_stay_json_and_no_mark_of_the_masking_stays_in_a_line(self):
+        for pipeline in ("pods", "events"):
+            doctrine = [line for line in lines_of(pipeline, "api") if "SQLSTATE[22" in line or "SQLSTATE[23502]" in line]
+            self.assertEqual(4, len(doctrine), f"{pipeline}: the lines of Doctrine with an error of Postgres")
+            for line in doctrine:
+                json.loads(line)
+            self.assertNotIn("\x01", "\n".join(lines_of(pipeline)), f"{pipeline}: the mark of the masking is in a line")
 
     def test_the_level_the_message_the_channel_and_the_code_of_the_response_stay(self):
         for pipeline in ("pods", "events"):

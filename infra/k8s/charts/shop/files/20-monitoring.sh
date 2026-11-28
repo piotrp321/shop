@@ -1,0 +1,1 @@
+../../../../postgres/init/20-monitoring.sh

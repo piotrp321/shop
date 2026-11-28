@@ -401,7 +401,7 @@ monitoring_operator_changing_rbac() { replace_after infra/k8s/argocd/apps/monito
                 verbs: [get, list, watch, create]'; }
 monitoring_operator_on_the_whole_cluster() { replace infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'ownNamespaceOnly: false'; }
 monitoring_alloy_making_its_own_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'presets: [deployment]' 'create: false' 'create: true'; }
-monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
+monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud, shop-exporter]' 'resourceNames: []'; }
 monitoring_events_without_the_stages() { replace infra/k8s/argocd/apps/monitoring.yaml 'extraLogProcessingStages: *logStages' 'extraLogProcessingStages: ""'; }
 monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex         = "shop;mailpit"' 'regex         = "shop;mailpit-other"'; }
 # The render of the monitoring: a chart version that has no digest in monitoring-render.sh, an archive with another digest, stages
@@ -430,6 +430,17 @@ monitoring_without_the_service_policy() { drop_extra_object ValidatingAdmissionP
 monitoring_service_policy_with_node_ports() { replace infra/k8s/argocd/apps/monitoring.yaml "object.spec.type == 'ClusterIP')" "object.spec.type in ['ClusterIP', 'NodePort'])"; }
 monitoring_service_policy_without_external_ips() { replace infra/k8s/argocd/apps/monitoring.yaml '&& (!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0)' '&& true'; }
 monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd/apps/monitoring.yaml "!variables.podSpec.priorityClassName.startsWith('system-')" "variables.podSpec.priorityClassName != ''"; }
+# The exporters of the databases (spec RUNTIME-CONFIG, D7): the statements of Postgres among the collectors, the DSN written in the config,
+# a label that carries the text of a query allowed through, and the rule that masks the values in the message of an error of Postgres
+# that matches no line.
+monitoring_exporter_with_the_statements() { replace infra/k8s/argocd/apps/monitoring.yaml '"wal", "long_running_transactions"]' '"wal", "long_running_transactions", "stat_statements"]'; }
+monitoring_exporter_with_the_dsn_in_the_config() { replace infra/k8s/argocd/apps/monitoring.yaml '.data["POSTGRES_EXPORTER_DSN"]]' '.data["POSTGRES_EXPORTER_DSN"], "postgresql://exporter:pw@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable"]'; }
+monitoring_exporter_with_the_query_label() { replace infra/k8s/argocd/apps/monitoring.yaml '|wait_event_type|wait_event"' '|wait_event_type|wait_event|query"'; }
+monitoring_postgres_labels_cut_to_the_database_and_the_state() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state|usename|application_name|backend_type|wait_event_type|wait_event"' 'regex  = "__name__|job|instance|datname|state"'; }
+# The rule shop-closed of make generate: Alloy on every port, and every namespace.
+generate_rule_for_alloy_on_all_ports() { replace infra/k8s/scripts/generate.sh '"ports":[{"protocol":"TCP","port":5432},{"protocol":"TCP","port":9200}]' '"ports":[]'; }
+generate_rule_for_alloy_of_every_namespace() { replace infra/k8s/scripts/generate.sh '"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' '"namespaceSelector":{}'; }
+monitoring_without_the_rule_of_the_values_of_postgres() { replace infra/k8s/argocd/apps/monitoring.yaml '(?:ERROR|FATAL|PANIC|WARNING):' '(?:ERRORS|FATALS):'; }
 monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -474,6 +485,8 @@ reindex_not_suspended() { replace_after infra/k8s/charts/shop/templates/reindex.
 reindex_without_confirmation() { replace infra/k8s/scripts/reindex.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
+postgres_conf_link_missing() { rm "$tree/infra/k8s/charts/shop/files/postgresql.conf"; }
+postgres_command_reads_another_file() { replace infra/k8s/charts/shop/templates/postgres.yaml '  - config_file=/etc/postgresql/postgresql.conf' '  - config_file=/etc/postgresql/another.conf'; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
 # expression that does what the scenarios do not allow.
 backup_missing_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])' 'vector(0) > 1'; }
@@ -554,12 +567,19 @@ run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights 
 run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" "tests=test_monitoring." monitoring_operator_changing_rbac
 run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" "tests" monitoring_operator_on_the_whole_cluster
 run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" "tests=test_monitoring." monitoring_alloy_making_its_own_rbac
-run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" "tests=test_monitoring." monitoring_role_on_all_secrets_of_the_shop
+run_case "Role of Alloy on all Secrets of the shop" "the Role does not name exactly the Secrets of Alloy" "tests=test_monitoring." monitoring_role_on_all_secrets_of_the_shop
 run_case "cluster events without the stages that mask" "do not get the same stages" "tests=test_log_masking." monitoring_events_without_the_stages
 run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" "tests" monitoring_collecting_mailpit
 run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" "render" monitoring_chart_version_without_a_digest
 run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" "render" monitoring_chart_digest_differs
 run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" "render" monitoring_stages_alloy_rejects
+run_case "exporter of Postgres with the collector of the statements" "the list replaces the default list of collectors" "tests=test_monitoring." monitoring_exporter_with_the_statements
+run_case "exporter of Postgres with the DSN in the configuration" "test_the_dsn_is_a_secret_value_of_a_secret_of_the_cluster_and_nowhere_in_text" "tests" monitoring_exporter_with_the_dsn_in_the_config
+run_case "exporter of Postgres with a label of the text of a query" "test_only_the_named_labels_leave_and_none_is_the_text_of_a_query" "tests" monitoring_exporter_with_the_query_label
+run_case "exporter of Postgres with the labels cut to the database and the state" "test_the_sessions_of_every_group_arrive_and_add_up_to_the_sessions_of_postgres" "tests" monitoring_postgres_labels_cut_to_the_database_and_the_state
+run_case "rule shop-closed that lets Alloy through on every port" "test_nothing_else_of_monitoring_and_nothing_else_of_alloy_gets_in" "tests" generate_rule_for_alloy_on_all_ports
+run_case "rule shop-closed that lets Alloy through from every namespace" "test_nothing_else_of_monitoring_and_nothing_else_of_alloy_gets_in" "tests" generate_rule_for_alloy_of_every_namespace
+run_case "monitoring without the rule that masks the values of the errors of Postgres" "came out of Alloy" "tests=test_log_masking." monitoring_without_the_rule_of_the_values_of_postgres
 run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_host_policy
 run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_token_binding
 run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_policy_that_warns
@@ -599,6 +619,8 @@ run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_
 run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workflow_missing
+run_case "link of postgresql.conf missing from the chart" "postgres-config/postgresql.conf" "tests=test_files." postgres_conf_link_missing
+run_case "command of Postgres that reads another file than the mounted one" "test_the_command_reads_the_file_and_takes_the_memory_from_the_values_of_the_environment" "tests" postgres_command_reads_another_file
 
 wait
 # Every job is over: nothing is left for cleanup to stop (and no process number to be reused by another process).

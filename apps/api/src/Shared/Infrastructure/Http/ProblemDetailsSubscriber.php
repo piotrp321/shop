@@ -39,6 +39,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  *   HandlerFailedException. Inside a firewall the security ExceptionListener handles them before this subscriber
  *   (and follows their `previous` chain, that is Symfony's rule): ProblemAuthenticationEntryPoint gives the 401,
  *   an AccessDeniedHttpException the 403,
+ * - a statement that the time limit of the database cancelled: a 503 with a Polish `detail` (a fixed text, not the message
+ *   of the database) and `Retry-After`,
  * - anything else: a 500 without `detail`, so messages, classes and paths never leak, also in debug mode.
  */
 final class ProblemDetailsSubscriber implements EventSubscriberInterface
@@ -47,6 +49,11 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     private const RESERVED_MEMBERS = ['type', 'title', 'status', 'detail', 'instance', 'violations'];
 
     private const FALLBACK_DETAIL = 'Nie można przetworzyć żądania.';
+
+    private const CANCELLED_STATEMENT_DETAIL = 'Zapytanie trwało zbyt długo i zostało przerwane. Spróbuj ponownie za chwilę.';
+
+    /** Seconds after which a retry may succeed: the statement ended and its load on the database with it. */
+    private const CANCELLED_STATEMENT_RETRY_AFTER = 5;
 
     /**
      * Fixed texts for framework exceptions, they never depend on the exception message (spec:
@@ -81,6 +88,7 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
             null !== $validation => $this->validationProblem($validation, $status),
             $exception instanceof ProblemException => $this->projectProblem($exception, $status),
             $exception instanceof HttpExceptionInterface => self::genericProblem($status, $exception->getHeaders()),
+            Response::HTTP_SERVICE_UNAVAILABLE === $status && ExceptionStatus::isCancelledStatement($exception) => self::cancelledStatementProblem(),
             default => self::genericProblem($status),
         };
 
@@ -104,6 +112,17 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         }
 
         return self::problemResponse($problem, $status, $headers);
+    }
+
+    private static function cancelledStatementProblem(): JsonResponse
+    {
+        $status = Response::HTTP_SERVICE_UNAVAILABLE;
+
+        return self::problemResponse(
+            ['type' => 'about:blank', 'title' => Response::$statusTexts[$status], 'status' => $status, 'detail' => self::CANCELLED_STATEMENT_DETAIL],
+            $status,
+            ['Retry-After' => (string) self::CANCELLED_STATEMENT_RETRY_AFTER],
+        );
     }
 
     /**

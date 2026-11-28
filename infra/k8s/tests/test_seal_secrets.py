@@ -121,13 +121,14 @@ class SealSecretsTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         keys = init_env_keys()
         self.assertGreaterEqual(len(keys), 19)
-        self.assertEqual(["shop-secrets.yaml"], self.files())
+        self.assertEqual(["shop-exporter.yaml", "shop-secrets.yaml"], self.files())
         self.assertEqual(keys, self.keys_of("shop-secrets.yaml"))
+        self.assertEqual(["POSTGRES_EXPORTER_DSN"], self.keys_of("shop-exporter.yaml"))
         text = (self.secrets_dir() / "shop-secrets.yaml").read_text()
         self.assertIn("kind: SealedSecret", text)
         self.assertIn("  name: shop-secrets\n  namespace: shop\n", text)
         self.assertIn("    type: Opaque\n", text)
-        self.assertEqual(len(keys), len(self.calls()))
+        self.assertEqual(len(keys) + 1, len(self.calls()))
         # Random, and as init-env.sh makes them: hex of the right length, GK before the access key id.
         sent = dict(zip(keys, self.sent()))
         self.assertRegex(sent["POSTGRES_PASSWORD"], r"^[0-9a-f]{32}$")
@@ -135,22 +136,63 @@ class SealSecretsTest(unittest.TestCase):
         self.assertRegex(sent["GARAGE_ACCESS_KEY_ID"], r"^GK[0-9a-f]{24}$")
         self.assertEqual(len(set(sent.values())), len(sent), "two keys got the same value")
 
+    def test_the_dsn_of_the_exporter_is_sealed_with_the_password_of_the_role_in_shop_secrets(self):
+        self.run_script("shop")
+        sent = self.sent()
+        password = dict(zip(init_env_keys(), sent))["EXPORTER_DB_PASSWORD"]
+        self.assertRegex(password, r"^[0-9a-f]{32}$")
+        # The last call is the DSN of the Secret that Alloy reads (it cannot read shop-secrets, which has the passwords of the databases).
+        self.assertEqual(f"postgresql://exporter:{password}@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable", sent[-1])
+        self.assertIn("--name shop-exporter --namespace shop", self.calls()[-1])
+        text = (self.secrets_dir() / "shop-exporter.yaml").read_text()
+        self.assertIn("  name: shop-exporter\n  namespace: shop\n", text)
+        self.assertNotIn(password, text)
+
+    def test_a_sealed_password_without_the_secret_of_the_exporter_is_an_error_and_nothing_is_written(self):
+        self.run_script("shop")
+        (self.secrets_dir() / "shop-exporter.yaml").unlink()
+        before = (self.secrets_dir() / "shop-secrets.yaml").read_bytes()
+        self.log.write_text("")
+        result = self.run_script("shop")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("shop-exporter.yaml is missing", result.stderr)
+        self.assertIn("remove the line EXPORTER_DB_PASSWORD", result.stderr)
+        self.assertEqual(before, (self.secrets_dir() / "shop-secrets.yaml").read_bytes())
+        self.assertFalse((self.secrets_dir() / "shop-exporter.yaml").exists())
+        self.assertEqual([], self.calls())
+
+    def test_without_the_password_line_both_files_get_a_new_one_together(self):
+        self.run_script("shop")
+        path = self.secrets_dir() / "shop-secrets.yaml"
+        old_dsn = (self.secrets_dir() / "shop-exporter.yaml").read_text()
+        path.write_text("".join(line for line in path.read_text().splitlines(keepends=True) if not line.startswith("    EXPORTER_DB_PASSWORD:")))
+        self.log.write_text("")
+        result = self.run_script("shop")
+        self.assertEqual(0, result.returncode, result.stderr)
+        sent = self.sent()
+        self.assertEqual(2, len(sent))
+        self.assertEqual(f"postgresql://exporter:{sent[0]}@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable", sent[1])
+        self.assertIn("EXPORTER_DB_PASSWORD", self.keys_of("shop-secrets.yaml"))
+        self.assertNotEqual(old_dsn, (self.secrets_dir() / "shop-exporter.yaml").read_text())
+
     def test_kubeseal_gets_the_certificate_of_the_repository_the_name_and_the_namespace_and_no_value(self):
         self.run_script("shop")
         sent = self.sent()
-        for call in self.calls():
+        for call, secret in zip(self.calls(), ["shop-secrets"] * (len(self.calls()) - 1) + ["shop-exporter"]):
             self.assertIn(KUBESEAL_IMAGE, call)
-            self.assertIn(f"--raw --scope strict --name shop-secrets --namespace shop --cert /repo/{CERT}", call)
+            self.assertIn(f"--raw --scope strict --name {secret} --namespace shop --cert /repo/{CERT}", call)
         for value in sent:
             self.assertFalse(any(value in call for call in self.calls()), "a value is on a command line")
 
     def test_the_second_run_changes_nothing_and_does_not_call_kubeseal(self):
         self.run_script("shop")
         before = (self.secrets_dir() / "shop-secrets.yaml").read_bytes()
+        before_exporter = (self.secrets_dir() / "shop-exporter.yaml").read_bytes()
         self.log.write_text("")
         result = self.run_script("shop")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(before, (self.secrets_dir() / "shop-secrets.yaml").read_bytes())
+        self.assertEqual(before_exporter, (self.secrets_dir() / "shop-exporter.yaml").read_bytes())
         self.assertEqual([], self.calls())
         self.assertIn("nothing to add", result.stdout)
 
@@ -273,16 +315,17 @@ class SealSecretsTest(unittest.TestCase):
                 result = self.run_script("tls", tty=tty)
                 self.assert_nothing_written(result)
 
-    def test_all_five_in_one_run_write_all_five_files_after_everything_worked(self):
+    def test_all_five_in_one_run_write_all_their_files_after_everything_worked(self):
         result = self.run_script(tty=ALL_TTY)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            ["grafana-cloud.yaml", "shop-backup.yaml", "shop-brevo-smtp.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"], self.files()
+            ["grafana-cloud.yaml", "shop-backup.yaml", "shop-brevo-smtp.yaml", "shop-exporter.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"],
+            self.files(),
         )
         self.assert_no_secret_anywhere(result, BREVO_KEY, ORIGIN_KEY, RESTIC_PASSWORD, S3_SECRET, GRAFANA_TOKEN)
 
     def test_a_failing_kubeseal_at_the_end_of_all_five_writes_none(self):
-        total = len(init_env_keys()) + 2 + 2 + 3 + 1
+        total = len(init_env_keys()) + 1 + 2 + 2 + 3 + 1
         result = self.run_script(tty=ALL_TTY, STUB_FAIL_ON=str(total))
         self.assert_nothing_written(result)
 

@@ -44,16 +44,17 @@ i odpowiedzi 503 z PERF-1. Chart i compose zmieniają też PERF-2 B i ASYNC-INDE
 |---|---|---|
 | Węzeł | 22,9 GiB, `allocatable` = pojemność (brak `system-reserved`, próg eksmisji domyślny 100 Mi), bez swapu; system, k3s i jądro ok. 2,1 GiB; pody ok. 5,9 GiB; dostępne minimum 14,0 GiB z 7 dni; cache plików węzła 13,8 GiB | Grafana 2026-11-25 (audyt 2.6, sekcja 4; `server-bootstrap.sh` bez rezerw) |
 | Suma limitów `prod` | sklep 16,9 GiB + monitoring 1,4 GiB = 18,3 GiB z 20 GiB dopuszczonych testem; requesty CPU 4,9 + 0,36 z 7 vCPU | `environments/prod/values.yaml`, `test_workloads.py` `test_prod_fits_the_server` |
-| Limity CPU | brak; 0 throttlingu, szczyt CPU węzła 64%, iowait do 18% | Grafana (audyt 2.6) |
-| Elasticsearch | sterta 2 GiB w limicie 4 GiB, request 1 vCPU; working set do 3589 MiB (88%) przy indeksie 1 GB. Model R przy 10 mln: gorące dane ok. 4,5 GB [SZACUNEK etapu A], nie mieszczą się w limicie 4 GiB | #928, audyt P5, raport etapu A sekcja 8 |
+| Limity CPU | brak; 0 throttlingu, szczyt CPU węzła 64%, iowait do 18%; przy generowaniu `server` iowait do 23%, Postgres 2,3 rdzenia, Keycloak 3,8 | Grafana (audyt 2.6); [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §1.3–1.4 |
+| Elasticsearch | sterta 2 GiB w limicie 4 GiB, request 1 vCPU; working set do 3589 MiB (88%) przy indeksie 1 GB. Model R przy 10 mln: gorące dane ok. 4,5 GB [SZACUNEK etapu A], nie mieszczą się w limicie 4 GiB. Na `server` (10 mln, 4 shardy, indeks 9,6 GB): working set 3,7–4,1 GiB z 4 GiB, RSS 2,9 GiB, a każdy zimny listing czyta 1–4 GiB z dysku | #928, audyt P5, raport etapu A sekcja 8, `server-profile-baseline-worf-2026-11-26.md`, `runtime-config-baseline-2026-11-27.md` §1.2 |
 | Postgres | wyłącznie wartości domyślne PG 18 (`shared_buffers` 128 MB, `work_mem` 4 MB, `max_wal_size` 1 GB, `jit` on, bez `pg_stat_statements`, bez limitów czasu); limit 2 GiB; proces do 70 MiB, reszta limitu to cache plików; `/dev/shm` 64 MB; `max_connections` 100; kopia przez `pg_dump`, bez archiwizacji WAL i slotów | audyt P4, `postgres.md` K1–K3, `backup.sh` |
-| Postgres przy generowaniu `medium` | 2,52 rdzenia, working set 357 MiB | raport z 2026-11-20 |
+| Postgres przy generowaniu `medium` | 2,52 rdzenia, working set 357 MiB; lokalnie (nadpisanie `prod`): pamięć nieodzyskiwalna 242 MiB, cache plików 1983 z 2048 MiB, szczyt `pg_wal` 1056 MiB, 81 checkpointów wymuszonych i 8 czasowych w 58 min | raport z 2026-11-20; [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §2 |
+| Postgres przy generowaniu `server` | cache plików cgroupy 1,83–1,99 GiB przez 24 h, czyli przy limicie, przy `MemAvailable` węzła 13,3–14,7 GiB; ok. 2 815 checkpointów wymuszonych rozmiarem WAL w ok. 10 h generowania (w szczycie co ok. 8 s); w reindeksie i weryfikacji pojedyncze strony 8 KB (4–10 tys. IOPS) przy 0,2–0,4 rdzenia; `demo-data:verify` miał ok. 6,8 h (limit 24 h liczy cały Job) i się nie skończył; bez eksportera Postgresa i metryk dysku urządzenia (`node_disk_*`, `node_pressure_*`, #976) | [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §1, §3 |
 | API | tryb klasyczny, `num_threads` domyślne 2 × CPU = 16 (w k3d `load` 20), `memory_limit` 256M × 16 = 4 GiB przy limicie 2 GiB; 87 MiB w spoczynku | `Caddyfile`, `docker/php/conf.d`, raport z 2026-11-20 |
 | Redis | bez `maxmemory` (polityka domyślna `noeviction` nie działa bez limitu), RDB domyślne, limit 512 MiB; zastosowania w sekcji „Redis” | `templates/redis.yaml`, kod (sekcja „Redis”) |
 | Varnish | `malloc` 100 MB (domyślne obrazu), Transient bez limitu, limit poda 512 MiB | `templates/varnish.yaml` |
-| Keycloak | sterta 512m–1g w 2 GiB, pula bazy domyślnie do 100 połączeń, 3,9 rdzenia przy generatorze kont | `templates/keycloak.yaml`, audyt |
+| Keycloak | sterta 512m–1g w 2 GiB, pula bazy domyślnie do 100 połączeń, 3,9 rdzenia przy generatorze kont; RSS 0,94 GiB przed importem i 1,36 GiB po imporcie 1 mln kont `server`; lokalnie szczyt 6 połączeń przy imporcie 100 tys. kont | `templates/keycloak.yaml`, audyt, [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §1.2, §2.3 |
 | imgproxy | `IMGPROXY_WORKERS` domyślne 2 × CPU = 16 przy źródłach do 50 MP i limicie 1 GiB | `templates/imgproxy.yaml` |
-| Wolumeny | `local-path` (rozmiar nieegzekwowany): Postgres 10Gi, Elasticsearch 10Gi; szczyt dysku `server` szacowany na 96 GB (strażnik generatora 120 GB wolnego), z reindeksem 125–175 GB z 193 | `charts/shop/values.yaml`, `test_generate_script.py`, audyt P14 |
+| Wolumeny | `local-path` (rozmiar nieegzekwowany): Postgres 10Gi, Elasticsearch 10Gi; zmierzony szczyt użycia `/` przy generowaniu i reindeksie `server` (4 shardy, `max_wal_size` 1 GB) 103,1 GB z 207 GB (192,9 GiB), czyli 50%; przed generowaniem 34,2 GB | `charts/shop/values.yaml`, [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §1.6 |
 
 ## Zasady konfiguracji
 
@@ -135,16 +136,21 @@ wartość po wskazanym pomiarze; podana wartość to kandydat, punkt startu pomi
 | `log_min_error_statement` | `error` | `panic` | bez tekstu zapytania przy błędzie; zapytanie identyfikuje `pg_stat_statements` | teraz |
 | `log_min_duration_statement` | -1 | bez zmiany | loguje parametry zapytań; źródłem wolnych zapytań jest `pg_stat_statements` | – |
 | `wal_compression` | off | `lz4` | mniej zapisu WAL z pełnymi obrazami stron przy generatorze i reindeksie, mniej I/O na wspólnym dysku | teraz |
-| `max_wal_size` | 1 GB | kandydat 8 GB | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`. Limit miękki: przy ciężkim zapisie WAL rośnie ponad niego, dopóki checkpoint nie nadąży; budżet dysku liczy zmierzony szczyt `pg_wal` (D6) | [server] |
-| `checkpoint_timeout` | 5 min | kandydat 15 min | razem z `max_wal_size`; dłuższe odtwarzanie po awarii jest dopuszczalne na etapie demo | [server] |
-| `shared_buffers` | 128 MB | kandydat 25% limitu pamięci Postgresa (np. 2 GiB) | gorące indeksy sklepu `server` to ok. 9,5 GB; bufory są `shmem` (nieodzyskiwalne), więc wchodzą w request; reszta gorących danych w cache plików | [PERF-0] [server] (D2) |
+| `max_wal_size` | 1 GB | 8 GB (start) | rzadsze checkpointy wymuszone rozmiarem przy generatorze (4 procesy COPY; `medium`: 81 wymuszonych wobec 8 czasowych, raport zadania 1); miara: `pg_stat_checkpointer.num_requested` wobec `num_timed`. Limit miękki: przy ciężkim zapisie WAL rośnie ponad niego, dopóki checkpoint nie nadąży; budżet dysku liczy zmierzony szczyt `pg_wal` (D6) | wartość startowa; potwierdza ją pomiar na `server` |
+| `checkpoint_timeout` | 5 min | 15 min (start) | razem z `max_wal_size`; dłuższe odtwarzanie po awarii jest dopuszczalne na etapie demo | wartość startowa; potwierdza ją pomiar na `server` |
+| `shared_buffers` | 128 MB | 25% limitu pamięci Postgresa; start `prod` i `load`: 1 GB, `ci` i compose: 128 MB | gorące indeksy sklepu `server` to ok. 9,5 GB; bufory są `shmem` (nieodzyskiwalne), więc wchodzą w request; reszta gorących danych w cache plików; wariant startowy zmierzony na `medium` (raport zadania 1, sekcja 8) | wartość startowa; ostateczna w D2 [server] [PERF-2B] |
 | `effective_cache_size` | 4 GB | `shared_buffers` + cache plików przyznany w limicie | tylko informacja dla planera, musi odpowiadać Z1 | razem z D2 |
 | `work_mem` | 4 MB | bez zmiany, chyba że `pg_stat_statements.temp_blks_written` pokaże sortowania na dysku w ścieżkach W3–W6 | ścieżki sklepu sortują setki wierszy; `work_mem` × połączenia × węzły planu to ryzyko OOM | [PERF-0] |
-| `maintenance_work_mem` | 64 MB | kandydat 512 MB | budowa indeksów i VACUUM na tabelach 10 mln wierszy; używane przez 1–4 procesy naraz | teraz (wchodzi w request) |
+| `maintenance_work_mem` | 64 MB | 256 MB | budowa indeksów i VACUUM na tabelach 10 mln wierszy; używane przez 1–4 procesy naraz; 512 MB × 4 procesy generatora zajęłoby sam request Postgresa | teraz (wchodzi w request) |
+| `autovacuum_work_mem` | -1 (`maintenance_work_mem`) | 128 MB | `autovacuum_max_workers` (3) × 128 MB zamiast × 256 MB; VACUUM tabel 10 mln wierszy mieści listę martwych krotek | teraz (wchodzi w request) |
 | `jit` | on | decyzja z `pg_stat_statements.jit_*_time` | wyłączamy, jeśli czas kompilacji JIT jest istotną częścią zapytań API; inaczej domyślne | [PERF-0] |
 | `random_page_cost` | 4 | bez zmiany | zmienia plany; zmieniamy tylko po planie `EXPLAIN` pokazującym zły wybór (PERF-7, PERF-8) | – |
 | `max_connections` | 100 | bez zmiany | budżet niżej mieści się z zapasem | – |
 | `/dev/shm` | 64 MB | `emptyDir` `Memory` 1 GiB (chart), `shm_size` (compose) | zapytania równoległe używają `dynamic_shared_memory_type=posix`; za mały segment kończy zapytanie błędem; zajętość jest `shmem` poda i wchodzi w request | teraz |
+
+Plik `infra/postgres/postgresql.conf` zastępuje plik katalogu danych (`config_file`), więc powtarza też to, co
+zapisuje w nim initdb obrazu i co różni się od wartości domyślnych Postgresa: `listen_addresses`,
+`default_text_search_config`, `timezone`, `log_timezone` i `lc_*`.
 
 **Budżet połączeń** (zapisany w ADR i w komentarzu `values.yaml`): API 16 (połączenie na żądanie, najwyżej jedno na
 wątek), workery 2, `worker-indexing` × repliki z chartu, joby cykliczne 3, reindeks albo generator 4, kopia
@@ -155,23 +161,80 @@ i przy logowaniach lokalnie), rezerwa superużytkownika 3. Razem ok. 50 z 100 pr
 
 | Proces | `statement_timeout` | `idle_in_transaction_session_timeout` | `lock_timeout` |
 |---|---|---|---|
-| API (żądania HTTP) | kandydat 5 s | 60 s | – (ograniczony przez `statement_timeout`) |
-| workery Messengera | kandydat 60 s | 60 s | – |
-| migracje | 0 | 0 | 5 s (DDL czekający na blokadę nie zatrzymuje ruchu) |
-| generator, reindeks, kopia, pozostałe joby | 0 | 0 | – |
+| API (żądania HTTP) | 3 s | 60 s | – (ograniczony przez `statement_timeout`) |
+| API, trasy z wyjątkiem (lista niżej) | 90 s | 60 s | – |
+| workery Messengera | 60 s | 60 s | – |
+| migracje (`doctrine:migrations:*`) | 0 | 0 | 5 s (DDL czekający na blokadę nie zatrzymuje ruchu); bez limitu dla instrukcji `CONCURRENTLY` (niżej) |
+| generator, reindeks, kopia, pozostałe komendy konsoli | 0 | 0 | – |
 
-- Wartość dla API: powyżej najwolniejszego zapytania, które W1–W7 dopuszczają (W7: 2 s maksimum), i poniżej limitu
-  Cloudflare (100 s). Zapytania panelu, które dziś trwają dłużej (filtr kategorii, frazy 1–2-znakowe), skończą się
-  błędem zamiast zajmować wątek wspólny ze sklepem; poprawia je PERF-7. Wartość ostateczna: większa z dwóch liczb:
-  3 s (maksimum W7 z zapasem) i 2,5 × najdłuższe `max_exec_time` zapytań ścieżek sklepu W3–W6 z `pg_stat_statements`
-  (zadanie 1, scenariusze PERF-0); zapytania panelu dłuższe niż W7 jej nie wyznaczają. **[PERF-0]**
-- Mechanizm: limit dotyczy tylko procesów, które go potrzebują. Zadanie wybiera prostszy z dwóch natywnych sposobów:
-  `PGOPTIONS` w środowisku poda (k8s rozdziela API, workery i joby na osobne pody; libpq czyta zmienną przy
-  połączeniu) albo ustawienie sesji przy połączeniu w Doctrine zależne od `PHP_SAPI`. Warunek wyboru: ta sama reguła
-  w compose (CI i E2E widzą limit) i brak limitu dla komend konsoli uruchamianych w kontenerze API (generator, testy,
-  migracje).
-- Przerwane zapytanie (`SQLSTATE 57014`) daje w API 503 z `Retry-After` i komunikatem po polsku, nie 500; idle
-  w transakcji zrywa połączenie i zwalnia blokady zamówienia.
+Wartości przyjął właściciel 2026-11-27 (wariant „3 s wszędzie, wyjątki”); limit nie może przerywać poprawnych operacji
+panelu, eksportów, generatora, indeksowania ani zadań asynchronicznych i nie ogranicza funkcji ani współbieżności.
+
+- `statement_timeout` dotyczy jednej instrukcji, nie całego żądania: żądanie złożone z wielu krótkich zapytań nie
+  przekracza limitu, a instrukcja czekająca na blokadę kończy się tym samym limitem.
+- Wartość 3 s: powyżej maksimum W7 z zapasem i powyżej 2,5 × najdłuższe `max_exec_time` ścieżek sklepu W3–W6 (≤ 4 ms na
+  `medium`, [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §5.3). Wartość
+  wyjątku 90 s to limit jednej instrukcji, nie żądania: żądanie może wykonać kilka instrukcji z limitem (lista produktów
+  wykonuje dwie, stronę i licznik), więc 90 s nie gwarantuje odpowiedzi przed limitem Cloudflare (100 s), a jedynie
+  ogranicza czas, przez który jedna instrukcja zajmuje połączenie i wątek. Zapytanie, którego klient już nie czeka, biegnie
+  w Postgresie do swojego limitu, więc limit 0 nie zwalnia połączenia.
+- Mechanizm: middleware sterownika DBAL (`App\Shared\Infrastructure\Persistence\Timeout`) ustawia na sesji
+  `statement_timeout`, `idle_in_transaction_session_timeout` i `lock_timeout` przed następną instrukcją połączenia
+  (i przed rozpoczęciem transakcji), jeśli sesja ma inne wartości niż wynikają z bieżącego profilu procesu. Profil
+  wybierają zdarzenia: żądanie główne (po routerze, z nazwą trasy; koniec w `kernel.terminate`), `WorkerStartedEvent` i
+  `WorkerStoppedEvent` Messengera, polecenie `doctrine:migrations:*` (`console.command`). Bez zdarzenia profil to
+  `console`: 0. Profil żądania jest wybierany przy każdym żądaniu, więc połączenie używane przez kolejne żądania (tryb
+  worker FrankenPHP) nie zachowuje limitu poprzedniego, także trasy z wyjątkiem. Ta sama reguła działa w compose,
+  w podach i w testach, bez zmiennych środowiska i zmian chartu. Wartości, lista tras z wyjątkiem i profile są w jednym
+  miejscu: parametry `app.database_timeouts*` w `apps/api/config/services.yaml`.
+- Instrukcje `CONCURRENTLY` (`CREATE`/`DROP INDEX`, `REINDEX`, `DETACH PARTITION`) nie mają `lock_timeout`: czekają na
+  każdą transakcję starszą od siebie (zapytanie panelu do 90 s, worker do 60 s, generator, reindeks i `pg_dump` bez limitu),
+  a w czasie czekania nikogo nie blokują, więc limit zakończyłby je tylko błędem 55P03 z nieważnym (`INVALID`) indeksem,
+  a ponowienia Joba `migrate` kończyłyby się tak samo (zmierzone: transakcja otwarta z `SELECT` na tabeli i
+  `CREATE INDEX CONCURRENTLY` z `lock_timeout` 5 s kończy się po 5 s błędem i zostawia indeks `indisvalid = f`).
+  Middleware rozpoznaje taką instrukcję po tekście SQL (`TimeoutConnection::isConcurrentDdl`), wysyła ją bez
+  `lock_timeout` i przywraca limit przy następnej instrukcji, więc reguła obejmuje każdą obecną i przyszłą migrację,
+  niezależnie od tego, kto ją uruchamia. Test przegląda wszystkie migracje i wymaga, żeby każda instrukcja
+  `CONCURRENTLY` z `addSql()` była rozpoznana; test integracyjny sprawdza budowę indeksu czekającą na starszą
+  transakcję dłużej niż `lock_timeout` migracji.
+- Przerwana instrukcja (`SQLSTATE 57014`) daje w API 503 z `Retry-After: 5` i komunikatem po polsku w formacie błędów API
+  (`detail`: „Zapytanie trwało zbyt długo i zostało przerwane. Spróbuj ponownie za chwilę."); także gdy wyjątek jest
+  opakowany (`HandlerFailedException`, `previous`). Transakcja bezczynna dłużej niż limit traci połączenie i blokady
+  (następna instrukcja dostaje błąd połączenia).
+
+**Inwentarz tras HTTP.** Wyjątek (90 s) dostaje trasa, której zapytanie ma koszt rosnący z rozmiarem tabeli (pełny skan,
+agregat bez ograniczenia, operacja masowa bez stałego limitu partii) albo zmierzona powyżej 1/2,5 limitu (1,2 s).
+Trasa ograniczona stałym limitem albo indeksem wyjątku nie dostaje. Źródło: PM = pomiar PERF-7
+(`admin-queries-baseline-2026-11-27.md`, ZM na `medium`, SZ szacunek dla `server`), K = odczyt kodu.
+
+| Trasa | Wyjątek | Uzasadnienie |
+|---|---|---|
+| `catalog_backoffice_products` (`GET /api/v1/admin/products`) | tak | PM: mała kategoria z `sort=name` ZM 3,07 s / SZ ok. 31 s, frazy skorelowane z sortem ZM 2,4 s / SZ ok. 24 s, frazy bez trygramu ZM 1,5 s / SZ 6,5–15 s, pod obciążeniem W7 do 5,8 s. Do pomiaru po poprawkach PERF-7 |
+| `inventory_backoffice_stock` (`GET /api/v1/admin/stock`) | tak | K: bez `level` woła to samo `SearchBackofficeProducts` co lista produktów (`QueryBusProductDirectory`), więc ma ten sam koszt; tryb `level` idzie po indeksie, ale trasa jest jedna |
+| `pricing_backoffice_prices` (`GET /api/v1/admin/prices`) | tak | K: jak wyżej (`SearchBackofficeProducts`) |
+| `ordering_backoffice_orders` (`GET /api/v1/admin/orders`) | tak | PM: `q` bez trygramu (`#!#`, `---`) skanuje całą tabelę zamówień (ZM 0,3 s, SZ 1,2–1,5 s; pod mieszanką W7 ZM do 0,83 s), więc koszt rośnie z tabelą i SZ jest powyżej 1,2 s |
+| `ordering_backoffice_customers` (`GET /api/v1/admin/customers`) | tak | PM: fragment bez trygramu skanuje `ordering_customer` (ZM 25 ms, SZ 0,22 s); mieści się w 3 s, ale koszt rośnie z tabelą (880 tys. wierszy dziś) |
+| `catalog_sitemap_product_chunks` (`GET /api/v1/sitemap/product-chunks`) | tak | PM: granice porcji to okno po całej tabeli produktów (M0: ZM 0,23 s, SZ ok. 2,3 s); wynik jest w cache 1 h, ale zimne wyliczenie jest skanem |
+| `backoffice_dashboard` | nie | K: liczniki z limitem (do 1000), sprzedaż z `ordering_sales_hour` (stała liczba wierszy), liczba produktów z `pg_class`; limit dotyczy każdej instrukcji osobno. Nie mierzone przez PERF-7 |
+| `catalog_backoffice_category_tree`, `catalog_category_tree`, `catalog_category_redirect`, `catalog_backoffice_tax_classes` | nie | K: tabele kategorii i klas VAT (rozmiar nie rośnie z produktami); liczniki produktów kategorii z limitem (`DbalCategoryProductCounts`, PM: ZM 10 ms) |
+| `catalog_product_list`, `cart_product_offers`, `catalog_sitemap_products` | nie | K: wyszukiwanie w Elasticsearchu albo klucz główny z `LIMIT` (porcja mapy do `app.sitemap.row_limit`) |
+| `catalog_product_details`, `catalog_backoffice_product`, edycja, tworzenie, publikacja, wycofanie, zdjęcia produktu, kategorie (tworzenie, edycja, przeniesienie, usunięcie) | nie | K: jedna encja po kluczu albo indeksie unikalnym; przeindeksowanie poddrzewa kategorii idzie asynchronicznie partiami po 500 (`ReindexCategoryBatchHandler`, id produktów z Elasticsearcha) |
+| `pricing_promotion*`, `pricing_discount_code*`, `pricing_price_history`, `pricing_change_price` | nie | K: listy stronicowane z `LIMIT` i licznikiem z limitem; licznik wariantów promocji i użyć kodu po indeksie (PM: kody ZM 3 ms, SZ 16 ms); promocja ma najwyżej 1000 wariantów (`Promotion::MAX_VARIANTS`) |
+| `inventory_stock_history`, `inventory_correct_stock`, `inventory_receive_stock` | nie | K: jeden wariant, stronicowanie kursorem |
+| `ordering_backoffice_order`, `ordering_backoffice_customer`, zmiana statusu, numer przesyłki, zwrot | nie | K: jedno zamówienie albo klient po kluczu; historia zamówień klienta z indeksu po kliencie |
+| `ordering_customer_*`, `ordering_guest_place`, koszyki (`cart_*`), płatności (`payment_*`), webhook, symulator płatności, `delivery_*`, `customer_me`, `backoffice_me`, `health` | nie | K: operacje na jednym koszyku, zamówieniu albo płatności po kluczu; zamówienie to jedna transakcja z blokadą rekordów stanu koszyka (rozmiar koszyka) |
+
+Eksportów i operacji masowych o rozmiarze zależnym od tabeli nie ma w API HTTP (panel nie ma tras eksportu, a promocje
+mają limit wariantów); komendy o takim rozmiarze (generator, reindeks, kopia, `ordering:expire-overdue`) są poleceniami
+konsoli z limitem 0. Nowa trasa, która czyta całą tabelę, dopisuje się do `app.database_timeouts.long_routes`, ta
+ograniczona limitem albo indeksem nie.
+
+**Workery.** Każdy handler Messengera pracuje na jednej encji albo na partii o stałym rozmiarze, więc oba workery mają
+limit 60 s: `outbox` i `events` (przekazanie zdarzenia, `IndexProduct` jednego produktu, wiadomości e-mail, odświeżenie
+cache sklepu, `SyncStockRecordsOnProductChange` i `RepriceOnTaxClassChange` jednego produktu), `payment_simulator`,
+`scheduled` (`ExpireUnpaidOrder` jednego zamówienia), `promotions` (`PromotionBoundaryReached` i
+`RefreshPromotionProducts` do 1000 wariantów) i `jobs` (`ReindexCategoryBatch`: partia 500 produktów, a id podzbioru
+dostarcza Elasticsearch). Żaden transport nie dostaje 0. Pomiar czasu najdłuższego zapytania workera po zmianie: zadanie 6.
 
 ### Elasticsearch
 
@@ -259,14 +322,19 @@ Każdy klucz ma TTL, ale żaden nie jest cache: usunięcie dowolnego łamie gwar
   (domyślne). Maskowanie Alloy zostaje drugą warstwą.
 - `terse` zostawia główny komunikat, a błędy danych (SQLSTATE klasy 22, np.
   `invalid input syntax for type uuid: "…"`, `invalid input value for enum`, `value "…" is out of range`) niosą w nim
-  wartość wejścia. Alloy maskuje w liniach Postgresa literał w cudzysłowie po dwukropku i po `value`; nazwy ograniczeń
-  i kolumn zostają.
+  wartość wejścia. Alloy maskuje w liniach Postgresa (i w komunikacie Doctrine w logu API) każdy literał w cudzysłowie poza tym,
+  który stoi po nazwie obiektu (`constraint`, `column`, `relation`, `table`, `index`, `type`, ...); formatów z wartością w serwerze
+  jest ponad dwa tysiące, więc nieznany format maskuje się. Nazwy ograniczeń i kolumn zostają.
 - `pg_stat_statements` trzyma tekst znormalizowany (stałe jako `$n`); `track_utility = off` wyłącza polecenia użytkowe.
   Widok czyta tylko rola z `pg_read_all_stats` (eksporter, superużytkownik); tekst zapytań nie trafia do metryk.
 - Eksportery Alloy (D7): `prometheus.exporter.postgres` bez kolektora `stat_statements` i bez tekstu zapytań, DSN
-  z sekretu Kubernetesa jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
-  statystyki klastra i węzła. Etykiety serii to nazwy baz, ról, indeksów i węzłów; lista dozwolonych serii i ich
-  etykiet jest w teście.
+  z sekretu Kubernetesa `shop-exporter` (osobnego od `shop-secrets`, bo Role nie dają dostępu do jednego klucza, a Alloy nie
+  czyta haseł baz) jako wartość typu `secret`, rola tylko z `pg_monitor`; `prometheus.exporter.elasticsearch` tylko
+  statystyki klastra i węzła. Etykiety serii to nazwy baz, nazwy węzłów i grupy sesji `pg_stat_activity_count` (rola, aplikacja, rodzaj backendu, stan,
+  oczekiwanie: bez nich wiersze grup się zlewają i liczba sesji, z której liczy się budżet połączeń według ról, jest za niska);
+  lista dozwolonych serii i ich etykiet jest w teście, który liczy też serie (ok. 140 przy trzech bazach, jednym węźle i 40
+  grupach sesji). Reguła `shop-closed` (zamknięty sklep) przepuszcza Alloy z `monitoring` na porty 5432 i 9200, żeby okno
+  generatora i reindeksu było widoczne w metrykach.
 
 ## Budżet pamięci węzła (kandydat, wariant A)
 

@@ -1,0 +1,144 @@
+2026-11-27 18:08:55.750 UTC [53] LOG:  duration: 13682.366 ms  plan:
+	Query Text: SELECT p.slug FROM catalog_product p WHERE p.status = 'published' AND NOT EXISTS (SELECT 1 FROM catalog_product_variant v WHERE v.product_id = p.id) ORDER BY p.slug LIMIT 11
+	Limit  (cost=0.85..36.60 rows=11 width=44) (actual rows=0.00 loops=1)
+	  Buffers: shared hit=2792571 read=1643821
+	  I/O Timings: shared read=10606.809
+	  ->  Nested Loop Anti Join  (cost=0.85..1670776.92 rows=514114 width=44) (actual rows=0.00 loops=1)
+	        Buffers: shared hit=2792571 read=1643821
+	        I/O Timings: shared read=10606.809
+	        ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.42..1200833.88 rows=978180 width=60) (actual rows=980083.00 loops=1)
+	              Filter: ((status)::text = 'published'::text)
+	              Rows Removed by Filter: 20108
+	              Index Searches: 1
+	              Buffers: shared hit=39651 read=973293
+	              I/O Timings: shared read=8103.264
+	        ->  Index Only Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..0.63 rows=6 width=16) (actual rows=1.00 loops=980083)
+	              Index Cond: (product_id = p.id)
+	              Heap Fetches: 64209
+	              Index Searches: 980083
+	              Buffers: shared hit=2752920 read=670528
+	              I/O Timings: shared read=2503.545
+2026-11-27 18:10:15.434 UTC [53] LOG:  duration: 66123.202 ms  plan:
+	Query Text: SELECT DISTINCT p.slug FROM catalog_product_variant v JOIN catalog_product p ON p.id = v.product_id
+	             WHERE NOT (p.slug = ANY($1::text[])) AND NOT EXISTS (SELECT 1 FROM pricing_price_history t WHERE t.variant_id = v.id) ORDER BY p.slug LIMIT 11
+	Query Parameters: $1 = '{buty-szosowe-tarvik-asfalt-200,buty-szosowe-tarvik-dystans-400,buty-szosowe-tarvik-tempo-600,buty-szosowe-norvane-asfalt-200,buty-szosowe-norvane-dystans-400,buty-szosowe-norvane-tempo-600,buty-
+	Limit  (cost=1.76..44.37 rows=11 width=44) (actual rows=0.00 loops=1)
+	  Buffers: shared hit=9399142 read=5169675
+	  I/O Timings: shared read=52185.328
+	  ->  Unique  (cost=1.76..3547682.10 rows=915989 width=44) (actual rows=0.00 loops=1)
+	        Buffers: shared hit=9399142 read=5169675
+	        I/O Timings: shared read=52185.328
+	        ->  Nested Loop Anti Join  (cost=1.76..3545392.12 rows=915989 width=44) (actual rows=0.00 loops=1)
+	              Buffers: shared hit=9399142 read=5169675
+	              I/O Timings: shared read=52185.328
+	              ->  Nested Loop  (cost=1.33..2063231.37 rows=3008520 width=60) (actual rows=3008338.00 loops=1)
+	                    Buffers: shared hit=2218098 read=2827567
+	                    I/O Timings: shared read=32964.648
+	                    ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.90..1203325.90 rows=996426 width=60) (actual rows=1000000.00 loops=1)
+	                          Filter: ((slug)::text <> ALL ('{buty-szosowe-tarvik-asfalt-200,buty-szosowe-tarvik-dystans-400,buty-szosowe-tarvik-tempo-600,buty-szosowe-norvane-asfalt-200,buty-szosowe-norvane-dystans-400,but
+	                          Rows Removed by Filter: 191
+	                          Index Searches: 1
+	                          Buffers: shared hit=13332 read=999612
+	                          I/O Timings: shared read=21051.180
+	                    ->  Index Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..0.80 rows=6 width=32) (actual rows=3.01 loops=1000000)
+	                          Index Cond: (product_id = p.id)
+	                          Index Searches: 1000000
+	                          Buffers: shared hit=2204766 read=1827955
+	                          I/O Timings: shared read=11913.468
+	              ->  Index Only Scan using pricing_price_history_variant_changed_at_idx on pricing_price_history t  (cost=0.43..0.51 rows=2 width=16) (actual rows=1.00 loops=3008338)
+	                    Index Cond: (variant_id = v.id)
+	                    Heap Fetches: 0
+	                    Index Searches: 3008338
+	                    Buffers: shared hit=7181044 read=2342108
+	                    I/O Timings: shared read=19220.679
+2026-11-27 18:12:37.661 UTC [53] LOG:  duration: 142208.101 ms  plan:
+	Query Text: SELECT DISTINCT p.slug FROM pricing_variant_price pr JOIN catalog_product_variant v ON v.id = pr.variant_id JOIN catalog_product p ON p.id = v.product_id
+	             JOIN LATERAL (SELECT * FROM pricing_price_history h WHERE h.variant_id = pr.variant_id ORDER BY h.changed_at DESC, h.id DESC LIMIT 1) l ON true
+	             WHERE NOT (p.slug = ANY($1::text[])) AND abs((hashtext(pr.variant_id::text))::bigint) % 3 = 0
+	               AND (l.gross_amount, l.net_amount, l.vat_amount, l.vat_rate_bp, l.tax_class, l.currency, l.changed_at) IS DISTINCT FROM (pr.gross_amount, pr.net_amount, pr.vat_amount, pr.vat_rate_bp, pr.tax_class, pr.cur
+	             ORDER BY p.slug LIMIT 11
+	Query Parameters: $1 = '{buty-szosowe-tarvik-asfalt-200,buty-szosowe-tarvik-dystans-400,buty-szosowe-tarvik-tempo-600,buty-szosowe-norvane-asfalt-200,buty-szosowe-norvane-dystans-400,buty-szosowe-norvane-tempo-600,buty-
+	Limit  (cost=8.22..2789.78 rows=11 width=44) (actual rows=0.00 loops=1)
+	  Buffers: shared hit=13601820 read=7497259
+	  I/O Timings: shared read=115955.464
+	  ->  Unique  (cost=8.22..3803915.22 rows=15043 width=44) (actual rows=0.00 loops=1)
+	        Buffers: shared hit=13601820 read=7497259
+	        I/O Timings: shared read=115955.464
+	        ->  Nested Loop  (cost=8.22..3803877.61 rows=15043 width=44) (actual rows=0.00 loops=1)
+	              Buffers: shared hit=13601820 read=7497259
+	              I/O Timings: shared read=115955.464
+	              ->  Nested Loop  (cost=1.76..3660311.07 rows=15043 width=97) (actual rows=1003395.00 loops=1)
+	                    Buffers: shared hit=11147362 read=5931655
+	                    I/O Timings: shared read=84132.170
+	                    ->  Nested Loop  (cost=1.33..2063231.37 rows=3008520 width=60) (actual rows=3008338.00 loops=1)
+	                          Buffers: shared hit=2137514 read=2908151
+	                          I/O Timings: shared read=40048.597
+	                          ->  Index Scan using catalog_product_slug_key on catalog_product p  (cost=0.90..1203325.90 rows=996426 width=60) (actual rows=1000000.00 loops=1)
+	                                Filter: ((slug)::text <> ALL ('{buty-szosowe-tarvik-asfalt-200,buty-szosowe-tarvik-dystans-400,buty-szosowe-tarvik-tempo-600,buty-szosowe-norvane-asfalt-200,buty-szosowe-norvane-dystans-4
+	                                Rows Removed by Filter: 191
+	                                Index Searches: 1
+	                                Buffers: shared hit=8296 read=1004648
+	                                I/O Timings: shared read=27380.863
+	                          ->  Index Scan using catalog_product_variant_position_key on catalog_product_variant v  (cost=0.43..0.80 rows=6 width=32) (actual rows=3.01 loops=1000000)
+	                                Index Cond: (product_id = p.id)
+	                                Index Searches: 1000000
+	                                Buffers: shared hit=2129218 read=1903503
+	                                I/O Timings: shared read=12667.735
+	                    ->  Index Scan using pricing_variant_price_pkey on pricing_variant_price pr  (cost=0.43..0.53 rows=1 width=53) (actual rows=0.33 loops=3008338)
+	                          Index Cond: (variant_id = v.id)
+	                          Filter: ((abs((hashtext((variant_id)::text))::bigint) % '3'::bigint) = 0)
+	                          Rows Removed by Filter: 1
+	                          Index Searches: 3008338
+	                          Buffers: shared hit=9009848 read=3023504
+	                          I/O Timings: shared read=44083.572
+	              ->  Subquery Scan on l  (cost=6.46..9.53 rows=1 width=37) (actual rows=0.00 loops=1003395)
+	                    Filter: ((l.gross_amount IS DISTINCT FROM pr.gross_amount) OR (l.net_amount IS DISTINCT FROM pr.net_amount) OR (l.vat_amount IS DISTINCT FROM pr.vat_amount) OR (l.vat_rate_bp IS DISTINCT FROM pr.vat_
+	                    Rows Removed by Filter: 1
+	                    Buffers: shared hit=2454458 read=1565604
+	                    I/O Timings: shared read=31823.295
+	                    ->  Limit  (cost=6.46..9.51 rows=1 width=1183) (actual rows=1.00 loops=1003395)
+	                          Buffers: shared hit=2454458 read=1565604
+	                          I/O Timings: shared read=31823.295
+	                          ->  Incremental Sort  (cost=6.46..12.55 rows=2 width=1183) (actual rows=1.00 loops=1003395)
+	                                Sort Key: h.changed_at DESC, h.id DESC
+	                                Presorted Key: h.changed_at
+	                                Full-sort Groups: 1003395  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+	                                Buffers: shared hit=2454458 read=1565604
+	                                I/O Timings: shared read=31823.295
+	                                ->  Index Scan using pricing_price_history_variant_changed_at_idx on pricing_price_history h  (cost=0.43..12.46 rows=2 width=1183) (actual rows=1.30 loops=1003395)
+	                                      Index Cond: (variant_id = pr.variant_id)
+	                                      Index Searches: 1003395
+	                                      Buffers: shared hit=2454453 read=1565603
+	                                      I/O Timings: shared read=31823.255
+2026-11-27 18:13:08.439 UTC [53] LOG:  duration: 22312.086 ms  plan:
+	Query Text: SELECT s.variant_id FROM inventory_stock_item s JOIN LATERAL (SELECT m.physical_after, m.reserved_after FROM inventory_stock_movement m WHERE m.variant_id = s.variant_id ORDER BY m.occurred_at DESC, m.id DES
+	                 WHERE (l.physical_after, l.reserved_after) IS DISTINCT FROM (s.physical, s.reserved) ORDER BY s.variant_id LIMIT 11
+	Limit  (cost=6.89..112.57 rows=11 width=16) (actual rows=0.00 loops=1)
+	  Buffers: shared hit=10356857 read=4488192
+	  I/O Timings: shared read=14624.471
+	  ->  Nested Loop  (cost=6.89..28910682.80 rows=3009269 width=16) (actual rows=0.00 loops=1)
+	        Buffers: shared hit=10356857 read=4488192
+	        I/O Timings: shared read=14624.471
+	        ->  Index Scan using inventory_stock_item_pkey on inventory_stock_item s  (cost=0.43..231083.78 rows=3009344 width=24) (actual rows=3009350.00 loops=1)
+	              Index Searches: 1
+	              Buffers: shared hit=799870 read=2224761
+	              I/O Timings: shared read=5456.347
+	        ->  Subquery Scan on l  (cost=6.46..9.52 rows=1 width=8) (actual rows=0.00 loops=3009350)
+	              Filter: ((l.physical_after IS DISTINCT FROM s.physical) OR (l.reserved_after IS DISTINCT FROM s.reserved))
+	              Rows Removed by Filter: 1
+	              Buffers: shared hit=9556987 read=2263431
+	              I/O Timings: shared read=9168.124
+	              ->  Limit  (cost=6.46..9.51 rows=1 width=32) (actual rows=0.93 loops=3009350)
+	                    Buffers: shared hit=9556987 read=2263431
+	                    I/O Timings: shared read=9168.124
+	                    ->  Incremental Sort  (cost=6.46..12.55 rows=2 width=32) (actual rows=0.93 loops=3009350)
+	                          Sort Key: m.occurred_at DESC, m.id DESC
+	                          Presorted Key: m.occurred_at
+	                          Full-sort Groups: 3009350  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+	                          Buffers: shared hit=9556987 read=2263431
+	                          I/O Timings: shared read=9168.124
+	                          ->  Index Scan using inventory_stock_movement_variant_occurred_at_idx on inventory_stock_movement m  (cost=0.43..12.46 rows=2 width=32) (actual rows=0.99 loops=3009350)
+	                                Index Cond: (variant_id = s.variant_id)
+	                                Index Searches: 3009350
+	                                Buffers: shared hit=9556987 read=2263431
+	                                I/O Timings: shared read=9168.124
