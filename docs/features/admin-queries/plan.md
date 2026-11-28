@@ -21,8 +21,8 @@ walidatorem planera przed zleceniem fali 2.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | PERF-7-1, PERF-7-6, bramka właściciela | PERF-7-6 zmergowane (0f44b652); PERF-7-1 zmergowane (bda1956b, raport `docs/reports/admin-queries-baseline-2026-11-27.md`); bramka zatwierdzona 2026-11-27 (spec, D5–D9); do domknięcia w PERF-7-1: pełny `make load-panel-check` na końcowej wersji, przyczyna 409 w P4, poprawka scenariusza koszyka i powtórzenie P4 przed zmianą |
-| 2 | PERF-7-2, PERF-7-4 | PERF-7-5 w odwodzie (Z0): rusza tylko, gdy Z0 nie spełni P2 albo P4 na wspólnym profilu `server` |
+| 1 | PERF-7-1, PERF-7-6, bramka właściciela | PERF-7-6 zmergowane (0f44b652); PERF-7-1 zmergowane (bda1956b, raport `docs/reports/admin-queries-baseline-2026-11-27.md`); bramka zatwierdzona 2026-11-27 (spec, D5–D9); przyczyna 409 w P4 potwierdzona, scenariusz koszyka poprawiony i P4 przed zmianą powtórzone (5107da1e, e7d9c243); do domknięcia w PERF-7-1: pełny `make load-panel-check` na końcowej wersji |
+| 2 | PERF-7-2, PERF-7-4 | PERF-7-2 zmergowane (7ec8414b); do PERF-7-7 na `server`: R1 (fraza częsta, sort `name`, szacunek ponad 2 s) i licznik frazy gęstej tylko w prefiksie porządku (przejście do 2 mln wierszy); PERF-7-5 w odwodzie (Z0): rusza tylko, gdy Z0 nie spełni P2 albo P4 na wspólnym profilu `server` |
 | 3 | PERF-7-3 | |
 | 4 | PERF-7-7 | |
 
