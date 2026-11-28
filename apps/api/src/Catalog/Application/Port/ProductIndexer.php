@@ -10,7 +10,7 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 
 /**
- * Writes single documents through the alias.
+ * Writes single documents through the alias and, while a rebuild runs, to its new index too.
  */
 interface ProductIndexer
 {

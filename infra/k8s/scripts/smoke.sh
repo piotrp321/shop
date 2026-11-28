@@ -371,7 +371,7 @@ r = urllib.request.Request('http://traefik.kube-system.svc.cluster.local/api/v1/
 print(json.load(urllib.request.urlopen(r, timeout=30))['total'])"
 }
 # make reindex on the running shop: without tak no Job is created; with tak a Job of the CronJob reindex completes, the alias is on a
-# new index with the shards of the chart, and the API lists as many products as before.
+# new index of one shard, and the API lists as many products as before.
 check_reindex() {
   listed_before="$(listed_products)"
   [ "$listed_before" -gt 0 ] || { echo "smoke: the API lists no products before the rebuild ($listed_before)" >&2; return 1; }

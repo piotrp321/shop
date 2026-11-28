@@ -64,6 +64,24 @@ final class ProductDocumentBuilderTest extends TestCase
         self::assertSame([self::LEAF, self::ROOT, self::OTHER_ROOT], $document->categoryIds);
     }
 
+    public function testTheSortKeyIsThePathOfTheMainCategoryFromTheRootJoinedWithSlashes(): void
+    {
+        $document = $this->build($this->snapshot(
+            mainCategoryId: self::LEAF,
+            additionalCategoryIds: [self::OTHER_ROOT],
+            categoryPaths: [[self::ROOT, self::CHILD, self::LEAF], [self::OTHER_ROOT]],
+        ));
+
+        self::assertSame(self::ROOT.'/'.self::CHILD.'/'.self::LEAF, $document->mainCategoryPath);
+    }
+
+    public function testTheSortKeyOfAProductInARootCategoryIsTheIdOfTheRoot(): void
+    {
+        $document = $this->build($this->snapshot(mainCategoryId: self::ROOT, categoryPaths: [[self::ROOT]]));
+
+        self::assertSame(self::ROOT, $document->mainCategoryPath);
+    }
+
     public function testCopiesTheFieldsFromTheSnapshotWithTheGivenVersion(): void
     {
         $document = new ProductDocumentBuilder()->build(

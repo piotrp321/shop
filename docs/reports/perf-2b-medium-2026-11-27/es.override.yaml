@@ -1,0 +1,8 @@
+# PERF-2B-8: the local Elasticsearch of the stack perf2b-8 with the heap of the experiment of stage A (2 GiB, docs/reports/
+# perf-2-search-model-2026-11-25.md, "Środowisko i metoda"); compose has 512 MB, too little for the 1 million products of medium.
+# Used through COMPOSE_FILE of the gitignored .env that run.sh writes. A local setting of this comparison, not a setting of the
+# project and not the heap of worf.pl (that value comes from PERF-1).
+services:
+  elasticsearch:
+    environment:
+      ES_JAVA_OPTS: -Xms2g -Xmx2g

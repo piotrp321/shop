@@ -8,11 +8,12 @@ parameters:
     app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
     app.search.alias: products
-    # The primary shards of an index that setup and catalog:reindex create: SEARCH_SHARDS of the environment, 1 without
-    # it. An index that exists keeps its own number until the next catalog:reindex.
-    env(SEARCH_SHARDS): '1'
-    app.search.shards: '%env(int:SEARCH_SHARDS)%'
     app.search.replicas: 0
+    # The refresh interval of an index that exists and of a new one once it is filled: SEARCH_REFRESH_INTERVAL of the
+    # environment, 1s without it; a whole number with ms or s (ProductIndexDefinition refuses another value). setup
+    # sets it on the index of the alias without a rebuild.
+    env(SEARCH_REFRESH_INTERVAL): '1s'
+    app.search.refresh_interval: '%env(SEARCH_REFRESH_INTERVAL)%'
     # Keycloak realms: tokens carry the public URL as issuer, keys are discovered through the internal URL
     # (the trailing slash is needed, discovery paths are resolved relative to it).
     app.oidc.backoffice.issuer: '%env(KEYCLOAK_PUBLIC_URL)%/realms/backoffice'
@@ -157,8 +158,10 @@ services:
 
     App\Catalog\Infrastructure\Search\ProductIndexDefinition:
         arguments:
-            $shards: '%app.search.shards%'
             $replicas: '%app.search.replicas%'
+            $refreshInterval: '%app.search.refresh_interval%'
+            # The variable no longer exists: a container that still sets it to a value other than 1 refuses the definition.
+            $searchShards: '%env(default::SEARCH_SHARDS)%'
 
     App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance:
         arguments:

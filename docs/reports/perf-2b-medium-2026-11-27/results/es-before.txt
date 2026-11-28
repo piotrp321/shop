@@ -1,0 +1,13 @@
+catalog:reindex on before: exit 0, 253 s
+== _cat/indices
+health status index                             uuid                   pri rep docs.count docs.deleted store.size pri.store.size dataset.size
+green  open   products_20261127202739743_83e7d8 XqjQO4GzRJK6O8rONapISg   1   0    8891973            0 1058188081     1058188081   1058188081
+== _cat/aliases
+alias    index                             filter routing.index routing.search is_write_index
+products products_20261127202739743_83e7d8 -      -             -              -
+== products/_count
+{"count":1000191,"_shards":{"total":1,"successful":1,"skipped":0,"failed":0}}
+== products/_settings
+{"products_20261127202739743_83e7d8":{"settings":{"index.analysis.analyzer.folded_text.filter":["lowercase","asciifolding"],"index.analysis.analyzer.folded_text.tokenizer":"standard","index.analysis.analyzer.folded_text.type":"custom","index.analysis.analyzer.polish_text.filter":["lowercase","polish_stem","asciifolding"],"index.analysis.analyzer.polish_text.tokenizer":"standard","index.analysis.analyzer.polish_text.type":"custom","index.analysis.normalizer.sort_normalizer.filter":["lowercase","asciifolding"],"index.analysis.normalizer.sort_normalizer.type":"custom","index.creation_date":"1795811259746","index.number_of_replicas":"0","index.number_of_shards":"1","index.provided_name":"products_20261127202739743_83e7d8","index.routing.allocation.include._tier_preference":"data_content","index.uuid":"XqjQO4GzRJK6O8rONapISg","index.version.created":"9094000"}}}
+== products/_stats/docs,store
+{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"docs":{"count":8891973,"deleted":0,"total_size_in_bytes":1058186903},"store":{"size_in_bytes":1058188081,"total_data_set_size_in_bytes":1058188081,"reserved_in_bytes":0}},"total":{"docs":{"count":8891973,"deleted":0,"total_size_in_bytes":1058186903},"store":{"size_in_bytes":1058188081,"total_data_set_size_in_bytes":1058188081,"reserved_in_bytes":0}}},"indices":{"products_20261127202739743_83e7d8":{"uuid":"XqjQO4GzRJK6O8rONapISg","health":"green","status":"open","primaries":{"docs":{"count":8891973,"deleted":0,"total_size_in_bytes":1058186903},"store":{"size_in_bytes":1058188081,"total_data_set_size_in_bytes":1058188081,"reserved_in_bytes":0}},"total":{"docs":{"count":8891973,"deleted":0,"total_size_in_bytes":1058186903},"store":{"size_in_bytes":1058188081,"total_data_set_size_in_bytes":1058188081,"reserved_in_bytes":0}}}}}

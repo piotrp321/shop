@@ -18,6 +18,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   nazwie, w osobnych częściach `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
+- Długie polecenia konsoli na dużych danych w dev (np. `catalog:reindex` na `medium`) uruchamiaj z `--no-debug`:
+  kolektory debugowania (`DebugDataHolder` Doctrine, Stopwatch) trzymają każde zapytanie i wiadomość, więc pamięć
+  rośnie z liczbą produktów (pomiar: `docs/reports/perf-2b-medium-2026-11-27.md`, sekcja 8); w `prod` jej nie ma
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji

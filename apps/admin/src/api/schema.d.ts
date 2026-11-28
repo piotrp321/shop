@@ -1090,10 +1090,10 @@ export interface components {
             /** @description Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000. */
             productCount?: components["schemas"]["BoundedCountResponse"];
         };
-        /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, a SKU belongs to a variant of another product (found only when two writes race: before the write it is a 422 at the SKU), the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
+        /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, a SKU belongs to a variant of another product (found only when two writes race: before the write it is a 422 at the SKU), the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, a removed variant has stock or reservations, or the search index is being rebuilt (a creation waits for its end). */
         ProductConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/product-modified" | "tag:piotrp321.github.io,2026:shop/problems/slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/sku-taken" | "tag:piotrp321.github.io,2026:shop/problems/slug-locked" | "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable" | "tag:piotrp321.github.io,2026:shop/problems/variant-locked" | "tag:piotrp321.github.io,2026:shop/problems/variant-in-use";
+            type: "tag:piotrp321.github.io,2026:shop/problems/product-modified" | "tag:piotrp321.github.io,2026:shop/problems/slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/sku-taken" | "tag:piotrp321.github.io,2026:shop/problems/slug-locked" | "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable" | "tag:piotrp321.github.io,2026:shop/problems/variant-locked" | "tag:piotrp321.github.io,2026:shop/problems/variant-in-use" | "tag:piotrp321.github.io,2026:shop/problems/search-rebuild-running";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -3566,7 +3566,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The slug belongs to another product (`type` slug-taken), or an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU). */
+            /** @description The slug belongs to another product (`type` slug-taken), an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU), or the search index is being rebuilt, which pauses the creation of products until it ends (`type` search-rebuild-running). */
             409: {
                 headers: {
                     [name: string]: unknown;

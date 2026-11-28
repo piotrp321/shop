@@ -1,0 +1,417 @@
+{
+  "finished": true,
+  "settings": {
+    "rate": 50,
+    "seconds": 320,
+    "size": 40,
+    "unstockedShare": 0,
+    "priceProbes": 2,
+    "priceShare": 0,
+    "maxInFlight": 2000,
+    "pollMs": 250,
+    "freshnessTimeoutSeconds": 120,
+    "checkTimeoutSeconds": 180,
+    "checkPollSeconds": 2,
+    "writeTimeoutSeconds": 60,
+    "sendToleranceMs": 1000,
+    "stallToleranceMs": 100,
+    "discoverProducts": 120,
+    "apiUrl": "http://api"
+  },
+  "sample": {
+    "size": 40,
+    "variants": [
+      {
+        "variantId": "81da951e-e08b-5249-a281-c9f456921af1",
+        "productId": "c1f85b69-0cbc-5192-8744-f7c4042f1bd2",
+        "part": "price_probe",
+        "initialPrice": 17999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "676c11c9-5908-596d-b8e4-69d79c3cf80c",
+        "productId": "c163c8b5-2404-5d62-9fec-0529286c5b15",
+        "part": "price_probe",
+        "initialPrice": 6999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "d4692bc3-02b8-5874-8bb3-645cbef96f36",
+        "productId": "c1c03695-aaae-5599-a19c-3de270be011b",
+        "part": "bulk",
+        "initialPrice": 16999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "87b5fa3d-4add-539f-b6cf-33bdbb4dd259",
+        "productId": "c243965b-763b-5281-bb7f-de357e50fe70",
+        "part": "bulk",
+        "initialPrice": 2499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "a5bf4a4b-9bd6-5a56-bdff-11687c62e66d",
+        "productId": "c2741e23-33db-53b6-9aea-d2bfe8645eae",
+        "part": "bulk",
+        "initialPrice": 8000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "b63c72dd-3ddb-5b64-a7f4-0a70d1ebc11d",
+        "productId": "c0c7d384-d6da-53b6-8d87-4538ada8973d",
+        "part": "bulk",
+        "initialPrice": 42499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "80438510-9b57-5959-b309-abdb220493b0",
+        "productId": "c0b29dae-1d01-590b-b9f6-102df96c47e6",
+        "part": "bulk",
+        "initialPrice": 6999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "2a3c2716-5f5f-59cc-9bef-4c5e24c72f3e",
+        "productId": "c0ff3edc-8b56-553b-af1f-5cee706f9d6f",
+        "part": "bulk",
+        "initialPrice": 18999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "ad221927-9d3b-5a35-be3c-9e46aff32002",
+        "productId": "c10465c2-a79e-5f7b-a40e-1805d0c86151",
+        "part": "bulk",
+        "initialPrice": 39999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "5cdbb84b-2bd0-5a34-8b57-fddd30428967",
+        "productId": "c07da02e-5adc-5f5a-9238-59c45f2fc888",
+        "part": "bulk",
+        "initialPrice": 89999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "47014a75-4be0-56da-8491-28cb7b45fcdf",
+        "productId": "c1637505-ea2f-54fa-861d-b3224fef145b",
+        "part": "bulk",
+        "initialPrice": 22500,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "671529fc-3e4f-52ab-86ac-d05fbd8081b5",
+        "productId": "c0410762-845a-54d1-951a-3437d07c90d0",
+        "part": "bulk",
+        "initialPrice": 47499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "e3aecb5a-f8a5-5104-96ed-139e954e9c41",
+        "productId": "c253fe54-fc86-546c-86d5-ece010ec598e",
+        "part": "bulk",
+        "initialPrice": 16999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "f5ddfb0d-6918-5a5b-be71-68c5badbc63a",
+        "productId": "c0922fdf-0ab0-559e-94d4-559dac715fb4",
+        "part": "bulk",
+        "initialPrice": 3999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "f8d08c60-023b-50f2-81dd-3be955e890de",
+        "productId": "c1406108-060b-53ad-81ea-fa439a1308fb",
+        "part": "bulk",
+        "initialPrice": 3000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "9a52c98a-643b-5527-b718-d3c76ad8259a",
+        "productId": "c039086e-e956-5a7f-a324-e6091b3fc178",
+        "part": "bulk",
+        "initialPrice": 8999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "7884e1cf-50ea-5dab-ab3d-aa31078a4237",
+        "productId": "c2839f10-cf62-5690-b749-4c867950c825",
+        "part": "bulk",
+        "initialPrice": 5999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "40942629-8a54-5c0e-8c20-b00bccb4b5b8",
+        "productId": "c08b0784-91e8-509b-ad7c-1a96a82b620b",
+        "part": "bulk",
+        "initialPrice": 9999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "74c44bdc-acdc-599b-a7a7-ce63f2275432",
+        "productId": "c084f01c-292b-5702-8c83-0e4853dcbaa2",
+        "part": "bulk",
+        "initialPrice": 3499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "69b8157f-d413-521b-86f9-14071f80f140",
+        "productId": "c19f89ec-0898-5299-bfb6-8f0beaa6f798",
+        "part": "bulk",
+        "initialPrice": 45000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "096ca5b5-5db9-57e2-892a-2f19be67748f",
+        "productId": "c0c2818b-7c37-5910-9786-e94cfe7c9bca",
+        "part": "bulk",
+        "initialPrice": 3999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "bbcbe227-6491-51fc-91e0-ff2ad1c65505",
+        "productId": "c1d6a117-9f07-570b-83a8-9f65fceb0674",
+        "part": "bulk",
+        "initialPrice": 999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "e9066d40-3255-5073-97ef-9064a2f2806e",
+        "productId": "c0d5b607-b365-5ee5-94f1-5c0cfaf05f63",
+        "part": "bulk",
+        "initialPrice": 32499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "cf9ca81d-883c-5240-9a70-8395856a2be1",
+        "productId": "c0796e16-6c34-5519-808f-3537c0691dba",
+        "part": "bulk",
+        "initialPrice": 2999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "6594f130-00bd-5371-992d-37564beec8cb",
+        "productId": "c1b193ef-e089-5329-b376-fc1b836e6dca",
+        "part": "bulk",
+        "initialPrice": 5999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "6c713982-896b-5043-9711-821631ec2a5d",
+        "productId": "c03a5838-7e7b-59de-b5c3-af21a0629538",
+        "part": "bulk",
+        "initialPrice": 129999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "e782f173-50d3-5743-8114-8fc608b1bdeb",
+        "productId": "c0408a3a-3be6-5ea0-b87e-c550832b64bd",
+        "part": "bulk",
+        "initialPrice": 3499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "fa326e49-4a54-581f-8795-9c547c0237b4",
+        "productId": "c20a3106-0ce2-5e01-aeef-4493799d28c4",
+        "part": "bulk",
+        "initialPrice": 37500,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "d97885d5-ba3c-5255-bda9-511b0172fa8b",
+        "productId": "c1cb8ef2-b575-544d-b10f-98e761837b21",
+        "part": "bulk",
+        "initialPrice": 3999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "126ab71a-ce42-5dd3-b101-23fb2f8ca059",
+        "productId": "c1e0d0ff-304e-531d-9ea4-69a758ecded8",
+        "part": "bulk",
+        "initialPrice": 16000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "94151281-dd68-5f77-ac7d-6251800dc5da",
+        "productId": "c0476b2a-7651-5855-a2e2-1e0761c2feda",
+        "part": "bulk",
+        "initialPrice": 47499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "44d7cf93-51b8-5b40-b7b6-ada24cf1fe4d",
+        "productId": "c1a2e31e-009b-5658-b0bd-7e7d1f9a2813",
+        "part": "bulk",
+        "initialPrice": 3999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "cef7ec74-f13a-516f-a580-b6ff2a925254",
+        "productId": "bffd58a5-db6b-5c02-9408-502b986c6878",
+        "part": "bulk",
+        "initialPrice": 5999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "ba6ec504-5f1d-5544-aa40-8ffa60f0cf2f",
+        "productId": "c0ec63f6-3183-532a-ad1f-e04c302e1d90",
+        "part": "bulk",
+        "initialPrice": 11000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "212dec27-82a3-5378-b819-89568d73f701",
+        "productId": "c21f0413-a249-582a-a798-9868325689c7",
+        "part": "bulk",
+        "initialPrice": 19000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "2243c70f-cabe-5e97-8d17-22a17f1952f0",
+        "productId": "c08383ef-0754-5d27-88ea-dbfa10b6a943",
+        "part": "bulk",
+        "initialPrice": 8999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "7ececbb4-b78d-5eb8-a765-62b56cb68805",
+        "productId": "c0ea2c8d-663c-5b82-a52e-6a31d1b65b85",
+        "part": "bulk",
+        "initialPrice": 37499,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "4294d9e1-4110-5359-919a-a1069ad04bed",
+        "productId": "c2793d37-233c-5df1-8f23-7b82611ff12f",
+        "part": "bulk",
+        "initialPrice": 35000,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "d3c60541-ff6a-5607-b5cd-311d357ccd91",
+        "productId": "c0de984f-0fbf-5b7e-b54a-8cc679b2dd03",
+        "part": "bulk",
+        "initialPrice": 6999,
+        "purchasableAtStart": true
+      },
+      {
+        "variantId": "7b2f8134-0986-5936-9c39-fa53b3671662",
+        "productId": "c00ef8fa-01c4-56db-9600-c0c3f563d45e",
+        "part": "bulk",
+        "initialPrice": 3499,
+        "purchasableAtStart": true
+      }
+    ],
+    "left_out": {}
+  },
+  "changes": {
+    "made": 16128,
+    "prices": 128,
+    "receipts": 16000,
+    "per_second": 50.4,
+    "write_phase_seconds": 320.6,
+    "sent": 16128,
+    "refused": 0,
+    "unanswered": 0,
+    "dropped": 0,
+    "late": 0,
+    "send_lag": {
+      "count": 16000,
+      "p50_ms": 1,
+      "p95_ms": 2,
+      "p99_ms": 4,
+      "p99_9_ms": 6,
+      "max_ms": 6
+    },
+    "send_tolerance_ms": 1000,
+    "stall_tolerance_ms": 100,
+    "rate": {
+      "planned_per_second": 50,
+      "mean_sent_per_second": 50,
+      "windows": {
+        "count": 320,
+        "band": {
+          "low": 45,
+          "high": 55
+        },
+        "min": 50,
+        "p5": 50,
+        "p50": 50,
+        "p95": 50,
+        "max": 50,
+        "below": 0,
+        "above": 0
+      },
+      "catch_up": {
+        "writes": 0,
+        "max_in_window": 0
+      }
+    },
+    "send_lag_histogram": {
+      "le_1": 13596,
+      "le_5": 2385,
+      "le_20": 19,
+      "le_100": 0,
+      "le_1000": 0,
+      "gt_1000": 0
+    },
+    "token_renewals": {
+      "background": 1,
+      "blocking": 0
+    },
+    "duration": {
+      "price_change": {
+        "count": 128,
+        "p50_ms": 9,
+        "p95_ms": 11,
+        "p99_ms": 13,
+        "p99_9_ms": 14,
+        "max_ms": 14
+      },
+      "receipt": {
+        "count": 16000,
+        "p50_ms": 8,
+        "p95_ms": 9,
+        "p99_ms": 10,
+        "p99_9_ms": 13,
+        "max_ms": 16
+      }
+    }
+  },
+  "freshness": {
+    "price": {
+      "count": 128,
+      "p50_ms": 4988,
+      "p95_ms": 5239,
+      "p99_ms": 5263,
+      "p99_9_ms": 5265,
+      "max_ms": 5265
+    },
+    "availability": {
+      "count": 0,
+      "p50_ms": null,
+      "p95_ms": null,
+      "p99_ms": null,
+      "p99_9_ms": null,
+      "max_ms": null
+    },
+    "timeouts": {
+      "price": 0,
+      "availability": 0
+    },
+    "percentiles_valid": true
+  },
+  "consistency": {
+    "mismatches": 0,
+    "price": 0,
+    "availability": 0,
+    "uncertain_variants": 0,
+    "seconds_to_consistent": 0.489,
+    "run_errors": 0,
+    "query_errors": 0
+  },
+  "verdict": {
+    "passed": true,
+    "reasons": []
+  }
+}

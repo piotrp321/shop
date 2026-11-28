@@ -86,7 +86,9 @@ serwera” i „Smoke test i check”).
   Skrypty `reinitialize`, `restore`, `create-admin`, `generate`, `reindex` i `failed-remove` pytają o słowo `tak`: agent podaje je dopiero po tej
   zgodzie.
   - Tylko po zgodzie: `failed-retry` (ponawia wiadomości z transportu `failed`; ID zachowanej po błędzie wiadomości się
-    zmienia, bez gwarancji „dokładnie raz”), `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
+    zmienia, bez gwarancji „dokładnie raz”), `search-cache-clear` (opróżnia request cache indeksu produktów w Elasticsearchu, tylko
+    `POST /products/_cache/clear?request=true`, bez zmiany danych; to część pomiaru na serwerze, który wymaga zgody; bez `tak`;
+    zgoda nazywa operację i host), `failed-remove` (usuwa wiadomość z `failed` bez możliwości cofnięcia; nigdy
     webhooka płatności), `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
     `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
     `create-admin` (zakłada konto administratora i wysyła e-mail), `bootstrap` (zmienia serwer: pakiety, firewall,
@@ -94,8 +96,9 @@ serwera” i „Smoke test i check”).
     operację, host i profil, a dla `medium` i `server` dopiero po wdrożeniu i weryfikacji poprawki L9 na serwerze,
     czego zgoda nie zastępuje), `open` (otwiera zamknięty sklep po sprawdzeniu danych, więc też zmienia serwer; zgoda
     nazywa operację, host i profil danych, które sklep dostaje; `generate` woła go sam) i `reindex` (przebudowuje indeks
-    wyszukiwarki przy otwartym sklepie i przepina na niego alias; zmiana produktu, ceny albo stanu zapisana w trakcie
-    budowy może nie trafić do nowego indeksu do następnej zmiany tego produktu; w trakcie przebudowy nie uruchamia się
+    wyszukiwarki przy otwartym sklepie i przepina na niego alias; zmiany zapisane w trakcie budowy trafiają też do nowego
+    indeksu, więc przebudowa pod ruchem jest dozwolona, a dodawanie produktów w panelu jest w jej trakcie wstrzymane
+    (409 `search-rebuild-running`); w trakcie przebudowy nie uruchamia się
     wdrożenia, bo jego Job `migrate` kończy się błędem; zgoda nazywa operację i host).
   - Agent uruchamia sam: `status`, `failed` (wiadomości transportu `failed` w podzie `worker-commands`) i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
     z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
@@ -117,7 +120,7 @@ serwera” i „Smoke test i check”).
   woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
   dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`.
 - Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` i `failed` (tylko
-  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
+  odczyt), `failed-retry` i `failed-remove` (tylko po zgodzie, `HOST` i `ID`/`MAX` z linii poleceń), `search-cache-clear` (tylko po zgodzie, `HOST`) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`, nie przy
   zamkniętym sklepie), a z klastrem łączą się też `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open`, `reindex` i `measure`;
   `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
   Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda

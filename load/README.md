@@ -19,6 +19,10 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   na działającym stosie z danymi profilu (`make seed-scale`); `make load-panel PANEL_MODE=p4 SHOP_URLS_FILE=…` – P4 (wpływ
   panelu na sklep). Opis: „Panel (W7 i P4)” niżej. `make load-panel-check` – testy narzędzi na ścieżkach błędu, bez stosu
   (należy do `make test`).
+- `make load-logic` – test stanu scenariusza zapisów (`lib/write-state.js`: ceny zmiany, stany oczekiwane po zapisach
+  potwierdzonych, odrzuconych i bez odpowiedzi, porównanie z indeksem, dobór próby) w kontenerze k6, bez sieci i bez stosu
+  (`test/write-state.sh`). CI uruchamia ten cel po testach E2E.
+- `sh load/writes.sh` – scenariusz zapisów (niżej, „Scenariusz zapisów”), lokalnie albo wobec serwera.
 - `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` – pomiar (`infra/k8s/scripts/load.sh`): rozgrzanie (`warmup.js`),
   przebieg rosnący do nasycenia (`saturate.js`), przebieg stały (`steady.js`), na danych z seeda albo z generatora
   (`LOAD_DATA=seed|medium|server|full`). Opis, kody wyjścia i ustawienia są w nagłówku skryptu i w `CLAUDE.md`.
@@ -38,7 +42,9 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 | `panel_token.py` | token administratora bez przeglądarki (kod autoryzacyjny z PKCE, hasło i TOTP konta demo), z tokenem odświeżania |
 | `panel_mix.py` | mieszanka żądań panelu z danych przez API (klasy: listy, strony głębokie, frazy według częstości, kategorie według rozmiaru, kombinacje, zamówienia, klienci, kody, dashboard) |
 | `panel_report.py` | mediana przebiegów i rozrzut, werdykt względem W7, różnica z panelem i bez dla P4, obciążenie PostgreSQL |
-| `lib/` | konfiguracja z `ENV`, dane z publicznego API (`setup()`), przepływy, metryki, podsumowania |
+| `writes.js`, `writes.sh` | scenariusz zapisów: zmiany cen i przyjęcia stanu przez API panelu w modelu otwartym, świeżość indeksu (W16) i kontrola zgodności (W13); wynik: `writes.json` |
+| `admin-token.py` | token odświeżania sesji panelu konta demo lokalnego stosu (do `writes.sh`); Python na hoście, użycie w nagłówku |
+| `lib/` | konfiguracja z `ENV`, dane z publicznego API (`setup()`), przepływy, metryki, podsumowania; dla zapisów: API i sesja panelu (`admin.js`), zapytanie wariantu (`variant-query.js`), próba (`write-sample.js`), stan wariantów (`write-state.js`) |
 
 ## Scenariusze i dane
 
@@ -80,6 +86,181 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   słoik ciasteczek (nowa przeglądarka) i tagi `flow`, `kind`, w przebiegu rosnącym `step`.
 - Wyniki: 409 (`conflicts_409`) i 429 (`rate_limited_429`) są liczone osobno i nie wchodzą do `http_req_failed`; błędem
   (`server_errors`) jest status 5xx albo błąd sieci; inne 4xx liczy `other_4xx`.
+
+## Scenariusz zapisów
+
+Specyfikacja: `docs/features/search/spec.md`, „Weryfikacja wydajności (PERF-2 etap B)”; kryterium 3 PERF-2
+w `docs/features/performance-program/plan.md`. Zmiany cen (`PUT /api/v1/admin/variants/{variantId}/price`) i przyjęcia stanu
+(`POST /api/v1/admin/variants/{variantId}/stock/receipts`) przez API panelu, czyli pełną ścieżką: transakcja, historia,
+zdarzenie, reindeksacja. Jeden użytkownik wirtualny k6 wysyła żądania asynchronicznie, więc stan każdego wariantu (wersja
+ceny, możliwe ceny i dostępność) jest w jednym miejscu; model otwarty wysyła zapis co `1/WRITE_RATE` s bez względu na
+odpowiedzi.
+
+### Token
+
+Uwierzytelnienie to sesja panelu pracownika z rolą `admin` (publiczny klient `admin` realmu `backoffice`), bez nowego konta
+i klienta. Skrypt dostaje token odświeżania w zmiennej `ADMIN_REFRESH_TOKEN` (przekazywanej do kontenera po nazwie, nigdy
+w wierszu poleceń, nie trafia do logu ani wyniku), wymienia go na tokeny dostępu i odnawia je przed wygaśnięciem. Token
+odświeżania sesji panelu wygasa po 15 min bez użycia i najpóźniej po 8 h; wylogowanie w panelu kończy sesję, a z nią przebieg
+(błąd przebiegu przy następnym odnowieniu). Zmiany zapisują się w historii pod tym pracownikiem.
+
+- Lokalnie: `python3 load/admin-token.py` loguje konto demo `admin` (hasło i TOTP z `infra/keycloak/realms/backoffice.json`)
+  tak jak panel (kod z PKCE) w Keycloaku stosu z `.env` i wypisuje token odświeżania.
+- Serwer (nie ma kont demo): zaloguj się do panelu w przeglądarce, w narzędziach dewelopera (Network) otwórz odpowiedź żądania
+  `…/realms/backoffice/protocol/openid-connect/token` i skopiuj `refresh_token`. Panel trzyma tokeny tylko w pamięci karty.
+
+### Uruchomienie
+
+Przebieg na stosie compose (`infra/docker-compose.yml`, `make up`) sprawdza działanie scenariusza, ale jego tempo, czasy
+i świeżość nie są wynikiem W14 ani W16: API działa tam w trybie `dev`. Pomiar wymagań z zapisami biegnie według planu programu
+(`docs/features/performance-program/plan.md`, PERF-0): lokalnie na danych `server` albo `medium`, a na worf.pl tylko za
+osobną zgodą właściciela; wyniki trafiają do `docs/reports/`.
+
+```sh
+# lokalnie: stos compose tego checkoutu (make up, make seed), k6 w jego sieci, http://api (bez Varnisha) i http://keycloak:8080
+ADMIN_REFRESH_TOKEN="$(python3 load/admin-token.py)" WRITE_RATE=5 WRITE_SECONDS=30 WRITE_SAMPLE=20 \
+  WRITES_OUT=<istniejący katalog> sh load/writes.sh 2>&1 | tee <plik logu>
+
+# wobec serwera, wyłącznie za zgodą właściciela na ten przebieg i najpierw lokalnie
+ADMIN_REFRESH_TOKEN=<token z panelu> API_URL=https://api.<domena> KEYCLOAK_URL=https://auth.<domena> WRITE_RATE=50 \
+  WRITES_OUT=<katalog> sh load/writes.sh
+```
+
+`API_URL` musi prowadzić do samego API (host `api` ingressu omija Varnisha); zapytanie wariantu z nagłówkiem `X-Cache`, `Age`
+większym od 0 albo trafieniem `Cf-Cache-Status` przerywa przebieg. Na worf.pl do origin dochodzi tylko Cloudflare, więc
+przebieg idzie przez jego publiczne adresy. Wiersze niezgodności są tylko w wyjściu k6 (stąd `tee`), liczby w `writes.json`.
+
+| Zmienna | Domyślnie | Znaczenie |
+|---|---|---|
+| `WRITE_RATE` | wymagana | zapisy na sekundę modelu otwartego (zmiany cen i przyjęcia części `bulk`) |
+| `WRITE_SECONDS` | 60 | czas wysyłania zapisów |
+| `WRITE_SAMPLE` | 40 | liczba wariantów próby |
+| `WRITE_UNSTOCKED_SHARE` | 0.1 | udział wariantów bez dostępnego stanu na początku (0–1) |
+| `WRITE_PRICE_PROBES` | 3 | warianty próbki świeżości ceny (z części możliwej do kupienia) |
+| `WRITE_PRICE_SHARE` | 0.5 | udział zmian cen wśród zapisów modelu otwartego |
+| `WRITE_MAX_IN_FLIGHT` | 100 | zapisy modelu otwartego czekające naraz na odpowiedź; zapis ponad limit jest pomijany i liczony (`dropped`) |
+| `WRITE_TIMEOUT_SECONDS` | 60 | zapis bez odpowiedzi przez ten czas jest „bez odpowiedzi” |
+| `WRITE_SEND_TOLERANCE_MS` | 1000 | próg błędu generatora: zapis modelu otwartego wysłany później niż tyle po zaplanowanej chwili jest spóźniony |
+| `WRITE_STALL_TOLERANCE_MS` | 100 | przestój pętli modelu otwartego, który nie narusza tempa (pasmo okien i zapisy nadrabiane, „Tempo”) |
+| `WRITE_DISCOVER_PRODUCTS` | 3 × `WRITE_SAMPLE`, co najmniej 60 | ile produktów czytać z każdego źródła przy wyborze próby |
+| `FRESHNESS_POLL_MS` | 250 | odstęp zapytań wariantu próbki świeżości (rozdzielczość pomiaru) |
+| `FRESHNESS_TIMEOUT_SECONDS` | 120 | zmiana niewidoczna tak długo kończy swoją próbkę (`timeouts`) |
+| `CHECK_TIMEOUT_SECONDS` | 120 | limit czasu kontroli zgodności |
+| `CHECK_POLL_SECONDS` | 2 | odstęp rund kontroli |
+| `WRITES_OUT` | brak | katalog wyniku `writes.json` |
+| `API_HOST`, `KEYCLOAK_HOST`, `WRITES_NETWORK` | brak, `bridge` | nagłówek `Host` (adres inny niż domena usługi) i sieć Dockera przy `API_URL` |
+
+Wynikiem pomiaru jest tylko przebieg z kodem 0: zapisy wysłane w zadanym tempie (okna 1 s, niżej „Tempo”), każdy z odpowiedzią, każda zmiana próbek
+świeżości zobaczona w limicie czasu i kontrola zgodności ukończona bez niezgodności. Werdykt z przyczynami jest w wierszu
+`verdict:` wyjścia i w `verdict` pliku `writes.json` (`passed`, `reasons`). Przebieg, który nie jest pomiarem, kończy się kodem
+99, nawet gdy kontrola zgodności przeszła:
+
+- zapis pominięty w tempie (`changes.dropped`: limit `WRITE_MAX_IN_FLIGHT` albo brak wolnego wariantu `bulk`, gdy zmiany cen
+  czekają na odpowiedź; wtedy zwiększ `WRITE_SAMPLE` albo limit);
+- tempo nieutrzymane (niżej, „Tempo”): okno 1 s z liczbą wysłanych zapisów poza pasmem zadanego tempa albo choć jeden zapis
+  nadrabiany;
+- zapis wysłany później niż próg błędu generatora (`changes.late`, `WRITE_SEND_TOLERANCE_MS`, domyślnie 1000 ms bez względu
+  na tempo). Próg wykrywa generator, który przestał działać (zaległość narasta wtedy bez ograniczenia i szybko go przekracza;
+  drgania pętli zdarzeń i planisty są o rzędy mniejsze od sekundy). Nie jest dowodem utrzymania tempa: tym są okna 1 s
+  i rozkład opóźnień;
+- zapis bez odpowiedzi w `WRITE_TIMEOUT_SECONDS` albo z 5xx (`changes.unanswered`); kontrola zgodności i tak sprawdza takie
+  warianty względem każdego możliwego stanu;
+- zmiana próbki świeżości niewidoczna w `FRESHNESS_TIMEOUT_SECONDS` (`freshness.timeouts`): nie ma jej w percentylach, więc
+  `freshness.percentiles_valid` jest `false`, a p95 i p99 nie są wynikiem W16;
+- kontrola zgodności nieukończona (`finished: false`), także ucięta przez `maxDuration` scenariusza; taki przebieg nie ma też
+  dowodu tempa (liczby okien powstają na końcu zapisów), więc werdykt podaje jedną przyczynę zamiast reguł tempa.
+
+Kody wyjścia: 0 – pomiar w zadanym tempie z kontrolą zgodności bez niezgodności; 99 – przebieg nie jest takim pomiarem
+(przyczyny wyżej), niezgodność indeksu, odrzucony zapis (4xx) albo błąd przebiegu (zapytanie poza oknem, odpowiedź z cache,
+token, którego nie da się odnowić); 107 – przebieg nie ruszył (brak albo odrzucony
+token, token pracownika bez roli `admin`, API albo Keycloak nie odpowiada, pusta albo za mała próba, zła wartość ustawienia);
+105 – przerwany; 2 – środowisko (brak Dockera, `ADMIN_REFRESH_TOKEN`, stosu albo katalogu `WRITES_OUT`). Każdy przypadek
+podaje przyczynę.
+
+### Próba
+
+Próba jest wybierana na początku przebiegu i zapisana w wyniku. Warianty z ceną w opublikowanych produktach, bez promocji
+(cena w ofercie równa cenie katalogowej), bez dwukropka w nazwie osi (takiej osi nie da się podać w `option`): możliwe do kupienia
+z losowych porcji mapy strony (jeden wariant na produkt), bez dostępnego stanu z tych samych produktów i z listy stanów panelu
+(`level=out_of_stock`). Wariant wchodzi do próby, gdy panel zna wersję jego ceny, indeks pokazuje go jak oferta (zapytanie
+wariantu przy cenie początkowej znajduje produkt wtedy i tylko wtedy, gdy wariant jest możliwy do kupienia) i zapytanie
+przy każdej cenie, którą może dostać, ma `total` poniżej okna 10 000. Pominięte warianty są policzone według przyczyny
+(`left_out`). Kandydat pominięty, bo indeks różnił się na początku od oferty, daje ostrzeżenie `WARNING` w setupie
+i w podsumowaniu: indeks może mieć zaległość albo niezgodność z bazą (W13), np. po przerwanym przebiegu; sprawdź wtedy kolejkę
+i `failed`. Części próby:
+
+- `unstocked` (udział `WRITE_UNSTOCKED_SHARE`): każdy dostaje jedno przyjęcie (1 szt.), rozłożone równo w czasie przebiegu;
+  to próbka świeżości dostępności. Brak takich wariantów przy udziale większym od 0 albo mniej niż potrzeba kończy przebieg
+  błędem;
+- `price_probe` (`WRITE_PRICE_PROBES`): próbka świeżości ceny; kolejna zmiana wariantu rusza dopiero, gdy zapytanie wariantu
+  zobaczy poprzednią (ceny ±1 gr się powtarzają, więc wcześniejsza widoczna cena dałaby fałszywie krótki czas);
+- `bulk`: reszta możliwych do kupienia; model otwarty zmienia ich ceny (jedna zmiana wariantu naraz) i przyjmuje stan
+  u nich i u `price_probe`.
+
+Zmiana ceny wybiera inną z cen początkowa ±1 gr (nigdy poniżej 1 gr), tylko u wariantów możliwych do kupienia na początku.
+Scenariusz nigdy nie odbiera dostępności ani nie dotyka rezerwacji.
+
+### Tempo
+
+Model otwarty planuje zapis i na chwilę `start + i / WRITE_RATE` bez względu na odpowiedzi. Dowodem tempa w wyniku
+(`changes.rate`) są:
+
+- liczba zapisów faktycznie wysłanych w każdym pełnym oknie 1 s od startu (`windows`: liczba okien, min, p5, p50, p95, max,
+  okna poniżej i powyżej pasma `band`) i średnie tempo wysyłania całego przebiegu (`mean_sent_per_second`);
+- opóźnienie wysłania każdego zapisu względem zaplanowanej chwili (`changes.send_lag`: p50, p95, p99, p99,9, max)
+  z histogramem w kubełkach ≤1, ≤5, ≤20, ≤100, ≤1000 i >1000 ms (`changes.send_lag_histogram`);
+- zapisy nadrabiane (`catch_up`): wysłane później niż próg przestoju `WRITE_STALL_TOLERANCE_MS` (domyślnie 100 ms, w wyniku
+  `changes.stall_tolerance_ms`) i więcej niż jeden odstęp tempa po swojej chwili. Spóźniona pętla modelu otwartego nie pomija
+  zaległych zapisów, tylko wysyła je jeden po drugim bez czekania, czyli serią; wynik podaje ich liczbę i największą serię
+  w jednym oknie 1 s.
+
+Reguła: tempo jest utrzymane, gdy nie ma ani jednego zapisu nadrabianego i każde pełne okno 1 s ma od `floor(WRITE_RATE) − k`
+do `ceil(WRITE_RATE) + k` wysłanych zapisów, gdzie `k = max(1, ceil(WRITE_RATE × próg przestoju / 1 s))` (przy 100 ms:
+`max(1, ceil(WRITE_RATE × 0,1))`; pasmo jest w wyniku jako `band`). Zaplanowane chwile dają w pełnym oknie `floor` albo `ceil`
+tempa zapisów, a przestój pętli do progu może przenieść przez granicę okna najwyżej `k` zapisów. Próg przestoju jest stały,
+niezależny od tempa: 100 ms jest pomijalne wobec mierzonych wielkości (czasy listingu w setkach milisekund, świeżość
+w sekundach) i nie zmienia liczby zapisów w oknach, a większy przestój to seria nadrabiania. Odchylenie ponad to oznacza dziurę
+(zapisy pominięte albo wstrzymane) albo serię (wstrzymane zapisy wysłane naraz), czyli przyjścia niezgodne z modelem otwartym
+(`docs/features/performance-program/plan.md`, „Co liczymy”). Przebieg z tempem nieutrzymanym kończy się kodem 99 z przyczyną
+w `verdict`. Próg błędu generatora 1000 ms (`WRITE_SEND_TOLERANCE_MS`) zostaje osobno.
+
+Token dostępu jest odnawiany w tle w ostatniej minucie ważności, więc zapisy nie czekają na Keycloak, dopóki token jest ważny.
+Liczba odnowień jest w `changes.token_renewals` (`background`, `blocking`: żądanie czekało) i w podsumowaniu, a nieudane
+odnowienie w tle daje ostrzeżenie z przyczyną przy pierwszej próbie serii.
+
+### Zapytanie wariantu i świeżość
+
+`GET /api/v1/products?category=<główna kategoria produktu>&option=<oś>:<wartość>…&priceMin=<cena>&priceMax=<cena>&perPage=48`,
+strona po stronie do ostatniej (`pageCount`). Produkt jest w wynikach wtedy i tylko wtedy, gdy ten wariant jest w indeksie
+możliwy do kupienia za tę cenę. Produkt nieznaleziony przy `total` ponad oknem jest błędem przebiegu. Świeżość (W16) to czas
+od odpowiedzi zapisu do odpowiedzi pierwszego zapytania wariantu, które widzi nowy stan (`freshness.price`,
+`freshness.availability`: liczba, p50, p95, p99, max w ms); rozdzielczość to `FRESHNESS_POLL_MS` plus czas zapytania.
+
+### Kontrola zgodności i `failed`
+
+Po ostatniej odpowiedzi zapisu kontrola liczy oczekiwany stan każdego wariantu próby z potwierdzonych zapisów (cena ostatnia
+zapisana albo początkowa, dostępność początkowa albo „tak” po przyjęciu) i powtarza zapytania wariantów, aż każde zgadza się
+z oczekiwanym stanem, najdłużej `CHECK_TIMEOUT_SECONDS`. Zapis bez odpowiedzi (brak odpowiedzi w czasie albo 5xx) mógł się
+zapisać albo nie: wariant jest sprawdzany względem każdego stanu, który mógł zostawić, i nie dostaje dalszych zapisów;
+ich liczba to `consistency.uncertain_variants`; sam taki zapis sprawia jednak, że przebieg nie jest pomiarem (kod 99, wyżej).
+Odrzucony zapis (4xx) niczego nie zmienił, ale jest błędem przebiegu.
+Każda niezgodność po limicie to wiersz `consistency: mismatch of variant …: expected …, the index shows …` (wariant, stan
+oczekiwany i to, przy których cenach ±1 gr indeks pokazuje wariant) i błąd przebiegu; `consistency.seconds_to_consistent` to
+czas do zgodności. Kontrola zakłada, że w trakcie przebiegu nikt poza scenariuszem nie zmienia wariantów próby i nie zaczyna się promocja, która je obejmuje (zamówienie
+klienta może dać fałszywą niezgodność).
+
+Po przebiegu sprawdź wiadomości w `failed` (W13 wymaga 0): na serwerze `make -C infra/k8s failed HOST=<user>@<adres>`,
+lokalnie `docker compose exec api bin/console messenger:failed:show`.
+
+### Trwałe skutki i stan po przerwaniu
+
+Scenariusz niczego nie cofa: każda zmiana zostaje w historii cen i ruchów magazynowych, w zdarzeniach, w wersjach cen, stanów
+i dokumentów indeksu; warianty bez stanu, które dostały przyjęcie, są potem możliwe do kupienia, a stan wariantów próby rośnie
+o przyjęte sztuki. Kolejny przebieg liczy ceny ±1 gr od cen ze swojego początku. Przerwany przebieg (Ctrl-C, kod 105) zostawia
+warianty próby z ceną różną od początkowej o najwyżej 1 gr i wyższym stanem; zapisy w toku w chwili przerwania mogły się
+zapisać albo nie i nie są policzone. `writes.json` przerwanego przebiegu ma `finished: false`, listę wariantów próby
+(`sample.variants`: wariant, produkt, część, cena i dostępność na początku) i liczbę wykonanych zmian (`changes`), bez
+kontroli zgodności.
 
 ## Ograniczenia
 

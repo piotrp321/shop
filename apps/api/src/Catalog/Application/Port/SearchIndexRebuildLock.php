@@ -14,5 +14,14 @@ interface SearchIndexRebuildLock
      */
     public function tryAcquire(): bool;
 
+    /**
+     * Shares the lock until the end of the current transaction (many holders at once), so no rebuild or setup starts
+     * before that transaction ends. A write that adds a document a running rebuild would not count (a new product)
+     * takes it first. Outside a transaction it holds nothing past the statement.
+     *
+     * @return bool false when a rebuild or setup holds the lock
+     */
+    public function tryShareInTransaction(): bool;
+
     public function release(): void;
 }

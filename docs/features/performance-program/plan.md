@@ -10,21 +10,26 @@ i specyfikacjach funkcji.
 
 | Pozycja | Stan |
 |---|---|
-| Kierunek programu | zaakceptowany przez właściciela 2026-11-25 |
+| Kierunek programu | zaakceptowany przez właściciela 2026-11-25; organizacja pomiarów zmieniona 2026-11-28 (zasady 3, 13–15) |
 | Nowe epiki funkcjonalne | wstrzymane do zakończenia programu |
-| Profil `server` na worf.pl | generuje go osobna sesja; jej wynik jest linią bazową (PERF-0) |
+| PERF-0 | zakończony: linia bazowa `server` na worf.pl, raport [`server-profile-baseline-worf-2026-11-26.md`](../../reports/server-profile-baseline-worf-2026-11-26.md) |
 | PERF-2 etap A | zakończony: raport [`perf-2-search-model-2026-11-25.md`](../../reports/perf-2-search-model-2026-11-25.md); właściciel zaakceptował model R 2026-11-26 (decyzje w opisie PERF-2) |
-| PERF-2 etap B | nie rozpoczęty; gotowy do przekazania nowej sesji (start: opis PERF-2, „Start etapu B”) |
-| PERF-0 | w toku: W1–W20 zaakceptowane jako cel, zestaw benchmarków `load/baseline.py`; lokalny B5 na `medium` przyjęty jako częściowa linia bazowa; pomiar na `server` po zakończeniu generowania i otwarciu sklepu przez właściciela |
-| PERF-7 | specyfikacja i plan w `docs/features/admin-queries/` zaakceptowane; start po PERF-0 i zatwierdzeniu W1–W20; warianty wybiera zadanie 1, zatwierdza właściciel |
-| PERF-1 | specyfikacja i plan w `docs/features/runtime-config/` zaakceptowane 2026-11-26; start po PERF-0 w osobnej sesji |
-| PERF-3 … PERF-6, PERF-8, PERF-9 | nie rozpoczęte |
+| PERF-2 etap B | na `main` (#974); zgodność odpowiedzi zweryfikowana lokalnie na `medium` (raport [`perf-2b-medium-2026-11-27.md`](../../reports/perf-2b-medium-2026-11-27.md)); czeka na wdrożenie, przebudowę indeksu i pomiar na worf.pl (kryteria 1–3 i 5 etapu B), każdy krok za zgodą właściciela; wynik rozstrzyga decyzje architektoniczne dalszych epików |
+| PERF-1 | w toku (#975, status w `docs/features/runtime-config/plan.md`) |
+| PERF-7 | w toku (#973, status w `docs/features/admin-queries/plan.md`) |
+| PERF-3, PERF-6 | specyfikacja w przygotowaniu, bez implementacji; PERF-6: zasadność przyspieszenia do oceny |
+| PERF-4 | analiza trybu uruchomienia API (kompatybilność Symfony, zmierzona korzyść, koszt, ryzyko stanu między żądaniami); tryb worker nie jest przesądzony ani obowiązkowy |
+| PERF-5, PERF-8, PERF-9 | nie rozpoczęte |
+| Pozostałe epiki | ich konieczność i kolejność właściciel ocenia po wynikach PERF-2B, PERF-1 i PERF-7; do tej oceny bez implementacji |
 
 ## Zasady programu (decyzje właściciela)
 
 1. Wydajność i skala (10 mln produktów, 1 mln klientów, 5 mln zamówień) są wymaganiem projektu od początku.
 2. Najpierw pomiar i konkretne wymagania, potem optymalizacja. Każdy epik pokazuje wynik przed i po.
-3. Pomiary na docelowym wolumenie (`server`) od początku programu, nie dopiero na końcu.
+3. Pomiary na docelowym wolumenie (`server`). PERF-2B, PERF-1 i PERF-7 mierzymy na worf.pl w zakresie niezbędnym do
+   ich decyzji. Kolejne epiki weryfikujemy lokalnie na istniejącym pełnym profilu `server`, bez ponownego generowania
+   danych. Jeden pełny pomiar akceptacyjny na worf.pl to PERF-9; wcześniejszy pomiar na serwerze tylko wtedy, gdy jest
+   niezbędny do konkretnej decyzji.
 4. Funkcji nie ograniczamy po to, żeby poprawić wynik benchmarku.
 5. Rzeczywista optymalizacja architektury i zapytań ma pierwszeństwo; natywne mechanizmy technologii są pożądane,
    kolejne warstwy cache na nieoptymalnym zapytaniu nie.
@@ -36,6 +41,11 @@ i specyfikacjach funkcji.
 10. Wymagań nie obniżamy bez uzasadnienia pomiarem i zgody właściciela.
 11. Sukces programu to wydajny sklep na profilu `server`, a nie wygenerowanie danych.
 12. Workflow ASH bez zmian w trakcie programu (sekcja „Wnioski dla ASH”).
+13. Celem jest wydajny i poprawnie działający sklep, nie realizacja programu. Epik realizujemy tylko wtedy, gdy pomiar
+    pokazuje, że jest potrzebny do spełnienia wymagań.
+14. Wdrożenie nie pociąga przebudowy indeksu, jeśli zmiana jej nie wymaga.
+15. Dokumentacja, koordynacja, powtarzanie pomiarów i zużycie modeli ograniczone do niezbędnego minimum. Wymagań
+    wydajnościowych ani funkcjonalnych to nie obniża.
 
 ## Rodzaje cache i zasady ich użycia
 
@@ -59,8 +69,9 @@ Wartości są celem programu. Zmiana wartości wymaga pomiaru, uzasadnienia i zg
 
 ### Metodologia
 
-- **Środowisko obowiązujące:** worf.pl, profil `server`. Pomiary lokalne (ta sama rewizja i dane) służą do porównań
-  przed i po oraz do eksperymentów; ich czasy nie są wynikiem serwera.
+- **Środowisko obowiązujące:** worf.pl, profil `server`, w pomiarze akceptacyjnym PERF-9 (zasada 3). Pomiary lokalne
+  na pełnym profilu `server` (ta sama rewizja i dane) służą do porównań przed i po w epikach oraz do eksperymentów;
+  ich czasy nie są wynikiem serwera.
 - **Co liczymy:** wyłącznie pełne odpowiedzi 2xx zgodne z kontraktem (listing z kompletem facetów i liczbą wyników).
   Odpowiedź zdegradowana, odrzucona, przerwana albo 5xx to niepowodzenie. Żądanie, którego generator nie zdążył
   wysłać w zadanym tempie, też.
@@ -271,9 +282,10 @@ Bez szczegółowych specyfikacji; kolejność weryfikujemy po każdym epiku na p
 | 1 | PERF-2 etap A i PERF-0 równolegle | etap A pracuje lokalnie na izolowanym Elasticsearchu; PERF-0 czyta wynik sesji generującej `server` i mierzy żądaniami GET |
 | 2 | decyzja właściciela o modelu (raport etapu A) i zatwierdzenie W1–W20 (raport PERF-0) | po niej rusza implementacja |
 | 3 | PERF-2 etap B; równolegle PERF-1 i PERF-7 | różne obszary: wyszukiwarka i sklep, chart i konfiguracja, zapytania panelu |
-| 4 | pomiar `server` na worf.pl po wdrożeniu kroku 3 | weryfikacja priorytetów dalszych epików |
-| 5 | PERF-3, PERF-4, PERF-8, potem PERF-5 i PERF-6 | kolejność według pomiaru z kroku 4 |
-| 6 | PERF-9 | |
+| 4 | pomiar `server` na worf.pl po wdrożeniu kroku 3, w zakresie potrzebnym do decyzji; równolegle specyfikacje PERF-3 i PERF-6 oraz analiza PERF-4 | bez implementacji kolejnych epików |
+| 5 | ocena właściciela: które z PERF-3 … PERF-6 i PERF-8 są potrzebne i w jakiej kolejności (w tym zasadność przyspieszenia PERF-6) | według wyników kroku 4 |
+| 6 | wybrane epiki, weryfikacja lokalnie na pełnym profilu `server` | |
+| 7 | PERF-9: jedno wdrożenie i jeden pełny pomiar akceptacyjny na worf.pl | |
 
 Równoległość ogranicza wspólny kod aplikacji: wyszukiwarkę API zmienia naraz jeden epik (PERF-2, potem PERF-3
 i PERF-6), pliki listingu w sklepie też (PERF-2, PERF-3, PERF-5); chart zmienia PERF-1, a potem każdy epik

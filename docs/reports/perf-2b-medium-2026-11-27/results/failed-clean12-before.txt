@@ -1,0 +1,10 @@
+== messenger:failed:show --stats
+There are 0 messages pending in the failure transport.
+
+ [OK] No failed messages were found.                                            
+
+== messenger:failed:show --max=50
+There are 0 messages pending in the failure transport.
+
+ [OK] No failed messages were found.                                            
+

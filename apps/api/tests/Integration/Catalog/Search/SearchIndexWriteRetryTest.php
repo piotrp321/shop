@@ -8,6 +8,7 @@ use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance;
+use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use PHPUnit\Framework\TestCase;
 
@@ -117,9 +118,32 @@ final class SearchIndexWriteRetryTest extends TestCase
         self::assertSame([], $this->sleeps);
     }
 
-    public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndRefreshesAgainOnVerify(): void
+    public function testAStaleItemIsReportedAndTheTransientOnesOfTheSameRequestAreStillRetried(): void
     {
-        $maintenance = $this->maintenance();
+        // A single write through the rebuild alias was newer than the batch: that item is correct as it is (409).
+        $http = $this->faults([[], ['transient' => [2]]]);
+        $maintenance = $this->maintenanceWith($http);
+        $index = $maintenance->createIndex();
+        $maintenance->write($index, [self::document('0198a1f0-0000-7000-8000-000000000001', 5)]);
+
+        $result = $maintenance->write($index, [
+            self::document('0198a1f0-0000-7000-8000-000000000001', 3),
+            self::document('0198a1f0-0000-7000-8000-000000000002', 3),
+            self::document('0198a1f0-0000-7000-8000-000000000003', 3),
+        ]);
+
+        self::assertSame(['0198a1f0-0000-7000-8000-000000000001'], $result->stale);
+        self::assertSame(['0198a1f0-0000-7000-8000-000000000002', '0198a1f0-0000-7000-8000-000000000003'], $result->indexed);
+        self::assertSame([], $result->transientFailures);
+        self::assertSame([], $result->permanentFailures);
+        self::assertSame(3, $http->bulkRequests);
+        self::assertSame([1, 2, 1], $http->forwardedItems);
+        self::assertSame([1000], $this->sleeps);
+    }
+
+    public function testAnIndexCreatedForARebuildIsFilledWithoutRefreshingAndGetsTheIntervalOfTheDefinitionOnVerify(): void
+    {
+        $maintenance = $this->maintenance(definition: new ProductIndexDefinition(0, '5s'));
         $index = $maintenance->createIndex();
         $maintenance->write($index, self::documents(2));
 
@@ -127,12 +151,12 @@ final class SearchIndexWriteRetryTest extends TestCase
 
         $maintenance->verify($index, 2);
 
-        self::assertNull($this->refreshInterval($index), 'The default refresh interval was not restored.');
+        self::assertSame('5s', $this->refreshInterval($index), 'The refresh interval of the configuration was not set.');
     }
 
-    public function testTheIndexOfSetupKeepsTheDefaultRefreshInterval(): void
+    public function testTheIndexOfSetupHasTheRefreshIntervalOfTheDefinition(): void
     {
-        self::assertNull($this->refreshInterval($this->maintenance()->activeIndex()));
+        self::assertSame('1s', $this->refreshInterval($this->maintenance()->activeIndex()));
     }
 
     /**
@@ -180,6 +204,6 @@ final class SearchIndexWriteRetryTest extends TestCase
 
     private static function document(string $id, int $version): ProductDocument
     {
-        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
+        return new ProductDocument($id, $version, 'Name', 'slug-'.$id, '', 'c', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
     }
 }

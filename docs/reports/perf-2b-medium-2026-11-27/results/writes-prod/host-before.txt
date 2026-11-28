@@ -1,0 +1,43 @@
+2026-11-27T23:16:21Z
+ 0:16  up 6 days, 10:12, 3 users, load averages: 2.58 3.01 3.87
+40
+perf7-t4-garage-1 cpu 0.00%
+perf7-t4-imgproxy-1 cpu 0.00%
+perf7-t4-mailpit-1 cpu 0.00%
+perf7-t4-rabbitmq-1 cpu 0.00%
+perf7-t4-elasticsearch-1 cpu 0.00%
+perf7-t4-postgres-1 cpu 0.00%
+perf7-t4-api-1 cpu 0.00%
+perf7-t4-redis-1 cpu 0.00%
+perf7-api-1 cpu 0.00%
+perf7-worker-commands-1 cpu 0.11%
+perf7-worker-1 cpu 0.07%
+perf7-imgproxy-1 cpu 0.00%
+perf7-keycloak-1 cpu 0.08%
+perf7-varnish-1 cpu 0.05%
+perf7-store-1 cpu 0.00%
+perf7-postgres-1 cpu 0.13%
+perf7-redis-1 cpu 0.16%
+perf7-rabbitmq-1 cpu 21.45%
+perf7-elasticsearch-1 cpu 0.36%
+perf7-admin-1 cpu 0.02%
+perf7-mailpit-1 cpu 0.00%
+perf7-garage-1 cpu 0.01%
+async-idx-m1-worker-commands-1 cpu 0.14%
+async-idx-m1-worker-1 cpu 0.18%
+async-idx-m1-api-1 cpu 0.00%
+async-idx-m1-postgres-1 cpu 0.22%
+async-idx-m1-imgproxy-1 cpu 0.00%
+async-idx-m1-keycloak-1 cpu 1.08%
+async-idx-m1-varnish-1 cpu 0.05%
+async-idx-m1-store-1 cpu 0.01%
+async-idx-m1-rabbitmq-1 cpu 23.77%
+async-idx-m1-redis-1 cpu 0.15%
+async-idx-m1-admin-1 cpu 0.00%
+async-idx-m1-mailpit-1 cpu 0.00%
+async-idx-m1-garage-1 cpu 2.14%
+agent-observability-epics-exporter-1 cpu 0.01%
+agent-observability-grafana-1 cpu 0.77%
+agent-observability-collector-1 cpu 0.06%
+agent-observability-prometheus-1 cpu 1.84%
+agent-observability-loki-1 cpu 0.68%

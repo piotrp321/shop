@@ -135,6 +135,6 @@ final class ProductSearchTest extends TestCase
      */
     private static function document(string $id, string $name, string $main, array $additional, array $ancestors): ProductDocument
     {
-        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, [$main, ...$additional], $ancestors, null, [], [], null, ProductStatus::Published);
+        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, $main, [$main, ...$additional], $ancestors, null, [], [], null, ProductStatus::Published);
     }
 }
