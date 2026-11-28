@@ -1,0 +1,6 @@
+parameters:
+    rate_limiter.redis_dsn: 'redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1&persistent=1'
+doctrine:
+    dbal:
+        options:
+            12: true # PDO::ATTR_PERSISTENT

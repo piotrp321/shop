@@ -1,0 +1,5 @@
+# Prototype only (PERF-4 analysis): limits high enough for one load generator address.
+framework:
+    rate_limiter:
+        guest_cart_create: { policy: sliding_window, limit: 1000000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
+        guest_cart_write: { policy: sliding_window, limit: 1000000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
