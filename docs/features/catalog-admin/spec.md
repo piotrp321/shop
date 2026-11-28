@@ -518,8 +518,8 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Wyścig ustawienia ceny ze zmianą klasy: `SetVariantPrice`, który przeczytał starą klasę i zapisał cenę po
   obsłużeniu `ProductChanged`, zostawia cenę w starej klasie do następnej zmiany produktu albo
   `pricing:reconcile-tax --apply`.
-- Nowe pole `status` zmienia `definition_hash` indeksu: na istniejącym stosie `catalog:search-index:setup` kończy
-  się błędem z instrukcją `catalog:reindex` (jak w SEARCH); `make seed` przebudowuje indeks.
+- Nowe pole `status` zmienia `definition_hash` indeksu: na istniejącym stosie `catalog:search-index:setup` ostrzega
+  i podaje instrukcję `catalog:reindex`, kończąc się kodem 0 (jak w SEARCH); `make seed` przebudowuje indeks.
 - Po publikacji literówki w wartości wariantu nie da się poprawić w miejscu (K5): trzeba dodać nowy wariant,
   skorygować stan starego do zera i go usunąć.
 - Jedyna subskrypcja zdarzenia innego contextu (A2): zdarzenie integracyjne w `Catalog_Application`

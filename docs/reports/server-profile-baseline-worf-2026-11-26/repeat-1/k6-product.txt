@@ -1,0 +1,29 @@
+time="2026-11-27T12:06:45Z" level=info msg="setup: 60 products from 3 chunks of the sitemap, 193 purchasable variants, 103 options, 3 price windows" source=console
+
+Ramp: by step
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+step 0 (10/s)         299       9.97     4.7      71.3     81.9     0%       0      0
+step 1 (30/s)         890       29.67    4.4      6.8      7.4      0%       0      0
+step 2 (50/s)         1490      49.67    4.2      6.6      7.6      0%       0      0
+step 3 (70/s)         2090      69.67    4.2      6.4      7.5      0%       0      0
+step 4 (90/s)         2690      89.67    4        6.5      7.9      0%       0      0
+step 5 (110/s)        3290      109.67   3.9      6.2      8.4      0%       0      0
+step 6 (130/s)        3890      129.67   3.8      6.4      10.4     0%       0      0
+step 7 (150/s)        4490      149.67   3.8      7.1      10.7     0%       0      0
+step 8 (170/s)        5090      169.67   3.7      8.8      16.7     0%       0      0
+step 9 (190/s)        5690      189.67   3.5      8.7      14.2     0%       0      0
+
+Ramp: reads and carts
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+read                  29909     99.7     3.9      7.1      12.9     0%       0      0
+cart                  0         0        0        0        0        0%       0      0
+home                  0         0        0        0        0        0%       0      0
+category              0         0        0        0        0        0%       0      0
+product               29909     99.7     3.9      7.1      12.9     0%       0      0
+search                0         0        0        0        0        0%       0      0
+search_filtered       0         0        0        0        0        0%       0      0
+cart_add              0         0        0        0        0        0%       0      0
+cart_read             0         0        0        0        0        0%       0      0
+cart_page             0         0        0        0        0        0%       0      0
+
+saturated: no, the ramp ended first; max sustained 189.67 iterations/s; steady rate 132; dropped iterations 0

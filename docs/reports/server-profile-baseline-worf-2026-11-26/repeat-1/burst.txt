@@ -1,0 +1,53 @@
+1200 addresses: {'phrase_filter': 92, 'product': 600, 'leaf_filter': 104, 'phrase_deep': 72, 'department_deep': 106, 'leaf': 84, 'home_deep': 92, 'phrase': 34, 'department': 14, 'home': 2}
+300 samples, 157 failures, written to burst.jsonl
+run: mode=burst planned=300 sent=300 finished=300 failures=157 late_over_100ms=0 wall_s=215.9 by_status={'200': 143, '503': 77, '500': 80}
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+burst-100-r1	api	department	miss	2	0	None	None	None	None	None	None	0.026	{503: 2}
+burst-100-r1	api	department_deep	miss	7	0	None	None	None	None	None	None	0.0	{503: 7}
+burst-100-r1	api	home_deep	miss	4	0	None	None	None	None	None	None	0.026	{503: 4}
+burst-100-r1	api	leaf	miss	6	0	None	None	None	None	None	None	0.003	{503: 6}
+burst-100-r1	api	leaf_filter	miss	4	0	None	None	None	None	None	None	0.032	{503: 4}
+burst-100-r1	api	phrase	miss	2	0	None	None	None	None	None	None	0.001	{503: 2}
+burst-100-r1	api	phrase_deep	miss	2	0	None	None	None	None	None	None	0.0	{503: 2}
+burst-100-r1	api	phrase_filter	miss	3	0	None	None	None	None	None	None	0.0	{503: 3}
+burst-100-r1	api	product	miss	22	22	0.363	3.964	3.973	3.973	0.248	3.946	0.001	{200: 22}
+burst-100-r1	store	department	unconfirmed	1	0	None	None	None	None	None	None	0.146	{500: 1}
+burst-100-r1	store	department_deep	unconfirmed	7	0	None	None	None	None	None	None	0.0	{500: 7}
+burst-100-r1	store	leaf	unconfirmed	7	0	None	None	None	None	None	None	0.0	{500: 7}
+burst-100-r1	store	leaf_filter	unconfirmed	2	0	None	None	None	None	None	None	0.0	{500: 2}
+burst-100-r1	store	phrase_deep	unconfirmed	4	0	None	None	None	None	None	None	0.0	{500: 4}
+burst-100-r1	store	phrase_filter	unconfirmed	7	0	None	None	None	None	None	None	0.047	{500: 7}
+burst-100-r1	store	product	miss	20	20	6.806	8.665	8.666	8.666	6.735	8.619	0.026	{200: 20}
+burst-100-r2	api	department_deep	miss	5	0	None	None	None	None	None	None	0.051	{503: 5}
+burst-100-r2	api	home_deep	miss	6	0	None	None	None	None	None	None	0.027	{503: 6}
+burst-100-r2	api	leaf	miss	2	0	None	None	None	None	None	None	0.0	{503: 2}
+burst-100-r2	api	leaf_filter	miss	2	0	None	None	None	None	None	None	0.0	{503: 2}
+burst-100-r2	api	phrase_deep	miss	3	0	None	None	None	None	None	None	0.001	{503: 3}
+burst-100-r2	api	phrase_filter	miss	3	0	None	None	None	None	None	None	0.028	{503: 3}
+burst-100-r2	api	product	hit	3	3	0.031	0.1	0.1	0.1	0.002	0.016	0.0	{200: 3}
+burst-100-r2	api	product	miss	23	23	0.24	2.057	2.059	2.059	0.184	2.048	0.027	{200: 23}
+burst-100-r2	store	department	unconfirmed	1	0	None	None	None	None	None	None	0.048	{500: 1}
+burst-100-r2	store	department_deep	unconfirmed	4	0	None	None	None	None	None	None	0.028	{500: 4}
+burst-100-r2	store	home_deep	unconfirmed	3	0	None	None	None	None	None	None	0.025	{500: 3}
+burst-100-r2	store	leaf	unconfirmed	4	0	None	None	None	None	None	None	0.03	{500: 4}
+burst-100-r2	store	leaf_filter	unconfirmed	5	0	None	None	None	None	None	None	0.029	{500: 5}
+burst-100-r2	store	phrase	unconfirmed	3	0	None	None	None	None	None	None	0.068	{500: 3}
+burst-100-r2	store	phrase_deep	unconfirmed	1	0	None	None	None	None	None	None	0.041	{500: 1}
+burst-100-r2	store	phrase_filter	unconfirmed	5	0	None	None	None	None	None	None	0.026	{500: 5}
+burst-100-r2	store	product	miss	27	27	7.17	7.373	7.47	7.47	7.022	7.182	0.033	{200: 27}
+burst-100-r3	api	department_deep	miss	7	0	None	None	None	None	None	None	0.0	{503: 7}
+burst-100-r3	api	home_deep	miss	6	0	None	None	None	None	None	None	0.0	{503: 6}
+burst-100-r3	api	leaf	miss	4	0	None	None	None	None	None	None	0.004	{503: 4}
+burst-100-r3	api	leaf_filter	miss	1	0	None	None	None	None	None	None	0.0	{503: 1}
+burst-100-r3	api	phrase_deep	miss	2	0	None	None	None	None	None	None	0.0	{503: 2}
+burst-100-r3	api	phrase_filter	miss	6	0	None	None	None	None	None	None	0.0	{503: 6}
+burst-100-r3	api	product	hit	6	6	0.024	0.033	0.033	0.033	0.002	0.012	0.0	{200: 6}
+burst-100-r3	api	product	miss	20	20	1.858	3.739	3.75	3.75	1.792	3.699	0.002	{200: 20}
+burst-100-r3	store	department_deep	unconfirmed	3	0	None	None	None	None	None	None	0.051	{500: 3}
+burst-100-r3	store	home_deep	unconfirmed	4	0	None	None	None	None	None	None	0.0	{500: 4}
+burst-100-r3	store	leaf	unconfirmed	5	0	None	None	None	None	None	None	0.031	{500: 5}
+burst-100-r3	store	leaf_filter	unconfirmed	5	0	None	None	None	None	None	None	0.002	{500: 5}
+burst-100-r3	store	phrase	unconfirmed	1	0	None	None	None	None	None	None	0.0	{500: 1}
+burst-100-r3	store	phrase_deep	unconfirmed	3	0	None	None	None	None	None	None	0.0	{500: 3}
+burst-100-r3	store	phrase_filter	unconfirmed	5	0	None	None	None	None	None	None	0.0	{500: 5}
+burst-100-r3	store	product	miss	22	22	6.95	7.199	7.326	7.326	6.889	7.046	0.0	{200: 22}
