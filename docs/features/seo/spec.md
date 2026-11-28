@@ -52,9 +52,11 @@ jak `DbalProductDetailsSource`; kontrolery `SitemapProductChunksController` i `S
 
 - `GET /api/v1/sitemap/product-chunks` → `{ chunks: [{ key }] }`: porcje w kolejności `id`. Granice to `id` produktów
   na pozycjach N+1, 2N+1, … (od 1) w kolejności `id` wszystkich produktów, liczonych keysetem po kluczu głównym: jedno
-  krótkie zapytanie na porcję (`id > poprzednia granica ORDER BY id OFFSET N-1 LIMIT 1`), wszystkie w jednej transakcji
-  tylko do odczytu na poziomie `REPEATABLE READ`, więc widzą ten sam stan danych mimo wstawień i usunięć w trakcie cięcia
-  (transakcja wywołującego bez snapshotu dostaje cięcie jednym zapytaniem `row_number()`). Porcja
+  krótkie zapytanie na porcję (`id > poprzednia granica ORDER BY id OFFSET N-1 LIMIT 1`), wszystkie w jednej własnej
+  transakcji tylko do odczytu na poziomie `REPEATABLE READ`, więc widzą ten sam stan danych mimo wstawień i usunięć
+  w trakcie cięcia (wywołujący, który już trzyma transakcję, dostaje cięcie w niej: jeden stan danych przy równoległych
+  zapisach wymaga wtedy `REPEATABLE READ` tej transakcji; jedyny wywołujący, `ListSitemapProductChunksHandler` na
+  `query.bus`, nie otwiera transakcji). Porcja
   `i` obejmuje `id` od granicy `i` włącznie (pierwsza: od początku) do granicy `i + 1` wyłącznie (ostatnia: do końca).
   Przykład: N = 3 i 7 produktów → porcje z produktami 1–3, 4–6 i 7; dokładnie N produktów → jedna porcja. `key` koduje
   oba końce (`SitemapChunkKey`: base64url bez dopełnienia z JSON `{"f": id|null, "t": id|null}`, wzorzec

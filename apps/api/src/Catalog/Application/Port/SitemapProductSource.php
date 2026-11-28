@@ -15,7 +15,9 @@ interface SitemapProductSource
      * The ids at positions N + 1, 2N + 1, … of all the products (drafts too) in the order of the id: the starts of
      * the chunks after the first one. No id when there are at most N products. Every chunk holds exactly N products
      * of the state the cut was read from (N is lowered to the row limit when it is above it), and the whole cut is read
-     * from one state of the data, however much the products change while it runs.
+     * from one state of the data, however much the products change while it runs, when no transaction is open on the
+     * connection: the cut then runs in a read-only REPEATABLE READ transaction of its own. With concurrent writes, one
+     * state of the data in a transaction of the caller needs that transaction to be REPEATABLE READ (or stricter).
      *
      * @return list<string> lower-case UUIDs in ascending order
      */
