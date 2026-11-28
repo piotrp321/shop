@@ -14,6 +14,30 @@ Zakres zmian: `apps/api` (Catalog, Pricing, Inventory, Ordering, Backoffice, cie
 `infra/docker-compose.yml`, `infra/k8s` (chart, cele `reindex`, `generate`, `open`, `smoke`), `apps/api/bin/generate-demo`,
 `load/`, dokumentacja z sekcji „Dokumentacja”.
 
+## Zasadność przyspieszenia (ocena 2026-11-28)
+
+Rekomendacja: **nie przyspieszać PERF-6.** Implementacja rusza po wynikach trzech bieżących epików z worf.pl i zgodzie
+właściciela, w kolejności niżej. Jedna mała zmiana jest potrzebna już teraz, ale poza PERF-6.
+
+| Co | Czy blokuje teraz | Ocena |
+|---|---|---|
+| Pełny reindeks 10 mln: 7,27 h | **tak, przez limit czasu**: CronJob `reindex` ma `activeDeadlineSeconds` 21 600 (6 h), więc `make -C infra/k8s reindex` po wdrożeniu modelu R (nowa definicja indeksu, PERF-2B, M7) przerwie się przed końcem | Do naprawy teraz, poza PERF-6: osobny mały PR z limitem dla 10 mln z zapasem (np. 12 h). Sam czas 7,3 h nie blokuje, bo reindeks jest potrzebny tylko przy zmianie definicji indeksu albo po generowaniu, a nie po każdym wdrożeniu. |
+| Produkt utworzony w trakcie przebudowy kończy ją błędem (#979) | nie | Ryzyko operacyjne w oknie przebudowy (rzadkiej). Wystarcza zasada „nie tworzyć produktów w oknie”, jak dziś w komunikacie celu `reindex`. Pełne rozwiązanie (D8) w PERF-6, fala A. |
+| W19 (≤ 60 min) | nie | Wąskim gardłem jest odczyt z dysku Postgresa (H1, H5). PERF-1 zmienia jego pamięć, więc tempo przebudowy po PERF-1 trzeba najpierw zmierzyć na lokalnym `server`. Przed tym pomiarem nie wiadomo, ile z W19 zostaje do zrobienia. |
+| W16–W18 (zdarzenia, 100 tys. zmian cen, przeniesienie działu) | nie | Demo ma mały ruch zapisów, a W1, W8 i W9 (odczyt) są dziś niespełnione i ważniejsze (PERF-2B, PERF-3, PERF-5). Zaległość zdarzeń i e-maile za reindeksami są widoczne dopiero przy seriach zapisów. |
+| Unieważnienie cache przed widocznością zmiany w ES (stara cena na listingu do 60 s) | nie | Błąd poprawności o małym skutku, przy `refresh_interval` 5 s częstszy. Naprawa (D9) w PERF-6, fala B. |
+| W13 | nie | Zapisy nie gubią zmian (wersje, alias przebudowy). Zostaje do sprawdzenia w pomiarach PERF-6 i PERF-9. |
+
+Kolejność po wznowieniu:
+
+1. Teraz, poza PERF-6: limit czasu CronJoba `reindex`.
+2. Pomiar przebudowy 10 mln na lokalnym pełnym profilu `server` po PERF-1 (czas przebiegu synchronicznego, odczyty
+   z dysku na dokument). Ten pomiar rozstrzyga, czy fala A jest potrzebna i w jakim zakresie.
+3. Fala A (przebudowa: zadania PERF-6-4 do PERF-6-7 i PERF-6-9 z D8 i D13), jeśli po PERF-1 przebudowa nadal trwa ponad
+   60 min.
+4. Fala B (zdarzenia: PERF-6-2, PERF-6-3, PERF-6-8), gdy na kolejność wejdą wymagania z zapisami (W11, W14, W16–W18).
+   Może iść równolegle z PERF-8.
+
 ## Cel i kryterium
 
 Kryterium epiku (plan programu, PERF-6): na profilu `server` spełnione W16–W19, a po każdym scenariuszu z zapisami W13
@@ -142,7 +166,7 @@ jest nieosiągalne na obecnym serwerze, epik kończy się raportem z wariantami 
   wybiera po raporcie; do tego czasu zostaje 5 s.
 - **D12. W19 zastępuje kryterium 12 poprzedniej wersji.** Program wymaga pełnego reindeksu do 60 min; 3 h 45 min było
   celem pośrednim sprzed zatwierdzenia W1–W20. **Rekomendacja: W19.**
-- **D13. Kolejność odczytu pełnej przebudowy wybiera pomiar na worf.pl.** Kandydaci: (a) kursor po `id` jak dziś,
+- **D13. Kolejność odczytu pełnej przebudowy wybiera pomiar na lokalnym `server`.** Kandydaci: (a) kursor po `id` jak dziś,
   (b) kolejność fizyczna tabeli produktów (zakresy bloków sterty, `ctid`, natywny skan zakresu TID Postgresa): kolejne
   produkty czytane są z sąsiednich stron, a ich warianty, ceny i stany, wstawione przez generator w tej samej kolejności,
   też (hipoteza do pomiaru: korelacji tabel podrzędnych z kolejnością fizyczną produktów nie mierzono). Producent ma obie
@@ -380,18 +404,20 @@ z kolumną `kind` (`rebuild`, `category`).
 
 ## Pomiar i akceptacja
 
-- **Przed zmianą** (lokalnie, `medium`, ta sama rewizja i dane przed i po, okno pomiarowe uzgodnione z sesjami PERF):
+Wszystkie pomiary epiku biegną na istniejącym lokalnym pełnym profilu `server` (dane generuje sesja PERF-7), bez
+ponownego generowania danych. Jeden pełny pomiar akceptacyjny na worf.pl wykonuje PERF-9. Pełny reindeks na worf.pl
+tylko przy zmianie definicji indeksu, nie po każdym wdrożeniu.
+
+- **Przed zmianą** (lokalny `server`, ta sama rewizja i dane przed i po, okno pomiarowe uzgodnione z sesjami PERF):
   przepustowość zdarzeń (seria `PromotionPricesChanged` z audytu, P1), scenariusz zapisów W16 przy 50 zmianach/s,
-  W17 (100 promocji po 1000 wariantów na `medium`, zamówienie w trakcie), W18 (przeniesienie działu z 20% katalogu, W1
+  W17 (100 promocji po 1000 wariantów, zamówienie w trakcie), W18 (przeniesienie działu z 20% katalogu, W1
   próbkowane w trakcie), W19 (przebudowa z zapisami i tworzeniem produktów w trakcie). Wynik W13 po każdym.
-- **Po zmianie lokalnie** te same scenariusze; raport w `docs/reports/` z porównaniem, rozrzutem trzech przebiegów
-  i komendą każdego pomiaru.
-- **Akceptacja na worf.pl (`server`)** po merge'u epiku i wdrożeniu (każda operacja za osobną zgodą właściciela
-  nazywającą operację i host, tylko cele `infra/k8s/Makefile`): przebudowa `--async` przy 1, 2 i 4 replikach w obu
-  kolejnościach odczytu (D13); W16 przy `refresh_interval` 1 s i 5 s (D11); W17, W18; W13 po każdym. Zmiany danych
-  demo: ceny wracają po końcu promocji, dział wraca drugim przeniesieniem (to drugi pomiar W18). Wynik: raport
-  z W16–W19 spełnionymi albo nie, wartościami domyślnymi (repliki, rozmiary wsadów i paczek, `--fetch-size`, kolejność
-  odczytu, `refresh_interval`) do decyzji właściciela; potem PR ustawiający wartości i usuwający przegraną kolejność.
+- **Po zmianie** te same scenariusze na lokalnym `server`: przebudowa `--async` przy 1, 2 i 4 replikach w obu
+  kolejnościach odczytu (D13), W16 przy `refresh_interval` 1 s i 5 s (D11), W17, W18, W13 po każdym. Raport
+  w `docs/reports/` z porównaniem, rozrzutem trzech przebiegów, komendą każdego pomiaru i wartościami domyślnymi
+  (repliki, rozmiary wsadów i paczek, `--fetch-size`, kolejność odczytu, `refresh_interval`) do decyzji właściciela;
+  potem PR ustawiający wartości i usuwający przegraną kolejność. Wynik lokalny nie jest wynikiem serwera: spełnienie na
+  worf.pl potwierdza PERF-9.
 - Bez nowego narzędzia pomiarowego: k6 i skrypty `load/`, logi `search_rebuild`, Grafana (tylko odczyt), API zarządzania
   RabbitMQ.
 
@@ -479,7 +505,7 @@ komenda `status` przebiegu (postęp w logach i `--wait`).
 14. `catalog:reindex` bez `--async` działa jak dziś (poza uzgodnieniem); `generate-demo` kończy `--async --wait`; cele
     `infra/k8s` na ścieżce błędu (aktywny przebieg, brak workera).
 15. `make check` i testy wszystkich dotkniętych aplikacji przechodzą.
-16. **Wydajność:** raport z pomiarem przed i po na `medium` oraz pomiar akceptacyjny na worf.pl (`server`): W16, W17,
+16. **Wydajność:** raport z pomiarem przed i po na lokalnym pełnym profilu `server` (akceptacja na worf.pl w PERF-9): W16, W17,
     W18, W19 i W13 po każdym scenariuszu, z wartością zmierzoną i spełnieniem podanym wprost. Do tego pomiaru nie
     twierdzimy, że wymagania są spełnione.
 

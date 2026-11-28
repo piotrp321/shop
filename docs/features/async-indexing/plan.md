@@ -20,11 +20,10 @@ roboczym: po ukończeniu epiku usuń go.
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
-Start: po akceptacji specyfikacji (D6–D15) i planu przez właściciela i po zakończeniu bieżących epików, które zmieniają
-wyszukiwarkę API, `messenger.yaml` albo chart (program: wyszukiwarkę zmienia naraz jeden epik). Pomiary lokalne
-(PERF-6-1, PERF-6-10) w oknach uzgodnionych z sesjami PERF. Po merge'u epiku do `main`: pomiar akceptacyjny na worf.pl
-(spec, „Pomiar i akceptacja”; każda operacja za osobną zgodą właściciela), potem osobny PR z wartościami domyślnymi
-i usunięciem przegranej kolejności odczytu (D13).
+Start: wyłącznie po decyzji właściciela, podjętej po wynikach bieżących epików z worf.pl (spec, „Zasadność
+przyspieszenia”: kolejność fal A i B). Pomiary (PERF-6-1, PERF-6-10) na istniejącym lokalnym pełnym profilu `server`,
+w oknach uzgodnionych z sesjami PERF; akceptacja na worf.pl w PERF-9. Po pomiarze PERF-6-10 osobny PR z wartościami
+domyślnymi i usunięciem przegranej kolejności odczytu (D13).
 
 ## Praca szeregowa
 
@@ -44,13 +43,13 @@ i usunięciem przegranej kolejności odczytu (D13).
   "tasks": [
     {
       "id": "PERF-6-1",
-      "title": "Scenariusze W17, W18, W19 i pomiar przed zmianą na medium",
-      "scope": "Spec: „Pomiar i akceptacja” (przed zmianą), D6. load/: scenariusz W17 (100 promocji po 1000 wariantów startujących w tej samej minucie przez API panelu, zamówienie złożone w trakcie, czas do wysłania e-maila z logu handlera, czas do zgodności sklepu), W18 (przeniesienie działu z ok. 20% katalogu i powrót, czas do końca przebiegu, W1 próbkowane w trakcie przez load/baseline.py), W19 (przebudowa z zapisami i tworzeniem produktów w trakcie, tempo z logu search_rebuild); każdy kończy się kontrolą W13 (próba indeksu wobec bazy, 0 w failed). Pomiar stanu przed zmianą na lokalnym stosie medium (rewizja bazowa epiku): przepustowość zdarzeń (seria PromotionPricesChanged z audytu, P1), scenariusz zapisów W16 przy 50 zmianach/s, W17, W18, W19, trzy przebiegi z rozrzutem. Raport w docs/reports/. Nie zmienia kodu aplikacji.",
+      "title": "Scenariusze W17, W18, W19 i pomiar przed zmianą na lokalnym server",
+      "scope": "Spec: „Pomiar i akceptacja” (przed zmianą), D6. load/: scenariusz W17 (100 promocji po 1000 wariantów startujących w tej samej minucie przez API panelu, zamówienie złożone w trakcie, czas do wysłania e-maila z logu handlera, czas do zgodności sklepu), W18 (przeniesienie działu z ok. 20% katalogu i powrót, czas do końca przebiegu, W1 próbkowane w trakcie przez load/baseline.py), W19 (przebudowa z zapisami i tworzeniem produktów w trakcie, tempo z logu search_rebuild); każdy kończy się kontrolą W13 (próba indeksu wobec bazy, 0 w failed). Pomiar stanu przed zmianą na istniejącym lokalnym pełnym profilu server, bez ponownego generowania (rewizja bazowa epiku): przepustowość zdarzeń (seria PromotionPricesChanged z audytu, P1), scenariusz zapisów W16 przy 50 zmianach/s, W17, W18, W19, trzy przebiegi z rozrzutem. Raport w docs/reports/. Nie zmienia kodu aplikacji.",
       "acceptance_criteria": [
         "Scenariusze W17, W18 i W19 uruchamia się jednym poleceniem opisanym w load/README.md; każdy kończy się kontrolą W13 i kodem niezerowym przy niezgodności, odpowiedzi błędnej albo przekroczeniu limitu czasu przebiegu",
         "Skrypty scenariuszy mają testy logiki na ścieżce błędu (stos niedostępny, brak danych, niezgodny indeks) z wynikiem obu ścieżek w raporcie zadania",
-        "Raport przed zmianą podaje dla W16, W17, W18, W19 i W13 wartość zmierzoną na medium, sposób pomiaru, komendę i rozrzut trzech przebiegów; to, czego nie zmierzono, jest oznaczone z powodem",
-        "Raport rozdziela zmierzone od hipotez i nie twierdzi niczego o profilu server"
+        "Raport przed zmianą podaje dla W16, W17, W18, W19 i W13 wartość zmierzoną na lokalnym server, sposób pomiaru, komendę i rozrzut trzech przebiegów; to, czego nie zmierzono, jest oznaczone z powodem",
+        "Raport rozdziela zmierzone od hipotez i nie twierdzi niczego o worf.pl"
       ],
       "risk": "STANDARD",
       "depends_on": [],
@@ -265,11 +264,11 @@ i usunięciem przegranej kolejności odczytu (D13).
     },
     {
       "id": "PERF-6-10",
-      "title": "Pomiar po zmianie na medium i raport",
-      "scope": "Spec: „Pomiar i akceptacja” (po zmianie lokalnie), kryterium 16. Te same scenariusze i dane co PERF-6-1 na gałęzi epiku: W16 przy refresh_interval 1 s i 5 s, W17, W18, W19 przy 1, 2 i 4 replikach worker-indexing w obu kolejnościach odczytu, W13 po każdym; porównanie z raportem przed zmianą, rozrzut trzech przebiegów. Raport w docs/reports/ z propozycją wartości do pomiaru akceptacyjnego na worf.pl; status PERF-6 w docs/features/performance-program/plan.md. Bez zmian kodu aplikacji.",
+      "title": "Pomiar po zmianie na lokalnym server i raport",
+      "scope": "Spec: „Pomiar i akceptacja” (po zmianie lokalnie), kryterium 16. Te same scenariusze i dane co PERF-6-1 na gałęzi epiku: W16 przy refresh_interval 1 s i 5 s, W17, W18, W19 przy 1, 2 i 4 replikach worker-indexing w obu kolejnościach odczytu, W13 po każdym; porównanie z raportem przed zmianą, rozrzut trzech przebiegów. Raport w docs/reports/ z propozycją wartości domyślnych do decyzji właściciela; status PERF-6 w docs/features/performance-program/plan.md. Bez zmian kodu aplikacji.",
       "acceptance_criteria": [
-        "Raport podaje dla W16, W17, W18, W19 i W13 wartość przed i po na medium, komendę każdego pomiaru i rozrzut; różnica mniejsza niż rozrzut nie jest nazwana efektem",
-        "Raport rozdziela zmierzone od hipotez, nie twierdzi spełnienia wymagań na server i wymienia kroki pomiaru akceptacyjnego na worf.pl wymagające zgody właściciela",
+        "Raport podaje dla W16, W17, W18, W19 i W13 wartość przed i po na lokalnym server, komendę każdego pomiaru i rozrzut; różnica mniejsza niż rozrzut nie jest nazwana efektem",
+        "Raport rozdziela zmierzone od hipotez, nie twierdzi spełnienia wymagań na worf.pl (akceptacja w PERF-9)",
         "docs/features/performance-program/plan.md: status PERF-6 zgodny z raportem"
       ],
       "risk": "FAST",
