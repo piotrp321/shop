@@ -90,8 +90,12 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # Ingress to every pod of the namespace only from its pods: Traefik gets 502, the probes of the kubelet and the traffic between the pods
-# go on. No labels and no annotations: Argo CD does not track it.
-rule_manifest='{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"name":"shop-closed"},"spec":{"podSelector":{},"policyTypes":["Ingress"],"ingress":[{"from":[{"podSelector":{}}]}]}}'
+# go on. The one thing more is Alloy of the namespace monitoring (its namespace by the label that the API server sets, its pod by the
+# labels of the Alloy resource monitoring-alloy) on the ports 5432 and 9200: its exporters of the databases, whose metrics are what is
+# looked at while the generator and the reindex run (argocd/apps/monitoring.yaml). The rule applies to every pod, so the ports are what
+# restricts it to Postgres and Elasticsearch (tests/test_generate_script.py: no other workload listens on them). No labels and no
+# annotations: Argo CD does not track it.
+rule_manifest='{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"name":"shop-closed"},"spec":{"podSelector":{},"policyTypes":["Ingress"],"ingress":[{"from":[{"podSelector":{}}]},{"from":[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}},"podSelector":{"matchLabels":{"app.kubernetes.io/name":"alloy","app.kubernetes.io/instance":"monitoring-alloy"}}}],"ports":[{"protocol":"TCP","port":5432},{"protocol":"TCP","port":9200}]}]}}'
 counts_sql="SELECT (SELECT count(*) FROM catalog_product), (SELECT count(*) FROM ordering_order)"
 
 # 1. Checks, without changes. The lock first: another make generate or make open runs.
