@@ -91,7 +91,7 @@ final class SearchRebuildRunsTest extends KernelTestCase
         self::assertNull($this->runs->countBatch($run, 0, 3, $this->clock->now()));
         self::assertFalse($this->runs->finishProduction($run, 1, $this->clock->now()));
         self::assertSame(0, $this->runs->get($run)?->doneBatches);
-        self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM catalog_search_rebuild_batch WHERE run_id = ?', [$run]));
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM catalog_search_rebuild_batch WHERE run_id = ?', [$run]));
         self::assertSame([], $this->finalizations->getSent());
     }
 
@@ -103,7 +103,8 @@ final class SearchRebuildRunsTest extends KernelTestCase
         self::assertFalse($this->runs->move($run, [SearchRebuildStatus::Producing], SearchRebuildStatus::Running, $this->clock->now()));
         self::assertFalse($this->runs->move($run, [SearchRebuildStatus::Producing, SearchRebuildStatus::Running], SearchRebuildStatus::Aborted, $this->clock->now(), 'second'));
         $saved = $this->runs->get($run);
-        self::assertSame([SearchRebuildStatus::Failed, 'first'], [$saved?->status, $saved->failure]);
+        self::assertNotNull($saved);
+        self::assertSame([SearchRebuildStatus::Failed, 'first'], [$saved->status, $saved->failure]);
         self::assertNotNull($saved->finishedAt);
     }
 
@@ -214,7 +215,8 @@ final class SearchRebuildRunsTest extends KernelTestCase
         $this->handler($es)(new FinalizeSearchRebuild($run));
 
         $saved = $this->runs->get($run);
-        self::assertSame([SearchRebuildStatus::Failed, 'The index holds 4 documents, 5 were written.'], [$saved?->status, $saved->failure]);
+        self::assertNotNull($saved);
+        self::assertSame([SearchRebuildStatus::Failed, 'The index holds 4 documents, 5 were written.'], [$saved->status, $saved->failure]);
         self::assertSame(['test_products_old', 0, ['test_products_target']], [$es->alias, $es->activations, $es->deleted]);
     }
 
@@ -286,11 +288,11 @@ final class SearchRebuildRunsTest extends KernelTestCase
      */
     private function finalizationsSent(): array
     {
-        return array_map(static function ($envelope): string {
+        return array_values(array_map(static function ($envelope): string {
             $message = $envelope->getMessage();
             \assert($message instanceof FinalizeSearchRebuild);
 
             return $message->runId;
-        }, $this->finalizations->getSent());
+        }, [...$this->finalizations->getSent()]));
     }
 }

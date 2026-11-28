@@ -258,10 +258,15 @@ final class AsyncSearchIndexRebuildTest extends KernelTestCase
         $client->indices()->refresh(['index' => 'test_products']);
         $response = $client->search(['index' => 'test_products', 'body' => ['size' => 100, '_source' => false, 'sort' => [['id' => 'asc']]]]);
         \assert($response instanceof Elasticsearch);
-        $hits = $response->asArray()['hits']['hits'] ?? [];
-        \assert(\is_array($hits));
+        $result = $response->asArray()['hits'] ?? null;
+        \assert(\is_array($result) && \is_array($result['hits']));
+        $ids = [];
+        foreach ($result['hits'] as $hit) {
+            \assert(\is_array($hit) && \is_string($hit['_id']));
+            $ids[] = $hit['_id'];
+        }
 
-        return array_map(static fn (array $hit): string => (string) $hit['_id'], $hits);
+        return $ids;
     }
 
     private function indexExists(string $index): bool

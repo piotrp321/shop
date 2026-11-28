@@ -33,7 +33,7 @@ final readonly class ProductRebuildBatch
      * @param list<string> $ids
      *
      * @throws \InvalidArgumentException          when an id is not a UUID
-     * @throws SearchUnavailable|SearchIndexError  from the write; nothing was counted
+     * @throws SearchUnavailable|SearchIndexError from the write; nothing was counted
      * @throws OfferFactsUnavailable              nothing was written or counted
      */
     public function index(string $runId, int $batch, array $ids): void

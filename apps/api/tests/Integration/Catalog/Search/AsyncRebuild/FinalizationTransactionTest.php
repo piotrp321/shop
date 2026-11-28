@@ -35,11 +35,13 @@ final class FinalizationTransactionTest extends MessagingKernelTestCase
 
         $runs->finishProduction($run, 0, new \DateTimeImmutable());
 
-        self::assertSame(SearchRebuildStatus::Finalizing, $runs->get($run)?->status);
+        self::assertSame(SearchRebuildStatus::Finalizing, $runs->get($run)->status);
         self::assertSame(1, $this->rows('indexing_finalize'));
         $envelopes = [...$this->transport('indexing_finalize')->get()];
         self::assertCount(1, $envelopes);
         self::assertInstanceOf(FinalizeSearchRebuild::class, $envelopes[0]->getMessage());
-        self::assertSame('indexing.bus', $envelopes[0]->last(BusNameStamp::class)?->getBusName());
+        $stamp = $envelopes[0]->last(BusNameStamp::class);
+        self::assertInstanceOf(BusNameStamp::class, $stamp);
+        self::assertSame('indexing.bus', $stamp->getBusName());
     }
 }
