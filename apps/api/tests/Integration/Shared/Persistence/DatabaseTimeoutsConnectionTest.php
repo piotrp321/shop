@@ -133,6 +133,24 @@ final class DatabaseTimeoutsConnectionTest extends KernelTestCase
         self::assertSame(['0', '0', '1000'], $this->limits($migration));
     }
 
+    public function testAnIndexBuiltConcurrentlyWaitsForOlderTransactionsLongerThanTheLockTimeoutOfAMigration(): void
+    {
+        // A transaction that holds a snapshot of the table, as a query of the panel or a worker does; the server ends it after 2.5 s.
+        $older = $this->connection(withTheLimits: false);
+        $older->executeStatement("SET idle_in_transaction_session_timeout = '2500ms'");
+        $older->beginTransaction();
+        $older->executeQuery(\sprintf('SELECT 1 FROM %s LIMIT 1', self::TABLE));
+        $migration = $this->connection();
+        $this->timeouts->useBase(DatabaseTimeouts::MIGRATION);
+
+        $startedAt = microtime(true);
+        $migration->executeStatement(\sprintf('CREATE INDEX CONCURRENTLY %s_idx ON %s (id)', self::TABLE, self::TABLE));
+
+        self::assertGreaterThan(1.5, microtime(true) - $startedAt, 'it waited for the older transaction, longer than the lock timeout of 1 s');
+        self::assertSame(1, $migration->fetchOne('SELECT count(*) FROM pg_index WHERE indexrelid = CAST(? AS regclass) AND indisvalid', [self::TABLE.'_idx']));
+        self::assertSame(['0', '0', '1000'], $this->limits($migration), 'the lock timeout is back for the next statement');
+    }
+
     public function testTheLimitsComeBackAfterARollbackThatUndidTheirSetting(): void
     {
         $connection = $this->connection();
