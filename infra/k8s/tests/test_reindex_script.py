@@ -231,11 +231,14 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(["get cronjob", "get configmap", "get jobs", "exec statefulset/elasticsearch", "create -f", "get jobs", "create job", "create -f"],
                          verbs[:8])
 
-    def test_it_says_what_stays_on_the_old_index_during_the_build(self):
+    def test_it_says_what_happens_to_writes_during_the_build(self):
         result = self.run_script()
 
         self.assertIn("the shop stays open", result.stdout)
-        self.assertIn("may be missing from the new index", result.stdout)
+        self.assertIn("written during the build reaches the new index too", result.stdout)
+        self.assertIn("products-rebuild", result.stdout)
+        self.assertIn("a product created in the admin panel during the build fails the check of the new index", result.stdout)
+        self.assertNotIn("may be missing from the new index", result.stdout)
         self.assertIn("no deployment until the Job ends", result.stdout)
 
     def test_a_job_of_a_short_check_is_no_reason_to_refuse(self):

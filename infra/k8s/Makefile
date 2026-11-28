@@ -165,8 +165,8 @@ measure:
 # says which index the alias is on (and its shards) and that the new one gets one shard (ProductIndexDefinition::SHARDS)
 # and asks for the word tak; then takes the lock (make generate and make open refuse meanwhile), reads the Jobs again, runs a Job of the
 # suspended CronJob reindex (catalog:reindex) and checks the index the alias is on after it. The shop stays open; a change written
-# during the build may be missing from the new index until the next change of that product, and no deployment may start until the Job
-# ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
+# during the build reaches the new index too (alias products-rebuild), a product created during the build fails the check (the alias
+# stays, run it again; #979), and no deployment may start until the Job ends (its Job migrate would fail). Exit 1 when it refused (nothing changed) or failed (the message says where the alias is), 2
 # without KUBE_DIR. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 reindex:
 	@sh scripts/ao-guard.sh reindex
