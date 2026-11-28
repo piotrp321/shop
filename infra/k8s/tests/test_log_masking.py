@@ -41,6 +41,17 @@ PLANTED = {
     "Doctrine parameters": ["Jan Kowalski", "ul. Długa 5", "00-001 Warszawa", "129.99"],
     "DETAIL of Postgres": ["PL-SECRET-SKU-9"],
     "STATEMENT of Postgres": ["INSERT INTO customer (email, name) VALUES"],
+    # The main message of a data error (SQLSTATE class 22) carries the value of the input in quotes after a colon or after `value`.
+    "value in the message of Postgres": ["qty-v-pg-data-1", "id-v-pg-data-2", "state-v-pg-data-4", "99999v-pg-data-5", "price-v-pg-data-6",
+                                          "2026-13-45", "99999999999"],
+    # The ways round the rule: a quote or a backslash inside the value, Polish letters, a value of more lines, a colon or `value`
+    # inside the value, a text that looks like the end of the message.
+    "a quote in the value of Postgres": ["v-pg-quote-7"],
+    "a backslash in the value of Postgres": ["v-pg-bslash-8"],
+    "Polish letters in the value of Postgres": ["zażółć jaźń-v-pg-polish-9"],
+    "a value of more lines in Postgres": ["v-pg-multi-10", "v-pg-multi-11", "v-pg-multi-12"],
+    "a colon in the value of Postgres": ["v-pg-colon-13"],
+    "the end of a message in the value of Postgres": ["v-pg-fake-suffix-14"],
 }
 # What is needed to diagnose and must stay: the level, the message, the channel, the code of the response.
 KEPT = {
@@ -53,7 +64,12 @@ KEPT = {
     "keycloak": ['WARN  [org.keycloak.events]', 'type="LOGIN_ERROR"', 'error="invalid_user_credentials"', 'clientId="store"', 'realmId="shop"',
                  'error="user_not_found"', 'INFO  [org.keycloak.events]', 'userId="5b0c6bb1-1111-2222-3333-444455556666"', 'type="LOGIN"'],
     "postgres": ['ERROR:  duplicate key value violates unique constraint "uniq_customer_email"', "LOG:  connection received: host=",
-                 'FATAL:  password authentication failed for user "shop"'],
+                 'FATAL:  password authentication failed for user "shop"',
+                 # What says what failed stays: the kind of the error, the type, the names of constraints, columns, relations and tables.
+                 "invalid input syntax for type integer: ", "invalid input syntax for type uuid: ", "invalid input value for enum status: ",
+                 "date/time field value out of range: ", 'ERROR:  value "', 'ERROR:  null value in column "name" of relation "customer" violates not-null constraint',
+                 'violates check constraint "chk_price_positive"', 'new row for relation "product"',
+                 'insert or update on table "order_line" violates foreign key constraint "fk_order_line_order"'],
     "store": ["GET /auth/callback?", "302 in 45ms", "failed with status 401", "ready - started server on port 3000", "fetch failed"],
     "admin": ["GET /assets/app.js?", 'HTTP/1.1" 200 5123', 'POST /api/v1/admin/login HTTP/1.1" 502 157', "[error]", "Connection refused"],
     "imgproxy": ["INFO[0012] Completed in 12.3ms", "status=200", "WARN[0013] Request failed", "status=403"],
