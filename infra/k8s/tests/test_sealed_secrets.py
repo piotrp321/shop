@@ -14,6 +14,8 @@ EXPECTED_KEYS = {
     "shop-origin-tls": {"tls.crt", "tls.key"},
     "shop-backup": {"RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"},
     "grafana-cloud": {"GRAFANA_CLOUD_TOKEN", "GRAFANA_ALERTING_TOKEN"},
+    # The DSN of the role exporter of Postgres, which Alloy reads (argocd/apps/monitoring.yaml); sealed with EXPORTER_DB_PASSWORD.
+    "shop-exporter": {"POSTGRES_EXPORTER_DSN"},
 }
 
 
