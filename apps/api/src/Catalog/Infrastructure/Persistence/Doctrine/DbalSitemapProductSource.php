@@ -17,8 +17,8 @@ use Psr\Log\LoggerInterface;
  * a scan of the key (no table access), a chunk is a range of the key with a limit.
  *
  * The boundaries are cut by keyset (spec docs/features/admin-queries/spec.md, M1): one short statement per chunk, each
- * from the previous boundary, all in one read-only REPEATABLE READ transaction, so they see one state of the data
- * whatever is inserted or deleted meanwhile (G2). A chunk holds exactly N products of that state, so it never holds more
+ * from the previous boundary, all in one read-only REPEATABLE READ transaction of their own, so they see one state of
+ * the data whatever is inserted or deleted meanwhile (G2); a caller that already holds a transaction gets the cut in it. A chunk holds exactly N products of that state, so it never holds more
  * than the row limit (G1), and no statistics of the table are read.
  */
 final readonly class DbalSitemapProductSource implements SitemapProductSource
@@ -35,11 +35,11 @@ final readonly class DbalSitemapProductSource implements SitemapProductSource
         // A chunk of more than the row limit would be cut short when it is read.
         $step = max(1, min($chunkSize, $this->rowLimit));
 
-        if ($this->callerHoldsATransaction()) {
-            // The isolation level of a transaction cannot be changed after its first query, so the cut joins it only
-            // when it already keeps one snapshot; otherwise each statement would see its own state, and the cut is one
-            // statement instead.
-            $ids = $this->callerHoldsASnapshot() ? $this->cutByKeyset($step) : $this->cutInOneStatement($step);
+        if ($this->connection->isTransactionActive()) {
+            // The cut joins the transaction of the caller: it sees one state of the data only as far as that transaction
+            // keeps one snapshot (the port says so); the isolation level of a transaction cannot be changed after its
+            // first query.
+            $ids = $this->cutByKeyset($step);
         } else {
             $this->connection->beginTransaction();
             try {
@@ -73,42 +73,6 @@ final readonly class DbalSitemapProductSource implements SitemapProductSource
         }
 
         return $ids;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function cutInOneStatement(int $step): array
-    {
-        /** @var list<string> $ids */
-        $ids = $this->connection->fetchFirstColumn(
-            'SELECT id FROM (SELECT id, row_number() OVER (ORDER BY id) AS position FROM catalog_product) numbered
-             WHERE position > 1 AND (position - 1) % :size = 0
-             ORDER BY position',
-            ['size' => $step],
-            ['size' => ParameterType::INTEGER],
-        );
-
-        return $ids;
-    }
-
-    private function callerHoldsATransaction(): bool
-    {
-        if ($this->connection->isTransactionActive()) {
-            return true;
-        }
-        // A transaction opened below DBAL (the tests keep one around every test) is not counted by the connection.
-        $native = $this->connection->getNativeConnection();
-
-        return $native instanceof \PDO && $native->inTransaction();
-    }
-
-    private function callerHoldsASnapshot(): bool
-    {
-        // Not `Connection::fetchOne`: this statement is not a step of the cut.
-        $level = $this->connection->executeQuery('SHOW transaction_isolation')->fetchOne();
-
-        return 'repeatable read' === $level || 'serializable' === $level;
     }
 
     public function publishedInRange(SitemapChunkKey $chunk): SitemapChunkRead

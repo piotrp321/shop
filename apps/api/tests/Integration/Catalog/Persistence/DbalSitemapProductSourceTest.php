@@ -38,8 +38,21 @@ final class DbalSitemapProductSourceTest extends KernelTestCase
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->connection = $entityManager->getConnection();
         $this->products = new DoctrineProductRepository($entityManager);
+        // The DAMA transaction of the test is opened below DBAL, so the connection does not count it: the cut would try to
+        // open a transaction of its own and set its isolation level inside the DAMA one, which PostgreSQL refuses. A
+        // transaction of the caller makes the cut run as the keyset in it, the very statements of the production cut.
+        // The cut in a transaction of its own is DbalSitemapProductSourceCutTest.
+        $this->connection->beginTransaction();
         $this->category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($this->category);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->connection->isTransactionActive()) {
+            $this->connection->rollBack();
+        }
+        parent::tearDown();
     }
 
     public function testARangeOverTheLimitReadsAtMostOneRowMoreAndWritesAWarning(): void
