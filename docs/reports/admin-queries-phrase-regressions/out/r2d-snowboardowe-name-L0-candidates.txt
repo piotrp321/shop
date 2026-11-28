@@ -1,0 +1,187 @@
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%snowboardowe%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')))) SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT 10001) c ORDER BY c.name ASC, c.id ASC LIMIT 26
+
+Limit  (cost=207715.06..207715.13 rows=26 width=532) (actual time=90.320..90.323 rows=0.00 loops=1)
+  Buffers: shared hit=20415 read=14928
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2705.57..207253.22 rows=7571 width=71) (actual time=83.128..83.131 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+          Rows Removed by Filter: 12952
+          Heap Blocks: exact=12943
+          Buffers: shared hit=20409 read=14928
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=10.341..10.341 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=387 read=836
+          SubPlan 1
+            ->  Bitmap Heap Scan on catalog_category c  (cost=8.62..14.04 rows=35 width=16) (actual time=0.143..0.151 rows=34.00 loops=1)
+                  Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                  Heap Blocks: exact=3
+                  Buffers: shared hit=1 read=4
+                  ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.014..0.014 rows=34.00 loops=1)
+                        Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                        Index Searches: 1
+                        Buffers: shared read=2
+          SubPlan 3
+            ->  Nested Loop  (cost=33.27..7613.19 rows=38926 width=16) (actual time=1.342..22.353 rows=41770.00 loops=1)
+                  Buffers: shared hit=19643 read=1523
+                  ->  Bitmap Heap Scan on catalog_category c_1  (cost=8.62..14.04 rows=35 width=16) (actual time=0.048..0.069 rows=34.00 loops=1)
+                        Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                        Heap Blocks: exact=3
+                        Buffers: shared hit=5
+                        ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.004..0.005 rows=34.00 loops=1)
+                              Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                              Index Searches: 1
+                              Buffers: shared hit=2
+                  ->  Bitmap Heap Scan on catalog_product_category pc  (cost=24.65..198.23 rows=1889 width=32) (actual time=0.204..0.596 rows=1228.53 loops=34)
+                        Recheck Cond: (category_id = c_1.id)
+                        Heap Blocks: exact=21075
+                        Buffers: shared hit=19638 read=1523
+                        ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..24.18 rows=1889 width=0) (actual time=0.166..0.166 rows=1228.59 loops=34)
+                              Index Cond: (category_id = c_1.id)
+                              Index Searches: 34
+                              Buffers: shared hit=37 read=49
+  ->  Sort  (cost=461.85..480.78 rows=7571 width=532) (actual time=83.155..83.155 rows=0.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=20415 read=14928
+        ->  WindowAgg  (cost=246.03..246.06 rows=7571 width=532) (actual time=83.135..83.135 rows=0.00 loops=1)
+              Window: w1 AS ()
+              Buffers: shared hit=20409 read=14928
+              ->  Limit  (cost=0.00..151.42 rows=7571 width=524) (actual time=83.133..83.133 rows=0.00 loops=1)
+                    Buffers: shared hit=20409 read=14928
+                    ->  CTE Scan on m  (cost=0.00..151.42 rows=7571 width=524) (actual time=83.130..83.130 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=20409 read=14928
+Planning:
+  Buffers: shared hit=700 read=2
+Planning Time: 1.250 ms
+JIT:
+  Functions: 45
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.797 ms (Deform 0.380 ms), Inlining 0.000 ms, Optimization 0.468 ms, Emission 8.323 ms, Total 9.587 ms
+Execution Time: 99.286 ms
+=====
+Limit  (cost=207715.06..207715.13 rows=26 width=532) (actual time=70.243..70.247 rows=0.00 loops=1)
+  Buffers: shared hit=32403 read=2940
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2705.57..207253.22 rows=7571 width=71) (actual time=62.208..62.211 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+          Rows Removed by Filter: 12952
+          Heap Blocks: exact=12943
+          Buffers: shared hit=32397 read=2940
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=10.755..10.756 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=403 read=820
+          SubPlan 1
+            ->  Bitmap Heap Scan on catalog_category c  (cost=8.62..14.04 rows=35 width=16) (actual time=0.094..0.101 rows=34.00 loops=1)
+                  Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                  Heap Blocks: exact=3
+                  Buffers: shared hit=5
+                  ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.008..0.009 rows=34.00 loops=1)
+                        Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                        Index Searches: 1
+                        Buffers: shared hit=2
+          SubPlan 3
+            ->  Nested Loop  (cost=33.27..7613.19 rows=38926 width=16) (actual time=0.064..13.513 rows=41770.00 loops=1)
+                  Buffers: shared hit=21152 read=14
+                  ->  Bitmap Heap Scan on catalog_category c_1  (cost=8.62..14.04 rows=35 width=16) (actual time=0.045..0.056 rows=34.00 loops=1)
+                        Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                        Heap Blocks: exact=3
+                        Buffers: shared hit=5
+                        ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.003..0.003 rows=34.00 loops=1)
+                              Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                              Index Searches: 1
+                              Buffers: shared hit=2
+                  ->  Bitmap Heap Scan on catalog_product_category pc  (cost=24.65..198.23 rows=1889 width=32) (actual time=0.074..0.338 rows=1228.53 loops=34)
+                        Recheck Cond: (category_id = c_1.id)
+                        Heap Blocks: exact=21075
+                        Buffers: shared hit=21147 read=14
+                        ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..24.18 rows=1889 width=0) (actual time=0.038..0.038 rows=1228.59 loops=34)
+                              Index Cond: (category_id = c_1.id)
+                              Index Searches: 34
+                              Buffers: shared hit=72 read=14
+  ->  Sort  (cost=461.85..480.78 rows=7571 width=532) (actual time=62.241..62.242 rows=0.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=32403 read=2940
+        ->  WindowAgg  (cost=246.03..246.06 rows=7571 width=532) (actual time=62.215..62.215 rows=0.00 loops=1)
+              Window: w1 AS ()
+              Buffers: shared hit=32397 read=2940
+              ->  Limit  (cost=0.00..151.42 rows=7571 width=524) (actual time=62.213..62.213 rows=0.00 loops=1)
+                    Buffers: shared hit=32397 read=2940
+                    ->  CTE Scan on m  (cost=0.00..151.42 rows=7571 width=524) (actual time=62.210..62.210 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=32397 read=2940
+Planning:
+  Buffers: shared hit=702
+Planning Time: 1.330 ms
+JIT:
+  Functions: 45
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.811 ms (Deform 0.397 ms), Inlining 0.000 ms, Optimization 0.461 ms, Emission 9.028 ms, Total 10.301 ms
+Execution Time: 79.588 ms
+=====
+Limit  (cost=207715.06..207715.13 rows=26 width=532) (actual time=88.546..88.549 rows=0.00 loops=1)
+  Buffers: shared hit=24748 read=10595
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2705.57..207253.22 rows=7571 width=71) (actual time=81.207..81.209 rows=0.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%snowboardowe%'::text)
+          Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+          Rows Removed by Filter: 12952
+          Heap Blocks: exact=12943
+          Buffers: shared hit=24742 read=10595
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2689.55 rows=10095 width=0) (actual time=8.727..8.727 rows=13780.00 loops=1)
+                Index Cond: ((name)::text ~~* '%snowboardowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1223
+          SubPlan 1
+            ->  Bitmap Heap Scan on catalog_category c  (cost=8.62..14.04 rows=35 width=16) (actual time=0.066..0.072 rows=34.00 loops=1)
+                  Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                  Heap Blocks: exact=3
+                  Buffers: shared hit=5
+                  ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.005..0.005 rows=34.00 loops=1)
+                        Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                        Index Searches: 1
+                        Buffers: shared hit=2
+          SubPlan 3
+            ->  Nested Loop  (cost=33.27..7613.19 rows=38926 width=16) (actual time=0.061..12.728 rows=41770.00 loops=1)
+                  Buffers: shared hit=21134 read=32
+                  ->  Bitmap Heap Scan on catalog_category c_1  (cost=8.62..14.04 rows=35 width=16) (actual time=0.045..0.053 rows=34.00 loops=1)
+                        Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                        Heap Blocks: exact=3
+                        Buffers: shared hit=5
+                        ->  Bitmap Index Scan on catalog_category_path_idx  (cost=0.00..8.61 rows=34 width=0) (actual time=0.003..0.003 rows=34.00 loops=1)
+                              Index Cond: ((path ~>=~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/'::text) AND (path ~<~ '/d7c098d0-4bae-595e-a1e1-e4a9234489560'::text))
+                              Index Searches: 1
+                              Buffers: shared hit=2
+                  ->  Bitmap Heap Scan on catalog_product_category pc  (cost=24.65..198.23 rows=1889 width=32) (actual time=0.075..0.316 rows=1228.53 loops=34)
+                        Recheck Cond: (category_id = c_1.id)
+                        Heap Blocks: exact=21075
+                        Buffers: shared hit=21129 read=32
+                        ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..24.18 rows=1889 width=0) (actual time=0.040..0.040 rows=1228.59 loops=34)
+                              Index Cond: (category_id = c_1.id)
+                              Index Searches: 34
+                              Buffers: shared hit=54 read=32
+  ->  Sort  (cost=461.85..480.78 rows=7571 width=532) (actual time=81.233..81.233 rows=0.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=24748 read=10595
+        ->  WindowAgg  (cost=246.03..246.06 rows=7571 width=532) (actual time=81.213..81.213 rows=0.00 loops=1)
+              Window: w1 AS ()
+              Buffers: shared hit=24742 read=10595
+              ->  Limit  (cost=0.00..151.42 rows=7571 width=524) (actual time=81.211..81.211 rows=0.00 loops=1)
+                    Buffers: shared hit=24742 read=10595
+                    ->  CTE Scan on m  (cost=0.00..151.42 rows=7571 width=524) (actual time=81.208..81.208 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=24742 read=10595
+Planning:
+  Buffers: shared hit=702
+Planning Time: 1.317 ms
+JIT:
+  Functions: 45
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.755 ms (Deform 0.370 ms), Inlining 0.000 ms, Optimization 0.442 ms, Emission 8.167 ms, Total 9.365 ms
+Execution Time: 97.801 ms
