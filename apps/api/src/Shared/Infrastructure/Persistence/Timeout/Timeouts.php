@@ -19,6 +19,11 @@ final readonly class Timeouts
     ) {
     }
 
+    public function withoutLockTimeout(): self
+    {
+        return new self($this->statement, $this->idleInTransaction, 0);
+    }
+
     /**
      * The statements that set the limits on a session; the values are numbers of milliseconds, nothing of it comes from outside.
      */

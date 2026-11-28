@@ -70,8 +70,9 @@ parameters:
     app.database_timeouts:
         console: { statement: 0, idle_in_transaction: 0, lock: 0 }
         http: { statement: 3, idle_in_transaction: 60, lock: 0 }
-        # Below the limit of Cloudflare (100 s). A statement that the client gave up still runs in the database until
-        # its limit, so a higher value only holds a connection and a thread longer.
+        # The limit of ONE statement, not of the request (a list of products runs two: the page and the count), so it
+        # does not promise an answer before the limit of Cloudflare (100 s). A statement that the client gave up still
+        # runs in the database until its limit, so a higher value only holds a connection and a thread longer.
         http_long: { statement: 90, idle_in_transaction: 60, lock: 0 }
         worker: { statement: 60, idle_in_transaction: 60, lock: 0 }
         migration: { statement: 0, idle_in_transaction: 0, lock: 5 }

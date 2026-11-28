@@ -159,7 +159,7 @@ i przy logowaniach lokalnie), rezerwa superużytkownika 3. Razem ok. 50 z 100 pr
 | API (żądania HTTP) | 3 s | 60 s | – (ograniczony przez `statement_timeout`) |
 | API, trasy z wyjątkiem (lista niżej) | 90 s | 60 s | – |
 | workery Messengera | 60 s | 60 s | – |
-| migracje (`doctrine:migrations:*`) | 0 | 0 | 5 s (DDL czekający na blokadę nie zatrzymuje ruchu) |
+| migracje (`doctrine:migrations:*`) | 0 | 0 | 5 s (DDL czekający na blokadę nie zatrzymuje ruchu); bez limitu dla instrukcji `CONCURRENTLY` (niżej) |
 | generator, reindeks, kopia, pozostałe komendy konsoli | 0 | 0 | – |
 
 Wartości przyjął właściciel 2026-11-27 (wariant „3 s wszędzie, wyjątki”); limit nie może przerywać poprawnych operacji
@@ -169,8 +169,10 @@ panelu, eksportów, generatora, indeksowania ani zadań asynchronicznych i nie o
   przekracza limitu, a instrukcja czekająca na blokadę kończy się tym samym limitem.
 - Wartość 3 s: powyżej maksimum W7 z zapasem i powyżej 2,5 × najdłuższe `max_exec_time` ścieżek sklepu W3–W6 (≤ 4 ms na
   `medium`, [`runtime-config-baseline-2026-11-27.md`](../../reports/runtime-config-baseline-2026-11-27.md) §5.3). Wartość
-  wyjątku 90 s: poniżej limitu Cloudflare (100 s). Zapytanie, którego klient już nie czeka, biegnie w Postgresie do swojego
-  limitu, więc limit 0 nie zwalnia połączenia; 90 s ogranicza czas, przez który zajmuje połączenie i wątek.
+  wyjątku 90 s to limit jednej instrukcji, nie żądania: żądanie może wykonać kilka instrukcji z limitem (lista produktów
+  wykonuje dwie, stronę i licznik), więc 90 s nie gwarantuje odpowiedzi przed limitem Cloudflare (100 s), a jedynie
+  ogranicza czas, przez który jedna instrukcja zajmuje połączenie i wątek. Zapytanie, którego klient już nie czeka, biegnie
+  w Postgresie do swojego limitu, więc limit 0 nie zwalnia połączenia.
 - Mechanizm: middleware sterownika DBAL (`App\Shared\Infrastructure\Persistence\Timeout`) ustawia na sesji
   `statement_timeout`, `idle_in_transaction_session_timeout` i `lock_timeout` przed następną instrukcją połączenia
   (i przed rozpoczęciem transakcji), jeśli sesja ma inne wartości niż wynikają z bieżącego profilu procesu. Profil
@@ -180,6 +182,16 @@ panelu, eksportów, generatora, indeksowania ani zadań asynchronicznych i nie o
   worker FrankenPHP) nie zachowuje limitu poprzedniego, także trasy z wyjątkiem. Ta sama reguła działa w compose,
   w podach i w testach, bez zmiennych środowiska i zmian chartu. Wartości, lista tras z wyjątkiem i profile są w jednym
   miejscu: parametry `app.database_timeouts*` w `apps/api/config/services.yaml`.
+- Instrukcje `CONCURRENTLY` (`CREATE`/`DROP INDEX`, `REINDEX`, `DETACH PARTITION`) nie mają `lock_timeout`: czekają na
+  każdą transakcję starszą od siebie (zapytanie panelu do 90 s, worker do 60 s, generator, reindeks i `pg_dump` bez limitu),
+  a w czasie czekania nikogo nie blokują, więc limit zakończyłby je tylko błędem 55P03 z nieważnym (`INVALID`) indeksem,
+  a ponowienia Joba `migrate` kończyłyby się tak samo (zmierzone: transakcja otwarta z `SELECT` na tabeli i
+  `CREATE INDEX CONCURRENTLY` z `lock_timeout` 5 s kończy się po 5 s błędem i zostawia indeks `indisvalid = f`).
+  Middleware rozpoznaje taką instrukcję po tekście SQL (`TimeoutConnection::isConcurrentDdl`), wysyła ją bez
+  `lock_timeout` i przywraca limit przy następnej instrukcji, więc reguła obejmuje każdą obecną i przyszłą migrację,
+  niezależnie od tego, kto ją uruchamia. Test przegląda wszystkie migracje i wymaga, żeby każda instrukcja
+  `CONCURRENTLY` z `addSql()` była rozpoznana; test integracyjny sprawdza budowę indeksu czekającą na starszą
+  transakcję dłużej niż `lock_timeout` migracji.
 - Przerwana instrukcja (`SQLSTATE 57014`) daje w API 503 z `Retry-After: 5` i komunikatem po polsku w formacie błędów API
   (`detail`: „Zapytanie trwało zbyt długo i zostało przerwane. Spróbuj ponownie za chwilę."); także gdy wyjątek jest
   opakowany (`HandlerFailedException`, `previous`). Transakcja bezczynna dłużej niż limit traci połączenie i blokady

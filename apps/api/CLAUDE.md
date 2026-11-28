@@ -460,7 +460,10 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`docs/features/runtime-config/spec.md`, „Limity czasu w bazie”). Nowy endpoint, którego zapytanie czyta całą tabelę
   albo ma koszt rosnący z jej rozmiarem (skan, agregat bez limitu), dopisuje się do `app.database_timeouts.long_routes`
   w `config/services.yaml` (jedyne miejsce wyjątków) i do inwentarza w specyfikacji; zapytanie ograniczone limitem albo
-  indeksem nie. Zapytanie przerwane limitem (`57014`) to 503 z `Retry-After`, nigdy 500.
+  indeksem nie. Zapytanie przerwane limitem (`57014`) to 503 z `Retry-After`, nigdy 500. Instrukcja `CONCURRENTLY`
+  (indeks w migracji nietransakcyjnej) idzie bez `lock_timeout`, bo czeka na starsze transakcje i nikogo nie blokuje:
+  rozpoznaje ją middleware po tekście SQL, więc migracja nie ustawia nic sama, a test przegląda każdą migrację; nowa
+  migracja z `CONCURRENTLY` zapisuje instrukcję w `addSql('CREATE INDEX CONCURRENTLY …')`.
 - Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją).
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
