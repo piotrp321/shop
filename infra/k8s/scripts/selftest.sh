@@ -436,6 +436,10 @@ monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd
 monitoring_exporter_with_the_statements() { replace infra/k8s/argocd/apps/monitoring.yaml '"wal", "long_running_transactions"]' '"wal", "long_running_transactions", "stat_statements"]'; }
 monitoring_exporter_with_the_dsn_in_the_config() { replace infra/k8s/argocd/apps/monitoring.yaml '.data["POSTGRES_EXPORTER_DSN"]]' '.data["POSTGRES_EXPORTER_DSN"], "postgresql://exporter:pw@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable"]'; }
 monitoring_exporter_with_the_query_label() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state"' 'regex  = "__name__|job|instance|datname|state|query"'; }
+monitoring_postgres_labels_cut_to_the_database_and_the_state() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state|usename|application_name|backend_type|wait_event_type|wait_event"' 'regex  = "__name__|job|instance|datname|state"'; }
+# The rule shop-closed of make generate: Alloy on every port, and every namespace.
+generate_rule_for_alloy_on_all_ports() { replace infra/k8s/scripts/generate.sh '"ports":[{"protocol":"TCP","port":5432},{"protocol":"TCP","port":9200}]' '"ports":[]'; }
+generate_rule_for_alloy_of_every_namespace() { replace infra/k8s/scripts/generate.sh '"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' '"namespaceSelector":{}'; }
 monitoring_without_the_rule_of_the_values_of_postgres() { replace infra/k8s/argocd/apps/monitoring.yaml '(?:ERROR|FATAL|PANIC|WARNING):' '(?:ERRORS|FATALS):'; }
 monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
@@ -572,6 +576,9 @@ run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered conf
 run_case "exporter of Postgres with the collector of the statements" "the list replaces the default list of collectors" "tests=test_monitoring." monitoring_exporter_with_the_statements
 run_case "exporter of Postgres with the DSN in the configuration" "test_the_dsn_is_a_secret_value_of_a_secret_of_the_cluster_and_nowhere_in_text" "tests" monitoring_exporter_with_the_dsn_in_the_config
 run_case "exporter of Postgres with a label of the text of a query" "test_only_the_named_labels_leave_and_none_is_the_text_of_a_query" "tests" monitoring_exporter_with_the_query_label
+run_case "exporter of Postgres with the labels cut to the database and the state" "test_the_sessions_of_every_group_arrive_and_add_up_to_the_sessions_of_postgres" "tests" monitoring_postgres_labels_cut_to_the_database_and_the_state
+run_case "rule shop-closed that lets Alloy through on every port" "test_nothing_else_of_monitoring_and_nothing_else_of_alloy_gets_in" "tests" generate_rule_for_alloy_on_all_ports
+run_case "rule shop-closed that lets Alloy through from every namespace" "test_nothing_else_of_monitoring_and_nothing_else_of_alloy_gets_in" "tests" generate_rule_for_alloy_of_every_namespace
 run_case "monitoring without the rule that masks the values of the errors of Postgres" "came out of Alloy" "tests=test_log_masking." monitoring_without_the_rule_of_the_values_of_postgres
 run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_host_policy
 run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_token_binding
