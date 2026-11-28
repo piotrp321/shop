@@ -354,9 +354,21 @@ spec:
                   regex         = "template0|template1"
                   action        = "drop"
                 }
-                // Only these names of labels leave the cluster: a label that a new version of the exporter adds is dropped.
+                // The rows of pg_stat_activity_count with no session (a zero for every database and state, with an empty role and kind of
+                // backend) are left out: a session is a row with its backend_type, and a missing row is a zero.
                 rule {
-                  regex  = "__name__|job|instance|datname|state"
+                  source_labels = ["__name__", "backend_type"]
+                  separator     = "@"
+                  regex         = "pg_stat_activity_count@"
+                  action        = "drop"
+                }
+                // Only these names of labels leave the cluster: a label that a new version of the exporter adds is dropped. The five
+                // after state are the groups of pg_stat_activity_count (the role, the application and the kind of backend, the wait:
+                // not a text of a query). All of them are needed: the exporter makes a row for each group, and with fewer labels rows of
+                // two groups would have the same labels and one would be lost, so the number of sessions would be too low (the number of
+                // connections by role is the budget of the connections of docs/features/runtime-config/spec.md).
+                rule {
+                  regex  = "__name__|job|instance|datname|state|usename|application_name|backend_type|wait_event_type|wait_event"
                   action = "labelkeep"
                 }
                 forward_to = [prometheus.remote_write.grafana_metrics.receiver]
