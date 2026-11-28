@@ -105,6 +105,25 @@ final class DbalCatalogResetTest extends KernelTestCase
         self::assertSame(0, $this->indexer->countDocuments());
     }
 
+    public function testAnActiveAsynchronousRebuildRefusesTheResetBeforeAnythingIsDeleted(): void
+    {
+        $this->saveProductWithAdditionalCategory();
+        $this->insertMessage('outbox');
+        $this->connection->executeStatement(
+            "INSERT INTO catalog_search_rebuild_run (id, document_type, status, target_index, previous_index, batch_size, done_batches, documents, started_at, heartbeat_at)
+             VALUES (gen_random_uuid(), 'product', 'running', 'test_products_x', 'test_products_y', 500, 0, 0, now(), now())",
+        );
+
+        try {
+            $this->reset()->reset();
+            self::fail('Expected the refusal of the reset.');
+        } catch (\App\Catalog\Application\Search\SearchIndexError) {
+        }
+
+        self::assertSame(1, $this->rowCount('catalog_product'), 'the catalog is kept');
+        self::assertSame(1, $this->rowCount('messenger_messages', 'outbox'));
+    }
+
     private function reset(): DbalCatalogReset
     {
         return new DbalCatalogReset($this->connection, $this->storage, $this->rebuilder);

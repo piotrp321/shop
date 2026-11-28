@@ -52,11 +52,21 @@ final readonly class ProductSearchIndexRebuilder
     /**
      * Switches the alias to a new, empty index and deletes the previous one. The alias never disappears.
      *
-     * @throws SearchIndexError when the alias was not switched to the empty index
+     * @param (\Closure(): void)|null $before runs under the rebuild lock before the index is replaced (the reset of the
+     *                                    catalog empties the database there), so nothing is changed while another
+     *                                    rebuild, a setup or an asynchronous run holds the index
+     *
+     * @throws SearchIndexError when the lock was refused (nothing done) or the alias was not switched to the empty index
      */
-    public function reset(): void
+    public function reset(?\Closure $before = null): void
     {
-        $report = $this->underLock(fn (): RebuildReport => $this->replaceIndex(null));
+        $report = $this->underLock(function () use ($before): RebuildReport {
+            if (null !== $before) {
+                $before();
+            }
+
+            return $this->replaceIndex(null);
+        });
 
         if (ActivationResult::Activated !== $report->outcome) {
             throw new SearchIndexError('The search index was not reset: '.$report->failure);
