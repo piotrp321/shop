@@ -20,8 +20,8 @@ LIMIT = 26
 
 def members(columns, where, prefix):
     return (
-        f"SELECT {columns} FROM (SELECT DISTINCT pc.product_id FROM catalog_product_category pc WHERE pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE {prefix})) members "
-        f"CROSS JOIN LATERAL (SELECT {columns} FROM catalog_product p WHERE p.id = members.product_id AND p.primary_category_id NOT IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE {prefix}){where} LIMIT 1) p"
+        f"SELECT DISTINCT {columns} FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE {prefix}) "
+        f"AND p.primary_category_id NOT IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE {prefix}){where}"
     )
 
 
@@ -37,9 +37,11 @@ def page(prefix, sort, where):
 
 
 def count(prefix, where):
+    counted = " ORDER BY p.name, p.id" if where else ""
     return (
-        f"SELECT count(*) FROM (SELECT 1 FROM (SELECT 1 FROM catalog_category c CROSS JOIN LATERAL (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = c.id{where} ORDER BY p.name, p.id LIMIT 10001) m "
-        f"WHERE c.path LIKE {prefix} UNION ALL SELECT 1 FROM ({members('p.id', where, prefix)}) a) u LIMIT 10001) bounded"
+        f"WITH additional AS MATERIALIZED ({members('p.id', where, prefix)}) "
+        f"SELECT count(*) FROM (SELECT 1 FROM (SELECT 1 FROM catalog_category c CROSS JOIN LATERAL (SELECT 1 FROM catalog_product p WHERE p.primary_category_id = c.id{where}{counted} LIMIT 10001) m "
+        f"WHERE c.path LIKE {prefix} UNION ALL SELECT 1 FROM additional) u LIMIT 10001) bounded"
     )
 
 
