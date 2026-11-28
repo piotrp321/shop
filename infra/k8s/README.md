@@ -340,7 +340,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   rozjechał się z bazą. Nowy indeks zawsze ma jeden shard (stała w kodzie API, bez wartości w chartcie). Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
   stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` (z jego shardami) i jeden shard nowego,
   pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
-  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
+  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut, 10 mln ok. 7,3 h (limit Joba 12 h). Cel trzyma do końca blokadę
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
   Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
   a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):

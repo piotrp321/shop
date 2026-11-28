@@ -80,7 +80,7 @@ class ReindexCronJobTest(unittest.TestCase):
 
     def test_the_deadline_is_the_one_of_the_values(self):
         for case in CASES:
-            self.assertEqual(21600, cronjob(case)["spec"]["jobTemplate"]["spec"]["activeDeadlineSeconds"], case)
+            self.assertEqual(43200, cronjob(case)["spec"]["jobTemplate"]["spec"]["activeDeadlineSeconds"], case)
 
     def test_it_is_in_the_wave_of_the_other_cronjobs(self):
         for case in CASES:

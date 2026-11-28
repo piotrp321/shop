@@ -228,9 +228,10 @@ elasticsearch:
 # The suspended CronJob reindex: its Jobs (make -C infra/k8s reindex) rebuild the search index with catalog:reindex of the deployed
 # revision. Every profile has it and it never runs by itself.
 reindex:
-  # The time limit of a Job, in seconds. The rebuild of a million products took 17 minutes on the demo server
-  # (docs/reports/demo-scale-medium-worf-2026-11-20.md).
-  activeDeadlineSeconds: 21600
+  # The time limit of a Job, in seconds (only of the Job, not of the queries of the shop). The rebuild of a million products took
+  # 17 minutes on the demo server (docs/reports/demo-scale-medium-worf-2026-11-20.md), of ten million 7.27 hours
+  # (docs/reports/async-indexing-measurement-2026-11-26.md, bound by the reads of Postgres); 12 hours leave room above that.
+  activeDeadlineSeconds: 43200
 
 keycloak:
   javaHeap: -Xms256m -Xmx768m
