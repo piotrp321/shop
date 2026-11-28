@@ -104,26 +104,35 @@ def value(db, sql, steered=False):
 
 
 def counts(db, out):
+    """The count as PhraseSearch::count does it: the walk of the budget (20 000), grown tenfold (twice at most) while hits * 10 > limit,
+    then, if the limit was not reached, the candidates of the route."""
     os.makedirs(out, exist_ok=True)
-    table = ["| fraza | droga | obecne: ms / bufory | krok 1 (przejście B=20 000): ms / bufory | krok 2 (kandydaci): ms / bufory | razem nowe: ms / bufory | wynik (obecny = nowy) |", "|---|---|---|---|---|---|---|"]
+    table = ["| fraza | droga | obecne: ms / bufory | kroki walk (budżet: ms / bufory / trafień) | kandydaci: ms / bufory | razem nowe: ms / bufory | wynik (obecny = nowy) |", "|---|---|---|---|---|---|---|"]
     for term in ("ze", "pro", "ka", "er"):
         present = f"SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE {pattern(term)} LIMIT {LIMIT + 1}) bounded"
-        walk = f"SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT {BUDGET}) w WHERE w.name ILIKE {pattern(term)} LIMIT {LIMIT + 1}) bounded"
         cand = f"WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE {candidate_condition(term)}) SELECT count(*) FROM (SELECT * FROM m LIMIT {LIMIT + 1}) bounded"
         r_present = explain(db, present, False, f"count-{term}-present", out)
-        r_walk = explain(db, walk, False, f"count-{term}-walk", out)
-        walked = int(value(db, walk)[0])
         expected = int(value(db, present)[0])
-        if walked > LIMIT:
-            second, total_ms, total_b, answer = None, median(r_walk)[0], median(r_walk)[1], walked
-        else:
-            r_cand = explain(db, cand, True, f"count-{term}-candidates", out)
-            second = median(r_cand)
-            total_ms, total_b = median(r_walk)[0] + second[0], median(r_walk)[1] + second[1]
+        total_ms, total_b, steps, budget, second, answer = 0.0, 0, [], BUDGET, None, None
+        for extension in range(3):
+            walk = f"SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT {budget}) w WHERE w.name ILIKE {pattern(term)} LIMIT {LIMIT + 1}) bounded"
+            ms, b = median(explain(db, walk, False, f"count-{term}-walk{extension}", out))
+            walked = int(value(db, walk)[0])
+            total_ms, total_b = total_ms + ms, total_b + b
+            steps.append(f"{budget}: {ms:.1f} / {b} / {walked}")
+            if walked > LIMIT:
+                answer = walked
+                break
+            if extension >= 2 or walked * 10 <= LIMIT:
+                break
+            budget *= 10
+        if answer is None:
+            second = median(explain(db, cand, True, f"count-{term}-candidates", out))
+            total_ms, total_b = total_ms + second[0], total_b + second[1]
             answer = int(value(db, cand, True)[0])
         table.append(
-            f"| `{term}` | {route(term)} | {median(r_present)[0]:.1f} / {median(r_present)[1]} | {median(r_walk)[0]:.1f} / {median(r_walk)[1]} | "
-            + (f"{second[0]:.1f} / {second[1]}" if second else "pominięty (limit w przejściu)")
+            f"| `{term}` | {route(term)} | {median(r_present)[0]:.1f} / {median(r_present)[1]} | {'; '.join(steps)} | "
+            + (f"{second[0]:.1f} / {second[1]}" if second else "pominięci (limit w przejściu)")
             + f" | {total_ms:.1f} / {total_b} | {expected} = {answer} |"
         )
     summary(out, "counts", table)

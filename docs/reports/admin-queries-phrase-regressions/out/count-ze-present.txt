@@ -1,26 +1,26 @@
 SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ze%' LIMIT 10001) bounded
 
-Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=30.564..30.568 rows=1.00 loops=1)
-  Buffers: shared hit=39302 read=1899
-  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.466..30.238 rows=10001.00 loops=1)
-        Buffers: shared hit=39302 read=1899
-        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.465..29.824 rows=10001.00 loops=1)
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=26.132..26.134 rows=1.00 loops=1)
+  Buffers: shared hit=40573 read=628
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.051..25.842 rows=10001.00 loops=1)
+        Buffers: shared hit=40573 read=628
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.051..25.452 rows=10001.00 loops=1)
               Filter: ((name)::text ~~* '%ze%'::text)
               Rows Removed by Filter: 36589
               Heap Fetches: 1505
               Index Searches: 1
-              Buffers: shared hit=39302 read=1899
+              Buffers: shared hit=40573 read=628
 Planning:
-  Buffers: shared hit=447 read=13
-Planning Time: 6.228 ms
-Execution Time: 30.605 ms
+  Buffers: shared hit=460
+Planning Time: 0.891 ms
+Execution Time: 26.156 ms
 
 =====
-Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=22.153..22.156 rows=1.00 loops=1)
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=25.429..25.432 rows=1.00 loops=1)
   Buffers: shared hit=41201
-  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.021..21.895 rows=10001.00 loops=1)
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.033..25.142 rows=10001.00 loops=1)
         Buffers: shared hit=41201
-        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.021..21.539 rows=10001.00 loops=1)
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.033..24.761 rows=10001.00 loops=1)
               Filter: ((name)::text ~~* '%ze%'::text)
               Rows Removed by Filter: 36589
               Heap Fetches: 1505
@@ -28,15 +28,15 @@ Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=22.153..22.156 ro
               Buffers: shared hit=41201
 Planning:
   Buffers: shared hit=460
-Planning Time: 0.763 ms
-Execution Time: 22.180 ms
+Planning Time: 0.835 ms
+Execution Time: 25.457 ms
 
 =====
-Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=21.646..21.648 rows=1.00 loops=1)
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=24.768..24.772 rows=1.00 loops=1)
   Buffers: shared hit=41201
-  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.021..21.388 rows=10001.00 loops=1)
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.036..24.488 rows=10001.00 loops=1)
         Buffers: shared hit=41201
-        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.021..21.037 rows=10001.00 loops=1)
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.035..24.103 rows=10001.00 loops=1)
               Filter: ((name)::text ~~* '%ze%'::text)
               Rows Removed by Filter: 36589
               Heap Fetches: 1505
@@ -44,5 +44,5 @@ Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=21.646..21.648 ro
               Buffers: shared hit=41201
 Planning:
   Buffers: shared hit=460
-Planning Time: 0.806 ms
-Execution Time: 21.674 ms
+Planning Time: 0.890 ms
+Execution Time: 24.795 ms

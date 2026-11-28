@@ -18,3 +18,5 @@
 | `ze` (155298) | name | 1.0 / 667 | 0.6 / 687 | L0 walk B=20000: 0.6 / 687 | tak |
 | `ze` (155298) | updatedAt | 0.3 / 246 | 0.5 / 350 | L0 walk B=20000: 0.5 / 350 | tak |
 | `ze` (155298) | -updatedAt | 0.2 / 186 | 0.3 / 290 | L0 walk B=20000: 0.3 / 290 | tak |
+
+Uwaga: kolumna „nowe razem” zawiera krok „probe” (odczyt indeksu do B wierszy), którego kod już nie ma (usunięty w c5c64e39); bez niego czasy i bufory są niższe o wartość kroku „probe”.

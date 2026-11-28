@@ -30,8 +30,8 @@ use Doctrine\DBAL\Connection;
  * is the whole answer, and the cap of the candidates grows with it. Another filter (category, published) is checked on
  * the rows of the walk and of the candidates, and does not change the way.
  *
- * The count of the first page walks the first budget (a phrase in more than half of the names has the limit within it),
- * and otherwise counts the candidates of the route up to the limit. It is not a BoundedCounter: that one has a single
+ * The count of the first page walks the first budget and, while the walk promises to reach the limit in a walk ten times
+ * as long (a frequent phrase), grows it, twice at most; otherwise it counts the candidates of the route up to the limit. It is not a BoundedCounter: that one has a single
  * statement, and the count follows the way of the page.
  *
  * The planner is steered in one place, the two statements of the candidates (the page and the count), under the
@@ -68,6 +68,8 @@ final readonly class PhraseSearch
     /** Rows of the index of the sort that the first walk reads; the pace of the candidates (their cap is half of it) is the one of the cost per row measured in PERF-7-1 (about 0,7 µs a row of a walk, 5 µs a candidate). */
     public const int FIRST_BUDGET = 20_000;
     private const int GROWTH = 10;
+    /** How many times the walk of the count may grow before the candidates are counted. */
+    private const int COUNT_EXTENSIONS = 2;
     private const string BITMAP_SCANS_ONLY = "SELECT set_config('enable_seqscan', 'off', true), set_config('enable_indexscan', 'off', true), set_config('enable_indexonlyscan', 'off', true)";
 
     public function __construct(private Connection $connection, private int $firstBudget = self::FIRST_BUDGET)
@@ -119,15 +121,26 @@ final readonly class PhraseSearch
         $values = $parameters + ['pattern' => Like::contains($term)];
         $others = [] === $conditions ? '' : ' AND '.implode(' AND ', $conditions);
 
-        $walked = $this->connection->fetchOne(
-            'SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT '.$this->firstBudget.') w'
-            .([] === $conditions ? '' : ' JOIN catalog_product p ON p.id = w.id')
-            .' WHERE w.name ILIKE :pattern'.$others.' LIMIT '.($limit + 1).') bounded',
-            $values,
-        );
-        \assert(\is_int($walked));
-        if ($walked > $limit) {
-            return BoundedCount::ofRowsRead($walked, $limit);
+        // The walk counts the hits of the first rows of the order, up to the limit. A walk that finds more than a tenth of the limit
+        // (a frequent phrase) would find the limit within a walk ten times as long, and that is the cheaper way to it: the
+        // candidates of the index read the whole list of the phrase, which grows with the table, while a walk stops at the limit
+        // at a place that depends on the frequency of the phrase only. So the walk grows (twice at most) while it promises that.
+        $budget = $this->firstBudget;
+        for ($extension = 0;; ++$extension) {
+            $walked = $this->connection->fetchOne(
+                'SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT '.$budget.') w'
+                .([] === $conditions ? '' : ' JOIN catalog_product p ON p.id = w.id')
+                .' WHERE w.name ILIKE :pattern'.$others.' LIMIT '.($limit + 1).') bounded',
+                $values,
+            );
+            \assert(\is_int($walked));
+            if ($walked > $limit) {
+                return BoundedCount::ofRowsRead($walked, $limit);
+            }
+            if ($extension >= self::COUNT_EXTENSIONS || $walked * self::GROWTH <= $limit) {
+                break;
+            }
+            $budget *= self::GROWTH;
         }
 
         $where = $this->candidateConditions($route, $conditions, null);
