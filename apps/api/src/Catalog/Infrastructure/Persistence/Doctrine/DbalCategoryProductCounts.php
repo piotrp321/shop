@@ -11,7 +11,7 @@ use Doctrine\DBAL\Connection;
 
 /**
  * Counts at most limit + 1 rows per category: the products with the category as their main one (index on
- * primary_category_id) and those with it as an additional one (index on catalog_product_category.category_id), drafts
+ * primary_category_id, name, id) and those with it as an additional one (index on catalog_product_category.category_id), drafts
  * too. A product never has its main category among the additional ones (ProductCategories), so UNION ALL counts every
  * product once, and the scan stops at the limit.
  */

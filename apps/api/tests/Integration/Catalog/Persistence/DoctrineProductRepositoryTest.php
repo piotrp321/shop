@@ -282,7 +282,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             "SELECT indexdef FROM pg_indexes WHERE tablename IN ('catalog_product', 'catalog_product_category')",
         );
         $indexes = implode("\n", $definitions);
-        self::assertMatchesRegularExpression('/ON public\.catalog_product USING btree \(primary_category_id\)/', $indexes);
+        self::assertMatchesRegularExpression('/ON public\.catalog_product USING btree \(primary_category_id, name, id\)/', $indexes);
         self::assertMatchesRegularExpression('/ON public\.catalog_product_category USING btree \(category_id\)/', $indexes);
     }
 
