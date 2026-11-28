@@ -61,6 +61,7 @@ final class ProductPhrasePlanTest extends KernelTestCase
                            WHEN n % 2500 = 13 THEN 'zestaw a.b'
                            WHEN n % 2500 = 17 THEN 'zestaw ab-cd'
                            WHEN n % 1000 = 3 THEN 'ŁÓDŹ kajak'
+                           WHEN n % 4 = 1 THEN 'zestaw ke'
                            WHEN n % 5 = 0 THEN 'gęsty wzór'
                            WHEN n > 3000 AND n % 2 = 1 THEN 'korelowany wzór'
                            ELSE 'zwykły' END,
@@ -114,8 +115,29 @@ final class ProductPhrasePlanTest extends KernelTestCase
 
         self::assertGreaterThan(0, $count->value, $term);
         $read = $this->rowsRead();
-        $bound = self::DEFAULT_BUDGET + 3 * min($hits, self::COUNT_LIMIT + 1) + self::SLACK;
+        // A dense phrase is counted by the walk, as far as the budget grows (the first budget and the two it may grow to).
+        $bound = 'budget' === $variable ? 111 * self::DEFAULT_BUDGET + self::SLACK : self::DEFAULT_BUDGET + 3 * min($hits, self::COUNT_LIMIT + 1) + self::SLACK;
         self::assertLessThanOrEqual($bound, $read, \sprintf("count of '%s' read %d rows of %d (class bound %d)\n%s", $term, $read, self::PRODUCTS, $bound, $this->plans()));
+    }
+
+    /**
+     * A phrase of two characters in a quarter of the names: the first walk of the count finds more than a tenth of the
+     * limit, so the walk, ten times as long, reaches the limit, and the count is the one of the walk: the rows of the index
+     * up to the budget it grew to, never the list of the bigram index (a quarter of the table, whatever the budget is).
+     */
+    public function testTheCountOfADensePhraseOfTwoCharactersReadsTheWalkNotTheListOfTheBigramIndex(): void
+    {
+        $budget = 5_000;
+        $source = $this->source($budget);
+
+        $this->recording->forget();
+        $count = $source->count('ke', null, null);
+
+        self::assertSame([self::COUNT_LIMIT, true], [$count->value, $count->capped]);
+        $read = $this->rowsRead();
+        $entries = $this->bitmapEntriesRead();
+        self::assertLessThanOrEqual(11 * $budget + self::SLACK, $read, \sprintf("the count read %d rows of %d\n%s", $read, self::PRODUCTS, $this->plans()));
+        self::assertLessThanOrEqual(self::COUNT_LIMIT + 1, $entries, \sprintf("the count read %d entries of the bigram index\n%s", $entries, $this->plans()));
     }
 
     #[DataProvider('bigramPhrases')]
@@ -218,6 +240,37 @@ final class ProductPhrasePlanTest extends KernelTestCase
         }
 
         return (int) ceil($total);
+    }
+
+    /**
+     * The entries (tuple ids) that the bitmap index scans of the recorded statements read: the size of the lists of the GIN index.
+     */
+    private function bitmapEntriesRead(): int
+    {
+        $total = 0.0;
+        foreach ($this->analyzedPlans() as $plan) {
+            $total += self::bitmapEntriesOf($plan);
+        }
+
+        return (int) ceil($total);
+    }
+
+    /**
+     * @param array<mixed> $node
+     */
+    private static function bitmapEntriesOf(array $node): float
+    {
+        $read = 'Bitmap Index Scan' === ($node['Node Type'] ?? null) ? self::number($node['Actual Rows'] ?? 0) * self::number($node['Actual Loops'] ?? 1) : 0.0;
+        $children = $node['Plans'] ?? [];
+        if (\is_array($children)) {
+            foreach ($children as $child) {
+                if (\is_array($child)) {
+                    $read += self::bitmapEntriesOf($child);
+                }
+            }
+        }
+
+        return $read;
     }
 
     /**
