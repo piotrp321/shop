@@ -14,9 +14,22 @@ services:
     env_file:
       - path: ./.env.local
         required: true
+    # The settings independent of the memory are in infra/postgres/postgresql.conf; the two that depend on the memory of
+    # the container (25% of it, the chart has them in the values of the environment) are arguments. Compose gives the
+    # container no memory limit, so they are the values of the profile ci.
+    command:
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+    # The parallel queries (a hash join) use /dev/shm; the 64 MB of Docker end them with `could not resize shared memory segment`.
+    shm_size: 1gb
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -U postgres"]
       interval: 5s
@@ -112,6 +125,8 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
+      # The pool of Keycloak takes up to 20 of the 100 connections of Postgres (the budget: charts/shop/values.yaml).
+      KC_DB_POOL_MAX_SIZE: "20"
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_HEALTH_ENABLED: "true"
       # Tokens are always issued for the public URL; containers reach Keycloak at http://keycloak:8080.

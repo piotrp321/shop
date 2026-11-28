@@ -9,7 +9,8 @@ FILES = REPO / "infra/k8s/charts/shop/files"
 MIRRORED = {
     "varnish-vcl": {"default.vcl": "infra/varnish/default.vcl"},
     "garage-config": {"garage.toml": "infra/garage/garage.toml", "init.sh": "infra/garage/init.sh"},
-    "postgres-init": {"10-create-databases.sh": "infra/postgres/init/10-create-databases.sh"},
+    "postgres-init": {"10-create-databases.sh": "infra/postgres/init/10-create-databases.sh", "20-monitoring.sh": "infra/postgres/init/20-monitoring.sh"},
+    "postgres-config": {"postgresql.conf": "infra/postgres/postgresql.conf"},
 }
 
 

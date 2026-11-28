@@ -57,6 +57,8 @@ spec:
 
 {{- define "shop.job.migrate" -}}
 {{ include "shop.job.metadata" . }}
+  annotations:
+    checksum/postgres-setup: {{ .root.Files.Get "files/20-monitoring.sh" | sha256sum | quote }}
 spec:
   restartPolicy: Never
   enableServiceLinks: false
@@ -64,6 +66,28 @@ spec:
   initContainers:
     {{- include "shop.wait" (dict "root" .root "name" "postgres" "check" "nc -z -w 2 postgres 5432") | nindent 4 }}
     {{- include "shop.wait" (dict "root" .root "name" "elasticsearch" "check" "wget -T 3 -qO /dev/null 'http://elasticsearch:9200/_cluster/health?wait_for_status=yellow&timeout=2s'") | nindent 4 }}
+    # The statistics and the metrics role in a database that exists (the init directory of Postgres runs only on an empty one):
+    # the script of the ConfigMap postgres-init, as the superuser; idempotent, and it sets the password of the role again.
+    - name: postgres-setup
+      image: {{ .root.Values.images.postgres }}
+      command: ["sh", "/postgres-init/20-monitoring.sh"]
+      env:
+        - name: PGHOST
+          value: postgres
+        - name: PGUSER
+          value: postgres
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .root.Values.secrets.name }}
+              key: POSTGRES_PASSWORD
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      volumeMounts:
+        - name: postgres-init
+          mountPath: /postgres-init
+          readOnly: true
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
   containers:
     - name: migrate
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
@@ -80,6 +104,11 @@ spec:
       {{- include "shop.envFromSecret" .root | nindent 6 }}
       resources:
         {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    - name: postgres-init
+      configMap:
+        name: postgres-init
+        defaultMode: 0755
 {{- end }}
 
 {{- define "shop.job.keycloakConfig" -}}

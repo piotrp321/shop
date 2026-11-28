@@ -167,6 +167,15 @@ do_schema() {
       --set elasticsearch.shards=1025
     expect_failure "search index values without the shards" "missing property 'shards'" -f environments/ci/values.yaml \
       --set image.tag=$rev --set elasticsearch.shards=null
+    # The memory settings of Postgres go to -c arguments: a number with a unit of Postgres (kB, MB, GB, TB), never a text or zero.
+    expect_failure "shared_buffers of Postgres without a unit" "/postgres/sharedBuffers" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set postgres.sharedBuffers=1024
+    expect_failure "shared_buffers of Postgres in a unit it does not know" "/postgres/sharedBuffers" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set postgres.sharedBuffers=1GiB
+    expect_failure "effective_cache_size of Postgres that is zero" "/postgres/effectiveCacheSize" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set postgres.effectiveCacheSize=0MB
+    expect_failure "memory settings of Postgres that are missing" "missing property 'sharedBuffers'" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set postgres.sharedBuffers=null
     expect_failure "a time limit of the rebuild that is not a number" "/reindex/activeDeadlineSeconds" -f environments/ci/values.yaml \
       --set image.tag=$rev --set-string reindex.activeDeadlineSeconds=1h
     expect_failure "a value of reindex that does not exist" "'schedule' not allowed" -f environments/ci/values.yaml --set image.tag=$rev \
@@ -263,7 +272,8 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh ../../.github/scripts/merge-override.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh
+    ../../.github/scripts/deploy-ref.sh ../../.github/scripts/merge-override.sh ../../load/k6.sh ../../load/smoke.sh ../../load/test/cookies.sh \
+    ../../infra/postgres/init/10-create-databases.sh ../../infra/postgres/init/20-monitoring.sh ../../infra/postgres/test-config.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.

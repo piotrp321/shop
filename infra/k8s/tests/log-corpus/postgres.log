@@ -5,3 +5,11 @@
 2026-11-11 10:00:02.000 UTC [89] LOG:  connection received: host=2001:db8:85a3::8a2e:370:7334 port=51235
 2026-11-11 10:00:03.000 UTC [90] FATAL:  password authentication failed for user "shop"
 DETAIL:  Key (sku)=(PL-SECRET-SKU-9) is not present in table "product".
+2026-11-27 22:01:57.958 UTC [1388] ERROR:  invalid input syntax for type integer: "qty-v-pg-data-1" at character 8
+2026-11-27 22:01:58.178 UTC [1395] ERROR:  invalid input syntax for type uuid: "id-v-pg-data-2" at character 8
+2026-11-27 22:01:58.413 UTC [1402] ERROR:  invalid input syntax for type json at character 8
+2026-11-27 22:01:58.703 UTC [1409] ERROR:  invalid input value for enum status: "state-v-pg-data-4" at character 8
+2026-11-27 22:01:58.932 UTC [1415] ERROR:  value "99999v-pg-data-5" is out of range for type smallint at character 8
+2026-11-27 22:01:59.117 UTC [1422] ERROR:  invalid input syntax for type numeric: "price-v-pg-data-6" at character 8
+2026-11-27 22:01:59.364 UTC [1429] ERROR:  date/time field value out of range: "2026-13-45" at character 8
+2026-11-27 22:01:59.588 UTC [1435] ERROR:  value "99999999999" is out of range for type integer at character 8

@@ -24,6 +24,11 @@ elasticsearch:
 keycloak:
   javaHeap: -Xms512m -Xmx1g
 
+# The memory settings of Postgres of prod (the pod has the limit of prod).
+postgres:
+  sharedBuffers: 1GB
+  effectiveCacheSize: 3GB
+
 # The resources of prod (requests and limits), copied: a profile cannot include another one.
 resources:
   postgres: { requests: { cpu: 500m, memory: 1Gi }, limits: { memory: 2Gi } }

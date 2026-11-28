@@ -62,6 +62,17 @@ done
 run
 [ "$status" -eq 0 ] || fail "second run on the appended file exits $status"
 
+# 3b. The password of the metrics role of Postgres is appended to an old file like the provider secrets (infra/postgres/init/20-monitoring.sh
+# sets it in an existing database), and the lines that were there stay.
+[ "$(value_of EXPORTER_DB_PASSWORD | wc -c | tr -d ' ')" -ge 33 ] || fail "the file has no EXPORTER_DB_PASSWORD of 16 bytes"
+grep -v '^EXPORTER_DB_PASSWORD=' "$target" > "$target.old"
+mv "$target.old" "$target"
+old="$(cat "$target")"
+run
+[ "$status" -eq 0 ] || fail "a file without EXPORTER_DB_PASSWORD exits $status: $out"
+[ "$(grep -c '^EXPORTER_DB_PASSWORD=[0-9a-f]\{32\}$' "$target")" -eq 1 ] || fail "EXPORTER_DB_PASSWORD is not appended once as 16 bytes of hex"
+[ "$old" = "$(head -n "$(printf '%s\n' "$old" | wc -l | tr -d ' ')" "$target")" ] || fail "existing lines were changed by the append of EXPORTER_DB_PASSWORD"
+
 # 4. The same when the old file has no newline at the end: the first appended key must not stick to the last line.
 grep -v '^PAYMENT_DEMO_' "$target" | awk 'NR>1{printf "\n"} {printf "%s",$0}' > "$target.old"
 mv "$target.old" "$target"

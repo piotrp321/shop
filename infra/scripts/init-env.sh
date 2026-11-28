@@ -25,8 +25,10 @@ STORE_SESSION_SECRET - 32
 VARNISH_PURGE_SECRET - 32
 STORE_REVALIDATE_SECRET - 32'
 
-# The keys that may be appended to an existing file: the API keys and the webhook secrets of the payment simulator.
-appendable='PAYMENT_DEMO_TRANSFER_API_KEY - 24
+# The keys that may be appended to an existing file: the API keys and the webhook secrets of the payment simulator, and the
+# password of the metrics role of Postgres (infra/postgres/init/20-monitoring.sh sets it on every `make up`, also in an existing database).
+appendable='EXPORTER_DB_PASSWORD - 16
+PAYMENT_DEMO_TRANSFER_API_KEY - 24
 PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET - 32
 PAYMENT_DEMO_CARD_API_KEY - 24
 PAYMENT_DEMO_CARD_WEBHOOK_SECRET - 32'

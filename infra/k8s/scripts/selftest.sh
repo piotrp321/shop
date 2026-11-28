@@ -474,6 +474,8 @@ reindex_not_suspended() { replace_after infra/k8s/charts/shop/templates/reindex.
 reindex_without_confirmation() { replace infra/k8s/scripts/reindex.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
+postgres_conf_link_missing() { rm "$tree/infra/k8s/charts/shop/files/postgresql.conf"; }
+postgres_command_reads_another_file() { replace infra/k8s/charts/shop/templates/postgres.yaml '  - config_file=/etc/postgresql/postgresql.conf' '  - config_file=/etc/postgresql/another.conf'; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
 # expression that does what the scenarios do not allow.
 backup_missing_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])' 'vector(0) > 1'; }
@@ -599,6 +601,8 @@ run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_
 run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workflow_missing
+run_case "link of postgresql.conf missing from the chart" "postgres-config/postgresql.conf" "tests=test_files." postgres_conf_link_missing
+run_case "command of Postgres that reads another file than the mounted one" "test_the_command_reads_the_file_and_takes_the_memory_from_the_values_of_the_environment" "tests" postgres_command_reads_another_file
 
 wait
 # Every job is over: nothing is left for cleanup to stop (and no process number to be reused by another process).

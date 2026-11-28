@@ -29,6 +29,7 @@ LAST := worker worker-commands
 up:
 	sh infra/scripts/init-env.sh
 	docker compose up -d --wait $$(docker compose config --services | grep -vx $(foreach s,$(ONESHOT) $(LAST),-e '$(s)'))
+	docker compose exec -T postgres sh /docker-entrypoint-initdb.d/20-monitoring.sh
 	docker compose run --rm $(ONESHOT)
 	$(MAKE) -C apps/api init
 	docker compose up -d --wait --force-recreate $(LAST)

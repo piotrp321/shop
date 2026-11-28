@@ -18,6 +18,9 @@ env:
     value: jdbc:postgresql://postgres:5432/keycloak
   - name: KC_DB_USERNAME
     value: keycloak
+  # The pool takes up to 20 of the 100 connections of Postgres (the budget: values.yaml, `postgres`).
+  - name: KC_DB_POOL_MAX_SIZE
+    value: "20"
   - name: KC_BOOTSTRAP_ADMIN_USERNAME
     value: admin
   - name: KC_HEALTH_ENABLED
