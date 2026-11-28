@@ -401,7 +401,7 @@ monitoring_operator_changing_rbac() { replace_after infra/k8s/argocd/apps/monito
                 verbs: [get, list, watch, create]'; }
 monitoring_operator_on_the_whole_cluster() { replace infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'ownNamespaceOnly: false'; }
 monitoring_alloy_making_its_own_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'presets: [deployment]' 'create: false' 'create: true'; }
-monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
+monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud, shop-exporter]' 'resourceNames: []'; }
 monitoring_events_without_the_stages() { replace infra/k8s/argocd/apps/monitoring.yaml 'extraLogProcessingStages: *logStages' 'extraLogProcessingStages: ""'; }
 monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex         = "shop;mailpit"' 'regex         = "shop;mailpit-other"'; }
 # The render of the monitoring: a chart version that has no digest in monitoring-render.sh, an archive with another digest, stages
@@ -430,6 +430,13 @@ monitoring_without_the_service_policy() { drop_extra_object ValidatingAdmissionP
 monitoring_service_policy_with_node_ports() { replace infra/k8s/argocd/apps/monitoring.yaml "object.spec.type == 'ClusterIP')" "object.spec.type in ['ClusterIP', 'NodePort'])"; }
 monitoring_service_policy_without_external_ips() { replace infra/k8s/argocd/apps/monitoring.yaml '&& (!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0)' '&& true'; }
 monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd/apps/monitoring.yaml "!variables.podSpec.priorityClassName.startsWith('system-')" "variables.podSpec.priorityClassName != ''"; }
+# The exporters of the databases (spec RUNTIME-CONFIG, D7): the statements of Postgres among the collectors, the DSN written in the config,
+# a label that carries the text of a query allowed through, and the rule that masks the values in the message of an error of Postgres
+# that matches no line.
+monitoring_exporter_with_the_statements() { replace infra/k8s/argocd/apps/monitoring.yaml '"wal", "long_running_transactions"]' '"wal", "long_running_transactions", "stat_statements"]'; }
+monitoring_exporter_with_the_dsn_in_the_config() { replace infra/k8s/argocd/apps/monitoring.yaml '.data["POSTGRES_EXPORTER_DSN"]]' '.data["POSTGRES_EXPORTER_DSN"], "postgresql://exporter:pw@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable"]'; }
+monitoring_exporter_with_the_query_label() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex  = "__name__|job|instance|datname|state"' 'regex  = "__name__|job|instance|datname|state|query"'; }
+monitoring_without_the_rule_of_the_values_of_postgres() { replace infra/k8s/argocd/apps/monitoring.yaml '(?:ERROR|FATAL|PANIC|WARNING):' '(?:ERRORS|FATALS):'; }
 monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -556,12 +563,16 @@ run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights 
 run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" "tests=test_monitoring." monitoring_operator_changing_rbac
 run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" "tests" monitoring_operator_on_the_whole_cluster
 run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" "tests=test_monitoring." monitoring_alloy_making_its_own_rbac
-run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" "tests=test_monitoring." monitoring_role_on_all_secrets_of_the_shop
+run_case "Role of Alloy on all Secrets of the shop" "the Role does not name exactly the Secrets of Alloy" "tests=test_monitoring." monitoring_role_on_all_secrets_of_the_shop
 run_case "cluster events without the stages that mask" "do not get the same stages" "tests=test_log_masking." monitoring_events_without_the_stages
 run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" "tests" monitoring_collecting_mailpit
 run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" "render" monitoring_chart_version_without_a_digest
 run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" "render" monitoring_chart_digest_differs
 run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" "render" monitoring_stages_alloy_rejects
+run_case "exporter of Postgres with the collector of the statements" "the list replaces the default list of collectors" "tests=test_monitoring." monitoring_exporter_with_the_statements
+run_case "exporter of Postgres with the DSN in the configuration" "test_the_dsn_is_a_secret_value_of_a_secret_of_the_cluster_and_nowhere_in_text" "tests" monitoring_exporter_with_the_dsn_in_the_config
+run_case "exporter of Postgres with a label of the text of a query" "test_only_the_named_labels_leave_and_none_is_the_text_of_a_query" "tests" monitoring_exporter_with_the_query_label
+run_case "monitoring without the rule that masks the values of the errors of Postgres" "came out of Alloy" "tests=test_log_masking." monitoring_without_the_rule_of_the_values_of_postgres
 run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_host_policy
 run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_token_binding
 run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_policy_that_warns

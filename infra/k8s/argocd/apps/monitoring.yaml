@@ -104,6 +104,15 @@ spec:
                 - kube_pod_owner
                 - kube_pod_status_ready
                 - kube_pod_container_status_restarts_total
+          # The memory of a container that the kernel cannot take back (container_memory_rss, the anonymous pages) and the page cache
+          # (container_memory_cache), against which the request of a pod is chosen (docs/features/runtime-config/spec.md, Z1). They are
+          # in the default list too; named here so that a change of that list in a new version of the chart cannot take them away.
+          cadvisor:
+            metricsTuning:
+              useDefaultAllowList: true
+              includeMetrics:
+                - container_memory_rss
+                - container_memory_cache
         hostMetrics:
           enabled: true
           destinations: [grafana-metrics]
@@ -114,6 +123,13 @@ spec:
               includeMetrics:
                 - node_filesystem_avail_bytes
                 - node_filesystem_size_bytes
+                # The pressure stall information of the node (PSI): the time the tasks waited for the processor, for the disk and
+                # for memory (the pressure collector of node-exporter reads /proc/pressure).
+                - node_pressure_cpu_waiting_seconds_total
+                - node_pressure_io_stalled_seconds_total
+                - node_pressure_io_waiting_seconds_total
+                - node_pressure_memory_stalled_seconds_total
+                - node_pressure_memory_waiting_seconds_total
         # The logs of the pods of every namespace, read through the Kubernetes API. The stages mask them before they leave the
         # cluster, and the discovery rules leave out the sources that cannot be masked (spec, O7; the test runs both in Alloy).
         podLogsViaKubernetesApi:
@@ -282,6 +298,94 @@ spec:
             # the operator picks the Alloy of its own chart.
             image:
               tag: v1.21.3
+            # Not part of a feature of the chart: the exporters of the databases of the shop (the allow lists are in the text; the
+            # test of the render, the one in a real Alloy against unreachable databases and the count of the series are in
+            # tests/test_monitoring.py and scripts/exporters.sh). The Secret that the first block reads is in the Role below.
+            extraConfig: |
+              // The metrics of Postgres and Elasticsearch (docs/features/runtime-config/spec.md, D7): two exporters of Alloy, each with an allow
+              // list of the metrics and of the names of the labels, so that no text of a query leaves the cluster and the series fit in the free
+              // plan of Grafana Cloud (tests/test_monitoring.py counts them). The DSN of the role exporter, which has pg_monitor only, is the one
+              // value of the Secret shop-exporter that Alloy reads, as a secret (it is never shown by Alloy and never in a ConfigMap).
+              remote.kubernetes.secret "shop_exporter" {
+                name      = "shop-exporter"
+                namespace = "shop"
+              }
+
+              // The collectors are listed (the list replaces the default one). Never stat_statements: its rows carry the text of the queries.
+              prometheus.exporter.postgres "shop" {
+                data_source_names  = [remote.kubernetes.secret.shop_exporter.data["POSTGRES_EXPORTER_DSN"]]
+                enabled_collectors = ["database", "stat_bgwriter", "stat_checkpointer", "stat_database", "wal", "long_running_transactions"]
+              }
+
+              prometheus.scrape "shop_postgres" {
+                targets         = prometheus.exporter.postgres.shop.targets
+                job_name        = "shop/postgres"
+                scrape_interval = "60s"
+                scrape_timeout  = "10s"
+                forward_to      = [prometheus.relabel.shop_postgres.receiver]
+              }
+
+              prometheus.relabel "shop_postgres" {
+                rule {
+                  source_labels = ["__name__"]
+                  regex         = "up|pg_up|pg_database_size_bytes|pg_long_running_transactions|pg_long_running_transactions_oldest_timestamp_seconds|pg_settings_max_connections|pg_settings_shared_buffers_bytes|pg_stat_activity_count|pg_stat_bgwriter_buffers_alloc_total|pg_stat_checkpointer_buffers_written_total|pg_stat_checkpointer_num_requested_total|pg_stat_checkpointer_num_timed_total|pg_stat_checkpointer_sync_time_total|pg_stat_checkpointer_write_time_total|pg_stat_database_active_time_seconds_total|pg_stat_database_blk_read_time|pg_stat_database_blk_write_time|pg_stat_database_blks_hit|pg_stat_database_blks_read|pg_stat_database_deadlocks|pg_stat_database_numbackends|pg_stat_database_temp_bytes|pg_stat_database_temp_files|pg_stat_database_xact_commit|pg_stat_database_xact_rollback|pg_wal_segments|pg_wal_size_bytes"
+                  action        = "keep"
+                }
+                // The template databases are not the shop's.
+                rule {
+                  source_labels = ["datname"]
+                  regex         = "template0|template1"
+                  action        = "drop"
+                }
+                // Only these names of labels leave the cluster: a label that a new version of the exporter adds is dropped.
+                rule {
+                  regex  = "__name__|job|instance|datname|state"
+                  action = "labelkeep"
+                }
+                forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+              }
+
+              // The statistics of the cluster and of its nodes only (all = true is every node; no indices, shards, snapshots or settings).
+              prometheus.exporter.elasticsearch "shop" {
+                address = "http://elasticsearch.shop.svc.cluster.local:9200"
+                all     = true
+              }
+
+              prometheus.scrape "shop_elasticsearch" {
+                targets         = prometheus.exporter.elasticsearch.shop.targets
+                job_name        = "shop/elasticsearch"
+                scrape_interval = "60s"
+                scrape_timeout  = "10s"
+                forward_to      = [prometheus.relabel.shop_elasticsearch.receiver]
+              }
+
+              prometheus.relabel "shop_elasticsearch" {
+                rule {
+                  source_labels = ["__name__"]
+                  regex         = "up|elasticsearch_breakers_tripped|elasticsearch_cluster_health_active_shards|elasticsearch_cluster_health_initializing_shards|elasticsearch_cluster_health_number_of_nodes|elasticsearch_cluster_health_relocating_shards|elasticsearch_cluster_health_status|elasticsearch_cluster_health_unassigned_shards|elasticsearch_filesystem_data_available_bytes|elasticsearch_filesystem_data_size_bytes|elasticsearch_indices_indexing_index_time_seconds_total|elasticsearch_indices_indexing_index_total|elasticsearch_indices_query_cache_count|elasticsearch_indices_query_cache_evictions|elasticsearch_indices_query_cache_memory_size_bytes|elasticsearch_indices_request_cache_evictions|elasticsearch_indices_request_cache_memory_size_bytes|elasticsearch_indices_search_query_time_seconds|elasticsearch_indices_search_query_total|elasticsearch_indices_segments_memory_bytes|elasticsearch_indices_store_size_bytes|elasticsearch_jvm_gc_collection_seconds_count|elasticsearch_jvm_gc_collection_seconds_sum|elasticsearch_jvm_memory_max_bytes|elasticsearch_jvm_memory_used_bytes|elasticsearch_node_stats_up|elasticsearch_os_cpu_percent|elasticsearch_thread_pool_active_count|elasticsearch_thread_pool_queue_count|elasticsearch_thread_pool_rejected_count"
+                  action        = "keep"
+                }
+                // The pools of the gets, searches and writes only (a node has forty).
+                rule {
+                  source_labels = ["__name__", "type"]
+                  separator     = "@"
+                  regex         = "elasticsearch_thread_pool_.*@(?:get|search|write)"
+                  target_label  = "__keepme"
+                  replacement   = "1"
+                }
+                rule {
+                  source_labels = ["__name__", "__keepme"]
+                  separator     = "@"
+                  regex         = "elasticsearch_thread_pool_.*@"
+                  action        = "drop"
+                }
+                // The name of the node is the pod; its address and its roles would only add series when the pod is made again.
+                rule {
+                  regex  = "__name__|job|instance|cluster|name|area|gc|type|cache|breaker|color|mount|path"
+                  action = "labelkeep"
+                }
+                forward_to = [prometheus.remote_write.grafana_metrics.receiver]
+              }
             alloy:
               resources:
                 requests: {cpu: 200m, memory: 384Mi}
@@ -573,7 +677,9 @@ spec:
               - kind: ServiceAccount
                 name: monitoring-alloy
                 namespace: monitoring
-          # Alloy reads the token from the Secret grafana-cloud of the namespace shop and from no other Secret of the cluster.
+          # Alloy reads the token from the Secret grafana-cloud of the namespace shop and the DSN of the role exporter of Postgres from
+          # the Secret shop-exporter (a Secret of its own: the Role cannot give a key of shop-secrets), and from no other Secret of the
+          # cluster. Without either of them Alloy does not start, so the Secrets are applied before the application monitoring.
           - apiVersion: rbac.authorization.k8s.io/v1
             kind: Role
             metadata:
@@ -582,7 +688,7 @@ spec:
             rules:
               - apiGroups: [""]
                 resources: [secrets]
-                resourceNames: [grafana-cloud]
+                resourceNames: [grafana-cloud, shop-exporter]
                 verbs: [get, list, watch]
           - apiVersion: rbac.authorization.k8s.io/v1
             kind: RoleBinding

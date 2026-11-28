@@ -3,10 +3,11 @@ argocd/apps/monitoring.yaml (scripts/monitoring-render.sh): what only Alloy may 
 Alloy resources. The manifests of the applications and their waves are in test_argocd.py, the stages that mask the logs in
 test_log_masking.py, the budget of the node in test_workloads.py."""
 
+import json
 import re
 import unittest
 
-from support import RENDER, REPO, WAVE, containers, docs, env_of, name, of_kind, pod_spec
+from support import RENDER, REPO, WAVE, WORKLOADS, containers, docs, env_of, name, of_kind, pod_spec
 
 # The metrics that the alerts of the spec (O6) use.
 ALERT_METRICS = [
@@ -19,7 +20,17 @@ ALERT_METRICS = [
 ONCALL_METRICS = [
     "kube_pod_container_info", "kube_pod_owner", "kube_pod_status_ready", "kube_pod_container_status_restarts_total",
 ]
+# What the node and the containers add for the sizing of the memory and the disk (docs/features/runtime-config/spec.md, Z1 and D7): the
+# memory of a container that the kernel cannot take back and its page cache, and the pressure stall information of the node.
+MEMORY_METRICS = ["container_memory_rss", "container_memory_cache"]
+PRESSURE_METRICS = [
+    "node_pressure_cpu_waiting_seconds_total", "node_pressure_io_stalled_seconds_total", "node_pressure_io_waiting_seconds_total",
+    "node_pressure_memory_stalled_seconds_total", "node_pressure_memory_waiting_seconds_total",
+]
 SECRET_OF_ALLOY = "grafana-cloud"
+# The Secrets that Alloy reads in the namespace shop: its tokens, and the DSN of the exporter of Postgres (the role exporter has pg_monitor only).
+SECRET_OF_EXPORTER = "shop-exporter"
+SECRETS_OF_ALLOY = [SECRET_OF_ALLOY, SECRET_OF_EXPORTER]
 # The Grafana of the stack: the alert rules are imported there (AlertRules).
 GRAFANA = "https://cosmiccinnamon1835.grafana.net"
 # The service accounts of the Alloy Operator and of the Alloy it runs (the collector), in the namespace of the application.
@@ -141,8 +152,8 @@ def problems(render):
         token_role = (role_name, namespace)
         if (kind, namespace) != ("Role", "shop"):
             found.append(f"the one role with access to Secrets is {kind}/{role_name} in {namespace}, not a Role in shop")
-        if rule.get("resourceNames") != [SECRET_OF_ALLOY] or rule["resources"] != ["secrets"] or rule["apiGroups"] != [""]:
-            found.append(f"the Role does not name the one Secret: {rule}")
+        if rule.get("resourceNames") != SECRETS_OF_ALLOY or rule["resources"] != ["secrets"] or rule["apiGroups"] != [""]:
+            found.append(f"the Role does not name exactly the Secrets of Alloy: {rule}")
         if not set(rule["verbs"]) <= READ:
             found.append(f"verbs of the Role on the Secret: {rule['verbs']}")
     # A binding to a role that the render does not have grants what that role grants elsewhere in the cluster (cluster-admin, any
@@ -176,7 +187,7 @@ def binding(kind, binding_name, namespace, ref_kind, ref_name, subject=COLLECTOR
             "subjects": [subject]}
 
 
-GOOD_ROLE = role("Role", "alloy-grafana-cloud", "shop", [{"apiGroups": [""], "resources": ["secrets"], "resourceNames": [SECRET_OF_ALLOY], "verbs": ["get"]}])
+GOOD_ROLE = role("Role", "alloy-grafana-cloud", "shop", [{"apiGroups": [""], "resources": ["secrets"], "resourceNames": SECRETS_OF_ALLOY, "verbs": ["get"]}])
 OPERATOR_RULES = [{"apiGroups": [""], "resources": ["configmaps", "secrets", "serviceaccounts", "services"], "verbs": ["get", "create", "delete"]},
                   {"apiGroups": ["apps"], "resources": ["deployments"], "verbs": ["get", "create", "patch"]}]
 GOOD = [
@@ -374,7 +385,7 @@ class Rbac(unittest.TestCase):
     def test_the_render_names_the_secret_in_the_shop_in_the_configuration_of_alloy(self):
         config = (RENDER / "monitoring-config.alloy").read_text()
         blocks = re.findall(r'remote\.kubernetes\.secret "[^"]+" \{\s*name\s*=\s*"([^"]+)"\s*namespace\s*=\s*"([^"]+)"', config)
-        self.assertEqual({(SECRET_OF_ALLOY, "shop")}, set(blocks))
+        self.assertEqual({(SECRET_OF_ALLOY, "shop"), (SECRET_OF_EXPORTER, "shop")}, set(blocks))
 
     def test_no_resource_of_the_render_is_a_secret_or_a_workload_outside_its_namespace(self):
         for doc in docs("monitoring"):
@@ -604,10 +615,255 @@ class AllowedMetrics(unittest.TestCase):
             for metric in wanted:
                 self.assertRegex(metric, f"^(?:{expressions[0]})$", f"{component} drops {metric}")
 
+    def test_the_memory_of_the_containers_and_the_pressure_of_the_node_are_allowed(self):
+        cadvisor = values()["clusterMetrics"]["cadvisor"]["metricsTuning"]
+        self.assertTrue(cadvisor["useDefaultAllowList"])
+        for metric in MEMORY_METRICS:
+            self.assertIn(metric, cadvisor["includeMetrics"])
+        for metric in PRESSURE_METRICS:
+            self.assertIn(metric, values()["hostMetrics"]["linuxHosts"]["metricsTuning"]["includeMetrics"])
+        # In the configuration that Alloy gets: the allow lists of cAdvisor and of node-exporter are lists, and name them.
+        for component, wanted in (("cadvisor", MEMORY_METRICS), ("node_exporter", PRESSURE_METRICS)):
+            expressions = self.keep_expressions(component)
+            self.assertEqual(1, len(expressions), component)
+            for metric in wanted:
+                self.assertRegex(metric, f"^(?:{expressions[0]})$", f"{component} drops {metric}")
+
     def test_the_default_list_is_kept_not_widened_to_all_metrics(self):
         for component in ("kubelet", "cadvisor", "kube_state_metrics", "node_exporter"):
             for expression in self.keep_expressions(component):
                 self.assertNotIn(expression, (".*", ".+"), component)
+
+
+def extra_config():
+    return values()["collectors"]["alloy"]["extraConfig"]
+
+
+def code_of(text):
+    """The Alloy text without its comments."""
+    return "\n".join(line for line in text.splitlines() if not line.strip().startswith("//"))
+
+
+def block(text, component, label):
+    """The text of one component of Alloy: it ends at the first closing brace that starts a line."""
+    start = text.index(f'{component} "{label}" {{')
+    return text[start : text.index("\n}\n", start) + 2]
+
+
+def relabel_rules(text, label):
+    """The rules of a prometheus.relabel as (action, source_labels, regex) in their order."""
+    found = []
+    for rule in re.findall(r"\n  rule \{(.*?)\n  \}", block(text, "prometheus.relabel", label), re.S):
+        action = re.search(r'action\s*=\s*"(\w+)"', rule)
+        regex = re.search(r'regex\s*=\s*"([^"]*)"', rule)
+        sources = re.search(r"source_labels\s*=\s*\[([^\]]*)\]", rule)
+        found.append((action.group(1) if action else "replace", re.findall(r'"([^"]+)"', sources.group(1)) if sources else [],
+                      regex.group(1) if regex else None))
+    return found
+
+
+# The metrics that the exporters of the databases send, with the number of their series on worf.pl: the databases of the shop (shop,
+# keycloak and postgres; the template databases are dropped), the states of a session, the nodes of Elasticsearch (one), the
+# collectors of the garbage of the JVM, the areas of its memory, the pools and the breakers. The test compares the names with the allow
+# lists of the manifest, so a new metric is a new line here with its count.
+DATABASES, STATES, NODES, GC_COLLECTORS, JVM_AREAS, POOLS, BREAKERS, COLORS = 3, 6, 1, 3, 2, 3, 6, 3
+POSTGRES_SERIES = {
+    "up": 1, "pg_up": 1, "pg_database_size_bytes": DATABASES, "pg_long_running_transactions": 1,
+    "pg_long_running_transactions_oldest_timestamp_seconds": 1, "pg_settings_max_connections": 1, "pg_settings_shared_buffers_bytes": 1,
+    "pg_stat_activity_count": DATABASES * STATES, "pg_stat_bgwriter_buffers_alloc_total": 1,
+    "pg_stat_checkpointer_buffers_written_total": 1, "pg_stat_checkpointer_num_requested_total": 1, "pg_stat_checkpointer_num_timed_total": 1,
+    "pg_stat_checkpointer_sync_time_total": 1, "pg_stat_checkpointer_write_time_total": 1,
+    **{f"pg_stat_database_{n}": DATABASES for n in (
+        "active_time_seconds_total", "blk_read_time", "blk_write_time", "blks_hit", "blks_read", "deadlocks", "numbackends", "temp_bytes",
+        "temp_files", "xact_commit", "xact_rollback")},
+    "pg_wal_segments": 1, "pg_wal_size_bytes": 1,
+}
+ELASTICSEARCH_SERIES = {
+    "up": 1, "elasticsearch_breakers_tripped": BREAKERS * NODES, "elasticsearch_cluster_health_active_shards": 1,
+    "elasticsearch_cluster_health_initializing_shards": 1, "elasticsearch_cluster_health_number_of_nodes": 1,
+    "elasticsearch_cluster_health_relocating_shards": 1, "elasticsearch_cluster_health_status": COLORS,
+    "elasticsearch_cluster_health_unassigned_shards": 1, "elasticsearch_filesystem_data_available_bytes": NODES,
+    "elasticsearch_filesystem_data_size_bytes": NODES, "elasticsearch_indices_indexing_index_time_seconds_total": NODES,
+    "elasticsearch_indices_indexing_index_total": NODES, "elasticsearch_indices_query_cache_count": 2 * NODES,
+    "elasticsearch_indices_query_cache_evictions": NODES, "elasticsearch_indices_query_cache_memory_size_bytes": NODES,
+    "elasticsearch_indices_request_cache_evictions": NODES, "elasticsearch_indices_request_cache_memory_size_bytes": NODES,
+    "elasticsearch_indices_search_query_time_seconds": NODES, "elasticsearch_indices_search_query_total": NODES,
+    "elasticsearch_indices_segments_memory_bytes": NODES, "elasticsearch_indices_store_size_bytes": NODES,
+    "elasticsearch_jvm_gc_collection_seconds_count": GC_COLLECTORS * NODES, "elasticsearch_jvm_gc_collection_seconds_sum": GC_COLLECTORS * NODES,
+    "elasticsearch_jvm_memory_max_bytes": NODES, "elasticsearch_jvm_memory_used_bytes": JVM_AREAS * NODES, "elasticsearch_node_stats_up": NODES,
+    "elasticsearch_os_cpu_percent": NODES, "elasticsearch_thread_pool_active_count": POOLS * NODES,
+    "elasticsearch_thread_pool_queue_count": POOLS * NODES, "elasticsearch_thread_pool_rejected_count": POOLS * NODES,
+}
+# The names of the labels that the series may have, and the ones that must never be among them: the text of a query, who runs it and
+# where from (pg_stat_statements and pg_stat_activity have them; no collector of the list reads them, and the list of the labels is the
+# second lock), and the address of a pod (a new series each time the pod is made again).
+POSTGRES_LABELS = {"__name__", "job", "instance", "datname", "state"}
+ELASTICSEARCH_LABELS = {"__name__", "job", "instance", "cluster", "name", "area", "gc", "type", "cache", "breaker", "color", "mount", "path"}
+QUERY_LABELS = {"query", "queryid", "query_id", "statement", "sql", "usename", "user", "application_name", "client_addr", "client_hostname",
+                "relname", "schemaname", "datid", "pid", "host"}
+# The new series against the 10 thousand of the free plan of Grafana Cloud: this test allows a tenth of it.
+NEW_SERIES_BUDGET = 1000
+POSTGRES_COLLECTORS = ["database", "stat_bgwriter", "stat_checkpointer", "stat_database", "wal", "long_running_transactions"]
+
+
+class ExporterConfig(unittest.TestCase):
+    """The exporters of Postgres and Elasticsearch in the configuration of Alloy (docs/features/runtime-config/spec.md, D7)."""
+
+    def test_the_series_of_the_allow_lists_are_counted_and_few(self):
+        for label, counted in (("shop_postgres", POSTGRES_SERIES), ("shop_elasticsearch", ELASTICSEARCH_SERIES)):
+            action, sources, regex = relabel_rules(extra_config(), label)[0]
+            self.assertEqual(("keep", ["__name__"]), (action, sources), label)
+            self.assertEqual(sorted(counted), sorted(regex.split("|")), f"the allow list of {label} and the table of this test differ")
+        total = sum(POSTGRES_SERIES.values()) + sum(ELASTICSEARCH_SERIES.values())
+        self.assertLessEqual(total, NEW_SERIES_BUDGET, f"{total} new series")
+        print(f"\nthe exporters of the databases: {sum(POSTGRES_SERIES.values())} series of Postgres, {sum(ELASTICSEARCH_SERIES.values())} of "
+              f"Elasticsearch, {total} together of the 10000 of the free plan ({len(POSTGRES_SERIES)} + {len(ELASTICSEARCH_SERIES)} metrics)")
+
+    def test_only_the_named_labels_leave_and_none_is_the_text_of_a_query(self):
+        self.assertFalse(POSTGRES_LABELS & QUERY_LABELS)
+        self.assertFalse(ELASTICSEARCH_LABELS & QUERY_LABELS)
+        for label, allowed in (("shop_postgres", POSTGRES_LABELS), ("shop_elasticsearch", ELASTICSEARCH_LABELS)):
+            action, _, regex = relabel_rules(extra_config(), label)[-1]
+            # The last rule: no rule after it can bring a label of another name.
+            self.assertEqual("labelkeep", action, f"{label}: the last rule is not the list of the labels")
+            self.assertEqual(sorted(allowed), sorted(regex.split("|")), label)
+
+    def test_the_exporter_of_postgres_has_the_listed_collectors_and_never_the_statements(self):
+        code = code_of(extra_config())
+        postgres = block(code, "prometheus.exporter.postgres", "shop")
+        collectors = re.search(r"enabled_collectors\s*=\s*\[([^\]]*)\]", postgres)
+        self.assertEqual(POSTGRES_COLLECTORS, re.findall(r'"([^"]+)"', collectors.group(1)), "the list replaces the default list of collectors")
+        self.assertNotIn("stat_statements", code)
+        for attribute in ("custom_queries_config_path", "autodiscovery", "disable_default_metrics", "include_databases", "exclude_databases"):
+            self.assertNotIn(attribute, postgres)
+        for metric in POSTGRES_SERIES:
+            self.assertNotIn("statements", metric)
+
+    def test_the_dsn_is_a_secret_value_of_a_secret_of_the_cluster_and_nowhere_in_text(self):
+        code = code_of(extra_config())
+        self.assertRegex(block(code, "remote.kubernetes.secret", "shop_exporter"), r'name\s*=\s*"shop-exporter"\s*namespace\s*=\s*"shop"')
+        self.assertRegex(block(code, "prometheus.exporter.postgres", "shop"),
+                         r'data_source_names\s*=\s*\[remote\.kubernetes\.secret\.shop_exporter\.data\["POSTGRES_EXPORTER_DSN"\]\]')
+        # A value of the type secret is not shown by Alloy; nonsensitive would make a string of it.
+        self.assertNotIn("nonsensitive", code)
+        self.assertNotIn("postgresql://", code)
+        self.assertNotIn("postgres://", code)
+        # Not in a ConfigMap: the rendered configuration of Alloy and the ConfigMaps of the chart of the shop have no DSN and no password.
+        self.assertNotIn("postgresql://", (RENDER / "monitoring-config.alloy").read_text())
+        for case in ("prod", "ci", "load"):
+            for config_map in of_kind(case, "ConfigMap"):
+                self.assertNotIn("postgresql://exporter", str(config_map.get("data")), f"{case}/{name(config_map)}")
+        password = {name(s): s["stringData"] for s in of_kind("ci", "Secret")}["shop-secrets"]["EXPORTER_DB_PASSWORD"]
+        for config_map in of_kind("ci", "ConfigMap"):
+            self.assertNotIn(password, str(config_map.get("data")), name(config_map))
+
+    def test_the_exporter_of_elasticsearch_has_the_statistics_of_the_cluster_and_the_nodes_only(self):
+        elasticsearch = block(code_of(extra_config()), "prometheus.exporter.elasticsearch", "shop")
+        self.assertRegex(elasticsearch, r'address\s*=\s*"http://elasticsearch\.shop\.svc\.cluster\.local:9200"')
+        self.assertEqual(["all"], re.findall(r"^\s*(\w+)\s*=\s*true\s*$", elasticsearch, re.M), "more than the nodes and the health is on")
+        for attribute in ("indices", "indices_settings", "shards", "snapshots", "cluster_settings", "slm", "aliases", "data_stream"):
+            self.assertNotRegex(elasticsearch, rf"^\s*{attribute}\s*=\s*true", attribute)
+
+    def test_the_series_go_through_the_allow_list_to_the_destination_of_the_metrics(self):
+        text = extra_config()
+        for exporter, label in (("postgres", "shop_postgres"), ("elasticsearch", "shop_elasticsearch")):
+            scrape = block(text, "prometheus.scrape", label)
+            self.assertIn(f"targets         = prometheus.exporter.{exporter}.shop.targets", scrape)
+            self.assertIn(f"forward_to      = [prometheus.relabel.{label}.receiver]", scrape)
+            self.assertIn("forward_to = [prometheus.remote_write.grafana_metrics.receiver]", block(text, "prometheus.relabel", label))
+        config = (RENDER / "monitoring-config.alloy").read_text()
+        self.assertIn('prometheus.remote_write "grafana_metrics" {', config)
+        # Nothing but the scrape of the exporter reads its targets.
+        for component in ("prometheus.exporter.postgres", "prometheus.exporter.elasticsearch"):
+            self.assertEqual(1, config.count(f'{component} "shop"'))
+            self.assertEqual(1, config.count(f"{component}.shop.targets"))
+
+    def test_the_rendered_configuration_has_the_exporters_and_the_chart_still_has_its_own_metrics(self):
+        config = (RENDER / "monitoring-config.alloy").read_text()
+        for component in ('prometheus.exporter.postgres "shop"', 'prometheus.exporter.elasticsearch "shop"', 'remote.kubernetes.secret "shop_exporter"',
+                          'prometheus.relabel "shop_postgres"', 'prometheus.relabel "shop_elasticsearch"', 'prometheus.relabel "kube_state_metrics"',
+                          'prometheus.relabel "cadvisor"', 'prometheus.relabel "node_exporter"'):
+            self.assertIn(component, config)
+
+
+class ExporterSecret(unittest.TestCase):
+    """The Secret that Alloy reads for the exporter of Postgres: in ci the chart makes it, in prod it is sealed with the password."""
+
+    def test_the_dsn_is_the_role_exporter_with_the_password_of_the_secret_of_the_shop(self):
+        secrets = {name(s): s["stringData"] for s in of_kind("ci", "Secret")}
+        password = secrets["shop-secrets"]["EXPORTER_DB_PASSWORD"]
+        self.assertEqual({"POSTGRES_EXPORTER_DSN": f"postgresql://exporter:{password}@postgres.shop.svc.cluster.local:5432/postgres?sslmode=disable"},
+                         secrets["shop-exporter"])
+
+    def test_no_workload_of_the_shop_reads_it(self):
+        self.assertEqual([], of_kind("prod", "Secret"))
+        for case in ("prod", "ci", "load"):
+            for workload in of_kind(case, *WORKLOADS):
+                spec = pod_spec(workload)
+                for container in spec["containers"] + spec.get("initContainers", []):
+                    for source in container.get("envFrom", []):
+                        self.assertNotEqual(SECRET_OF_EXPORTER, source.get("secretRef", {}).get("name"), f"{case}/{name(workload)}")
+                    for variable in container.get("env", []):
+                        self.assertNotEqual(SECRET_OF_EXPORTER, variable.get("valueFrom", {}).get("secretKeyRef", {}).get("name"))
+
+    def test_only_alloy_reads_it_and_with_the_one_role_of_the_secrets_of_alloy(self):
+        roles = [r for r in of_kind("monitoring", "Role", "ClusterRole")
+                 if any(SECRET_OF_EXPORTER in rule.get("resourceNames", []) for rule in r.get("rules") or [])]
+        self.assertEqual(1, len(roles), "more than one role gives access to the Secret of the exporter")
+        self.assertEqual(("Role", "shop"), (roles[0]["kind"], roles[0]["metadata"]["namespace"]))
+        self.assertEqual(SECRETS_OF_ALLOY, roles[0]["rules"][0]["resourceNames"])
+        # The Role is bound to Alloy only (the RBAC test above says it for every Role with Secrets; here the Secret is named).
+        bindings = [b for b in of_kind("monitoring", "RoleBinding") if b["roleRef"]["name"] == name(roles[0])]
+        self.assertEqual(1, len(bindings))
+        self.assertTrue(only(bindings[0]["subjects"], COLLECTOR, "shop"), bindings[0]["subjects"])
+
+
+class ExportersRun(unittest.TestCase):
+    """scripts/exporters.sh: the exporters in a real Alloy, with no Postgres and no Elasticsearch to scrape (the path of the error)."""
+
+    @staticmethod
+    def sink():
+        rows = [json.loads(line) for line in (RENDER / "exporters-sink.jsonl").read_text().splitlines() if line.strip()]
+        assert not [r for r in rows if "error" in r], "the receiver could not read a push of Alloy"
+        return [r for r in rows if "labels" in r]
+
+    def test_alloy_runs_on_while_the_databases_are_not_there(self):
+        self.assertEqual("running", (RENDER / "exporters-state.txt").read_text().strip())
+        log = (RENDER / "exporters-alloy.log").read_text()
+        # The run is a real one: both exporters did meet a database that is not there, and said so.
+        self.assertRegex(log, r'component_id=prometheus\.exporter\.postgres\.shop err="[^"]*(?:lookup|dial tcp|connection)')
+        self.assertRegex(log, r'level=(?:error|warn) msg="[^"]*" component_path=/ component_id=prometheus\.exporter\.elasticsearch\.shop')
+        self.assertNotRegex(log, r"(?m)^(Error|panic)")
+
+    def test_the_other_metrics_and_the_state_of_the_exporters_still_arrive(self):
+        series = self.sink()
+        names = {s["labels"]["__name__"] for s in series}
+        self.assertIn("alloy_build_info", names, "the other metrics stopped")
+        up = {s["labels"]["job"]: s["value"] for s in series if s["labels"]["__name__"] == "up"}
+        self.assertEqual({"integrations/postgres": 1.0, "integrations/elasticsearch": 1.0}, up)
+        by_name = {s["labels"]["__name__"]: s["value"] for s in series}
+        # The exporters say themselves that their database is not there: 0, which a rule can alert on.
+        self.assertEqual(0.0, by_name["pg_up"])
+        self.assertEqual(0.0, by_name["elasticsearch_node_stats_up"])
+
+    def test_only_the_named_labels_and_never_the_password_of_the_dsn(self):
+        allowed = {"integrations/postgres": POSTGRES_LABELS, "integrations/elasticsearch": ELASTICSEARCH_LABELS}
+        series = [s for s in self.sink() if s["labels"].get("job") in allowed]
+        self.assertTrue(series)
+        for one in series:
+            self.assertLessEqual(set(one["labels"]), allowed[one["labels"]["job"]], one)
+        for text in ((RENDER / "exporters-sink.jsonl").read_text(), (RENDER / "exporters-alloy.log").read_text()):
+            self.assertNotIn("planted-dsn-password", text)
+
+    def test_the_run_used_the_exporters_of_the_manifest_with_the_one_substitution_of_the_secret(self):
+        ran = (RENDER / "exporters-config.alloy").read_text()
+        self.assertNotIn("remote.kubernetes", ran)
+        for component, label in (("prometheus.exporter.postgres", "shop"), ("prometheus.exporter.elasticsearch", "shop"),
+                                 ("prometheus.relabel", "shop_postgres"), ("prometheus.relabel", "shop_elasticsearch"),
+                                 ("prometheus.scrape", "shop_postgres"), ("prometheus.scrape", "shop_elasticsearch")):
+            wanted = block(extra_config(), component, label).replace('remote.kubernetes.secret.shop_exporter.data["POSTGRES_EXPORTER_DSN"]',
+                                                                    "local.file.shop_exporter.content")
+            self.assertEqual(wanted, block(ran, component, label), f"{component} {label}")
 
 
 class AlertRules(unittest.TestCase):
