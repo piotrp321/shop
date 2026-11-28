@@ -36,6 +36,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
     private const string ORDER_PAYMENTS = 'Version20261115160100IndexOrderPaidAt';
     private const string CUSTOMER_SEARCH = 'Version20261116090100IndexCustomerSearch';
     private const string PRODUCT_BIGRAMS = 'Version20261127100000IndexCatalogProductNameBigrams';
+    private const string PRODUCT_CATEGORY = 'Version20261128100000IndexCatalogProductByCategory';
 
     private Connection $connection;
     private string $migrationClass = '';
@@ -86,6 +87,26 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             'catalog_product',
             ['catalog_product_name_bigrams_idx' => 'USING gin (catalog_name_bigrams(name))'],
             ['catalog_product_name_bigrams_idx' => 'USING gin (catalog_name_bigrams((name)::text))'],
+        ];
+        yield 'the product indexes of a category' => [
+            self::PRODUCT_CATEGORY,
+            'catalog_product',
+            [
+                'catalog_product_category_name_id_idx' => '(primary_category_id, name, id)',
+                'catalog_product_category_updated_at_id_idx' => '(primary_category_id, updated_at, id)',
+                'catalog_product_category_draft_name_id_idx' => "(primary_category_id, name, id) WHERE status = 'draft'",
+                'catalog_product_category_draft_updated_at_id_idx' => "(primary_category_id, updated_at, id) WHERE status = 'draft'",
+                'catalog_product_category_without_images_name_id_idx' => "(primary_category_id, name, id) WHERE images = '[]'::jsonb",
+                'catalog_product_category_without_images_updated_at_id_idx' => "(primary_category_id, updated_at, id) WHERE images = '[]'::jsonb",
+            ],
+            [
+                'catalog_product_category_name_id_idx' => 'USING btree (primary_category_id, name, id)',
+                'catalog_product_category_updated_at_id_idx' => 'USING btree (primary_category_id, updated_at, id)',
+                'catalog_product_category_draft_name_id_idx' => "USING btree (primary_category_id, name, id) WHERE ((status)::text = 'draft'::text)",
+                'catalog_product_category_draft_updated_at_id_idx' => "USING btree (primary_category_id, updated_at, id) WHERE ((status)::text = 'draft'::text)",
+                'catalog_product_category_without_images_name_id_idx' => "USING btree (primary_category_id, name, id) WHERE (images = '[]'::jsonb)",
+                'catalog_product_category_without_images_updated_at_id_idx' => "USING btree (primary_category_id, updated_at, id) WHERE (images = '[]'::jsonb)",
+            ],
         ];
         yield 'the customer indexes of the search by fragment' => [
             self::CUSTOMER_SEARCH,

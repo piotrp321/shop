@@ -27,6 +27,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'catalog_product_updated_at_id_idx', columns: ['updated_at', 'id'])]
 #[ORM\Index(name: 'catalog_product_draft_updated_at_id_idx', columns: ['updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
 #[ORM\Index(name: 'catalog_product_without_images_idx', columns: ['id'], options: ['where' => "(images = '[]'::jsonb)"])]
+// The products of a category in the order of both sorts, whole, the drafts and the ones without images (the migration builds them
+// CONCURRENTLY; the mapping only has to equal the schema).
+#[ORM\Index(name: 'catalog_product_category_name_id_idx', columns: ['primary_category_id', 'name', 'id'])]
+#[ORM\Index(name: 'catalog_product_category_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'])]
+#[ORM\Index(name: 'catalog_product_category_draft_name_id_idx', columns: ['primary_category_id', 'name', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+#[ORM\Index(name: 'catalog_product_category_draft_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+#[ORM\Index(name: 'catalog_product_category_without_images_name_id_idx', columns: ['primary_category_id', 'name', 'id'], options: ['where' => "(images = '[]'::jsonb)"])]
+#[ORM\Index(name: 'catalog_product_category_without_images_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'], options: ['where' => "(images = '[]'::jsonb)"])]
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';

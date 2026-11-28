@@ -1,0 +1,129 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ravotar%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY p.name ASC, p.id ASC LIMIT 26
+
+Limit  (cost=3797.40..3797.47 rows=26 width=71) (actual time=18.971..18.975 rows=0.00 loops=1)
+  Buffers: shared hit=15777
+  ->  Sort  (cost=3797.40..3797.59 rows=75 width=71) (actual time=18.970..18.971 rows=0.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=15777
+        ->  Bitmap Heap Scan on catalog_product p  (cost=2219.89..3795.27 rows=75 width=71) (actual time=18.959..18.960 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 2980
+              Heap Blocks: exact=3041
+              Buffers: shared hit=15771
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2212.54 rows=100 width=0) (actual time=3.522..3.522 rows=3162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=682
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.005..0.015 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.003..0.003 rows=0.00 loops=2980)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=12043
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.007 rows=33.95 loops=621)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=3102
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=8941
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 2980
+                                  Buffers: shared hit=8941
+Planning:
+  Buffers: shared hit=698
+Planning Time: 1.364 ms
+Execution Time: 19.051 ms
+
+=====
+Limit  (cost=3797.40..3797.47 rows=26 width=71) (actual time=19.357..19.361 rows=0.00 loops=1)
+  Buffers: shared hit=15777
+  ->  Sort  (cost=3797.40..3797.59 rows=75 width=71) (actual time=19.357..19.358 rows=0.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=15777
+        ->  Bitmap Heap Scan on catalog_product p  (cost=2219.89..3795.27 rows=75 width=71) (actual time=19.343..19.344 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 2980
+              Heap Blocks: exact=3041
+              Buffers: shared hit=15771
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2212.54 rows=100 width=0) (actual time=3.428..3.428 rows=3162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=682
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.004..0.013 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.003..0.003 rows=0.00 loops=2980)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=12043
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.007 rows=33.95 loops=621)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=3102
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=8941
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 2980
+                                  Buffers: shared hit=8941
+Planning:
+  Buffers: shared hit=698
+Planning Time: 1.333 ms
+Execution Time: 19.429 ms
+
+=====
+Limit  (cost=3797.40..3797.47 rows=26 width=71) (actual time=18.459..18.462 rows=0.00 loops=1)
+  Buffers: shared hit=15777
+  ->  Sort  (cost=3797.40..3797.59 rows=75 width=71) (actual time=18.458..18.459 rows=0.00 loops=1)
+        Sort Key: p.name, p.id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=15777
+        ->  Bitmap Heap Scan on catalog_product p  (cost=2219.89..3795.27 rows=75 width=71) (actual time=18.448..18.449 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%ravotar%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 2980
+              Heap Blocks: exact=3041
+              Buffers: shared hit=15771
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2212.54 rows=100 width=0) (actual time=3.361..3.361 rows=3162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%ravotar%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=682
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.003..0.013 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.003..0.003 rows=0.00 loops=2980)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=12043
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.007 rows=33.95 loops=621)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=3102
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=8941
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.001..0.001 rows=0.21 loops=2980)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 2980
+                                  Buffers: shared hit=8941
+Planning:
+  Buffers: shared hit=698
+Planning Time: 1.275 ms
+Execution Time: 18.530 ms

@@ -1,0 +1,138 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name, w0.updated_at FROM catalog_product w0 ORDER BY w0.updated_at DESC, w0.id DESC LIMIT 20000) w JOIN catalog_product p ON p.id = w.id WHERE w.name ILIKE '%rowerowa%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY w.updated_at DESC, w.id DESC LIMIT 26
+
+Limit  (cost=8.19..1452.33 rows=26 width=95) (actual time=181.947..181.952 rows=0.00 loops=1)
+  Buffers: shared hit=21992 read=7510
+  ->  Nested Loop  (cost=8.19..50497.57 rows=909 width=95) (actual time=181.946..181.947 rows=0.00 loops=1)
+        Buffers: shared hit=21992 read=7510
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=1212 width=24) (actual time=0.265..34.655 rows=1181.00 loops=1)
+              Filter: ((w.name)::text ~~* '%rowerowa%'::text)
+              Rows Removed by Filter: 18819
+              Buffers: shared hit=14512 read=5557
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.018..24.930 rows=20000.00 loops=1)
+                    Buffers: shared hit=14512 read=5557
+                    ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.018..24.072 rows=20000.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=14512 read=5557
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=7.76..27.26 rows=1 width=71) (actual time=0.124..0.124 rows=0.00 loops=1181)
+              Index Cond: (id = w.id)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 1
+              Index Searches: 1181
+              Buffers: shared hit=7480 read=1953
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.062..0.128 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=2 read=3
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.006..0.006 rows=0.00 loops=1181)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=3881 read=823
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.008 rows=33.86 loops=232)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 145
+                            Buffers: shared hit=1157
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.004..0.004 rows=0.20 loops=1181)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=2724 read=823
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.004..0.004 rows=0.20 loops=1181)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 3
+                                  Index Searches: 1181
+                                  Buffers: shared hit=2724 read=823
+Planning:
+  Buffers: shared hit=621 read=135
+Planning Time: 1.640 ms
+Execution Time: 181.992 ms
+
+=====
+Limit  (cost=8.19..1452.33 rows=26 width=95) (actual time=30.587..30.593 rows=0.00 loops=1)
+  Buffers: shared hit=28551 read=951
+  ->  Nested Loop  (cost=8.19..50497.57 rows=909 width=95) (actual time=30.587..30.588 rows=0.00 loops=1)
+        Buffers: shared hit=28551 read=951
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=1212 width=24) (actual time=0.279..23.095 rows=1181.00 loops=1)
+              Filter: ((w.name)::text ~~* '%rowerowa%'::text)
+              Rows Removed by Filter: 18819
+              Buffers: shared hit=19238 read=831
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.081..13.918 rows=20000.00 loops=1)
+                    Buffers: shared hit=19238 read=831
+                    ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.080..13.157 rows=20000.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=19238 read=831
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=7.76..27.26 rows=1 width=71) (actual time=0.006..0.006 rows=0.00 loops=1181)
+              Index Cond: (id = w.id)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 1
+              Index Searches: 1181
+              Buffers: shared hit=9313 read=120
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.010..0.022 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.004..0.004 rows=0.00 loops=1181)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=4669 read=35
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.007 rows=33.86 loops=232)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 145
+                            Buffers: shared hit=1157
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=1181)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=3512 read=35
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=1181)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 3
+                                  Index Searches: 1181
+                                  Buffers: shared hit=3512 read=35
+Planning:
+  Buffers: shared hit=678 read=78
+Planning Time: 1.493 ms
+Execution Time: 30.630 ms
+
+=====
+Limit  (cost=8.19..1452.33 rows=26 width=95) (actual time=28.734..28.740 rows=0.00 loops=1)
+  Buffers: shared hit=29502
+  ->  Nested Loop  (cost=8.19..50497.57 rows=909 width=95) (actual time=28.734..28.735 rows=0.00 loops=1)
+        Buffers: shared hit=29502
+        ->  Subquery Scan on w  (cost=0.42..17453.43 rows=1212 width=24) (actual time=0.203..21.546 rows=1181.00 loops=1)
+              Filter: ((w.name)::text ~~* '%rowerowa%'::text)
+              Rows Removed by Filter: 18819
+              Buffers: shared hit=20069
+              ->  Limit  (cost=0.42..17203.43 rows=20000 width=62) (actual time=0.014..12.185 rows=20000.00 loops=1)
+                    Buffers: shared hit=20069
+                    ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product w0  (cost=0.42..859649.20 rows=999417 width=62) (actual time=0.014..11.413 rows=20000.00 loops=1)
+                          Index Searches: 1
+                          Buffers: shared hit=20069
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=7.76..27.26 rows=1 width=71) (actual time=0.006..0.006 rows=0.00 loops=1181)
+              Index Cond: (id = w.id)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Rows Removed by Filter: 1
+              Index Searches: 1181
+              Buffers: shared hit=9433
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.009..0.020 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (actual time=0.004..0.004 rows=0.00 loops=1181)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      Buffers: shared hit=4704
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.001..0.007 rows=33.86 loops=232)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 145
+                            Buffers: shared hit=1157
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=1181)
+                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                            Buffers: shared hit=3547
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (actual time=0.002..0.002 rows=0.20 loops=1181)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 3
+                                  Index Searches: 1181
+                                  Buffers: shared hit=3547
+Planning:
+  Buffers: shared hit=756
+Planning Time: 1.264 ms
+Execution Time: 28.782 ms
