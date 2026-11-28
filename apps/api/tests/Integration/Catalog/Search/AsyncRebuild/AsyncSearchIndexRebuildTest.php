@@ -10,6 +10,7 @@ use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchRebuildRuns;
 use App\Catalog\Application\Search\AsyncProductSearchIndexRebuild;
+use App\Catalog\Application\Search\ForeignRebuildBatch;
 use App\Catalog\Application\Search\ProductBatchIndexer;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
 use App\Catalog\Application\Search\ProductRebuildBatch;
@@ -199,6 +200,32 @@ final class AsyncSearchIndexRebuildTest extends KernelTestCase
 
         self::assertSame(SearchRebuildStatus::Succeeded, $this->runs->get($run->id)?->status);
         self::assertSame($ids, $this->indexedIds());
+    }
+
+    public function testABatchThatIsNotOneTheProducerSentWritesNothingToTheIndex(): void
+    {
+        $ids = $this->createProducts(3);
+        $this->command('catalog:reindex')->execute(['--async' => true, '--batch-size' => '2']);
+        $run = $this->runs->active(AsyncProductSearchIndexRebuild::DOCUMENT_TYPE);
+        self::assertNotNull($run);
+        $real = $this->transport('indexing')->getSent()[0]->getMessage();
+        \assert($real instanceof IndexDocuments);
+
+        // A valid UUID of no product, a real product under a number never sent, and batch 0 with one id of it left out.
+        foreach ([[['01990000-0000-7000-8000-000000000001'], 0], [[$ids[2]], 7], [[$real->ids[0]], 0]] as [$forged, $batch]) {
+            $es = new HookedMaintenance($this->maintenance);
+            $es->beforeWrite = static function (): void {
+                self::fail('A batch the producer never sent reached the bulk write.');
+            };
+            try {
+                $this->batchOf($es, new Envelope(new IndexDocuments('product', $forged, $run->id, $batch)));
+                self::fail('Expected the batch to be refused.');
+            } catch (ForeignRebuildBatch) {
+            }
+            self::assertNotNull($es->beforeWrite, 'no write was attempted');
+        }
+        self::assertSame(0, $this->runs->get($run->id)?->doneBatches);
+        $this->command('catalog:reindex:abort')->execute(['--force' => true]);
     }
 
     public function testAProductThatTheBatchesMissedFailsTheVerificationAgainstTheCatalogAndTheAliasStays(): void

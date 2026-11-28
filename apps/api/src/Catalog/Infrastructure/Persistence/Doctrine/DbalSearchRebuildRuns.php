@@ -78,6 +78,14 @@ final readonly class DbalSearchRebuildRuns implements SearchRebuildRuns
         );
     }
 
+    public function isRegisteredBatch(string $runId, int $batch, array $ids): bool
+    {
+        return self::fingerprint($ids) === $this->connection->fetchOne(
+            'SELECT ids_hash FROM catalog_search_rebuild_batch WHERE run_id = ? AND batch = ?',
+            [$runId, $batch],
+        );
+    }
+
     public function countBatch(string $runId, int $batch, array $ids, int $documents, \DateTimeImmutable $now): ?SearchRebuildRun
     {
         $this->connection->beginTransaction();

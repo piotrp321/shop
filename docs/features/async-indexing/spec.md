@@ -312,7 +312,9 @@ i usuwa jego nowy indeks, jeśli nie wskazuje go alias. Jego wiadomości odtworz
 działają tylko na przebieg niekońcowy, więc nie robią nic. Bez aktywnego przebiegu kończy się kodem 0.
 
 **Paczki a stan przebiegu (paczka w trakcie zapisu podczas abortu lub finalizacji).** Handler paczki ma stałą kolejność:
-(1) czyta przebieg bez blokady i kończy bez zapisu, gdy nie jest `producing`/`running`; (2) zapisuje do `target_index`
+(1) czyta przebieg bez blokady i kończy bez zapisu, gdy nie jest `producing`/`running`, a paczkę, której producent nie
+zarejestrował z tymi identyfikatorami, odrzuca do `failed` bez zapisu (rozliczenie sprawdza to jeszcze raz w swojej
+transakcji); (2) zapisuje do `target_index`
 (bez transakcji); (3) rozlicza warunkowym `UPDATE … WHERE status IN ('producing','running')` i wiersz paczki w jednej
 transakcji; 0 zmienionych wierszy (przebieg już `aborted`, `failed` albo `finalizing`) kończy się bez skutku.
 `abort` nie czeka na paczki w trakcie zapisu. Skutki, bez dodatkowego mechanizmu:

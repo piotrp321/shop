@@ -13,7 +13,8 @@ use Psr\Log\NullLogger;
 
 /**
  * One batch of an asynchronous rebuild run (docs/features/async-indexing/spec.md, "Paczki a stan przebiegu"), always in
- * this order: (1) the run is read without a lock and a run that no longer takes batches ends here, without a write;
+ * this order: (1) the run is read without a lock and a run that no longer takes batches ends here, without a write, and
+ * so does a batch the producer did not register with these ids (refused, {@see ForeignRebuildBatch});
  * (2) the version is taken, the products are read and the batch is written to the target index of the run by
  * {@see ProductBatchIndexer}, outside any transaction; (3) the batch is counted once, conditionally on the status and
  * only as the producer registered it (its number and its ids), so a batch whose run was aborted, failed or is finalizing
@@ -51,6 +52,10 @@ final readonly class ProductRebuildBatch
             return;
         }
 
+        // Before the write (the count checks it again in its transaction): a batch the producer never sent writes nothing.
+        if (!$this->runs->isRegisteredBatch($runId, $batch, $ids)) {
+            throw new ForeignRebuildBatch(\sprintf('The run %s did not send batch %d with these ids; nothing is written.', $runId, $batch));
+        }
         $version = ProductIndexing::version($this->clock->now());
         $snapshots = $this->source->findMany($ids);
         $written = $this->batches->write($run->targetIndex, $snapshots, $version);

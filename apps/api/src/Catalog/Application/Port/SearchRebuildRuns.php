@@ -45,6 +45,14 @@ interface SearchRebuildRuns
     public function registerBatch(string $runId, int $batch, array $ids): void;
 
     /**
+     * Whether the producer registered this batch with exactly these ids (counted or not): checked before the write, so a
+     * batch the run never sent writes nothing.
+     *
+     * @param list<string> $ids
+     */
+    public function isRegisteredBatch(string $runId, int $batch, array $ids): bool;
+
+    /**
      * Counts a written batch once: a batch already counted, or a run that no longer takes batches, counts nothing. The
      * batch that completes a run whose producer has finished moves it to `finalizing` and sends its finalization in
      * the same transaction.
