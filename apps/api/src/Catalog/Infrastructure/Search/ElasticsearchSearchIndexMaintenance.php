@@ -299,7 +299,8 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
             throw new SearchIndexError(\sprintf('Refusing to delete "%s": the alias "%s" points to it.', $index, $this->alias));
         }
 
-        $this->request('delete index', fn () => $this->longRequestClient->indices()->delete(['index' => $index]));
+        // A missing index counts as deleted, so a repeated deletion (a retried finalization) succeeds.
+        $this->request('delete index', fn () => $this->longRequestClient->indices()->delete(['index' => $index]), [404]);
     }
 
     /**

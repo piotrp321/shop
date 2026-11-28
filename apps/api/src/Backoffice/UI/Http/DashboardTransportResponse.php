@@ -11,7 +11,7 @@ use OpenApi\Attributes as OA;
 final readonly class DashboardTransportResponse
 {
     public function __construct(
-        #[OA\Property(description: 'The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.', example: 'outbox')]
+        #[OA\Property(description: 'The name of the transport: outbox, scheduled, payment_simulator, promotions, jobs or indexing_finalize.', example: 'outbox')]
         public string $name,
         #[OA\Property(description: 'Messages that a worker could take now (not handed to a worker, due), counted up to 1000.', example: 0)]
         public int $ready,

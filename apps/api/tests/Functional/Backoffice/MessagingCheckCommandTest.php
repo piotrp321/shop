@@ -46,6 +46,7 @@ final class MessagingCheckCommandTest extends KernelTestCase
                 'payment_simulator: ready 0',
                 'promotions: ready 0',
                 'jobs: ready 0',
+                'indexing_finalize: ready 0',
             ],
             $this->lines($tester),
         );

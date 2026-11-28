@@ -1,0 +1,42 @@
+{
+    "class": "App\\Shared\\Infrastructure\\Indexing\\IndexDocuments",
+    "records": [
+        {
+            "serializer": "php",
+            "variant": "retried",
+            "encoded": {
+                "body": "O:36:\\\"Symfony\\\\Component\\\\Messenger\\\\Envelope\\\":2:{s:44:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0stamps\\\";a:5:{s:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\";a:1:{i:0;O:46:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\\":1:{s:55:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\BusNameStamp\\0busName\\\";s:12:\\\"indexing.bus\\\";}}s:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\";a:1:{i:0;O:58:\\\"App\\\\Shared\\\\Infrastructure\\\\Observability\\\\CorrelationIdStamp\\\":1:{s:2:\\\"id\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99\\\";}}s:53:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\TransportNamesStamp\\\";a:1:{i:0;O:53:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\TransportNamesStamp\\\":1:{s:69:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\TransportNamesStamp\\0transportNames\\\";a:1:{i:0;s:8:\\\"indexing\\\";}}}s:49:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\\";a:1:{i:0;O:49:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\\":2:{s:64:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\0redeliveredAt\\\";O:33:\\\"Symfony\\\\Component\\\\Clock\\\\DatePoint\\\":3:{s:4:\\\"date\\\";s:26:\\\"2026-11-28 09:20:35.249573\\\";s:13:\\\"timezone_type\\\";i:3;s:8:\\\"timezone\\\";s:3:\\\"UTC\\\";}s:61:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\RedeliveryStamp\\0retryCount\\\";i:1;}}s:44:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\\";a:1:{i:0;O:44:\\\"Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\\":1:{s:51:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Stamp\\\\DelayStamp\\0delay\\\";i:3000;}}}s:45:\\\"\\0Symfony\\\\Component\\\\Messenger\\\\Envelope\\0message\\\";O:49:\\\"App\\\\Shared\\\\Infrastructure\\\\Indexing\\\\IndexDocuments\\\":4:{s:12:\\\"documentType\\\";s:7:\\\"product\\\";s:3:\\\"ids\\\";a:2:{i:0;s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61\\\";i:1;s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62\\\";}s:5:\\\"runId\\\";s:36:\\\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60\\\";s:5:\\\"batch\\\";i:3;}}"
+            }
+        },
+        {
+            "serializer": "json",
+            "variant": "sent",
+            "encoded": {
+                "body": "{\"documentType\":\"product\",\"ids\":[\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61\",\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62\"],\"runId\":\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60\",\"batch\":3}",
+                "headers": {
+                    "type": "App\\Shared\\Infrastructure\\Indexing\\IndexDocuments",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\BusNameStamp": "[{\"busName\":\"indexing.bus\"}]",
+                    "X-Message-Stamp-App\\Shared\\Infrastructure\\Observability\\CorrelationIdStamp": "[{\"id\":\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99\"}]",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\TransportNamesStamp": "[{\"transportNames\":[\"indexing\"]}]",
+                    "Content-Type": "application\/json"
+                }
+            }
+        },
+        {
+            "serializer": "json",
+            "variant": "retried",
+            "encoded": {
+                "body": "{\"documentType\":\"product\",\"ids\":[\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61\",\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62\"],\"runId\":\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60\",\"batch\":3}",
+                "headers": {
+                    "type": "App\\Shared\\Infrastructure\\Indexing\\IndexDocuments",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\BusNameStamp": "[{\"busName\":\"indexing.bus\"}]",
+                    "X-Message-Stamp-App\\Shared\\Infrastructure\\Observability\\CorrelationIdStamp": "[{\"id\":\"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99\"}]",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\TransportNamesStamp": "[{\"transportNames\":[\"indexing\"]}]",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\RedeliveryStamp": "[{\"retryCount\":1,\"redeliveredAt\":\"2026-11-28T09:20:35+00:00\"}]",
+                    "X-Message-Stamp-Symfony\\Component\\Messenger\\Stamp\\DelayStamp": "[{\"delay\":3000}]",
+                    "Content-Type": "application\/json"
+                }
+            }
+        }
+    ]
+}

@@ -14,3 +14,6 @@ framework:
                     delay: 2
                     multiplier: 3
                     max_delay: 600
+            # The batches of the full rebuild on the `test` vhost too.
+            indexing:
+                dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/indexing'

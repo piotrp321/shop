@@ -36,7 +36,7 @@ final readonly class MessagingStatisticsAdapter implements MessagingStatistics
     private const string FAILED_QUEUE = 'failed';
 
     /** The Doctrine transports that a worker takes messages from, in the order they are reported. */
-    public const array TRANSPORTS = ['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs'];
+    public const array TRANSPORTS = ['outbox', 'scheduled', 'payment_simulator', 'promotions', 'jobs', 'indexing_finalize'];
 
     /** Messages counted in a queue: the count stops one above, so that it says "more than" without reading the queue. */
     private const int COUNT_LIMIT = 1000;

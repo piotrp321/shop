@@ -27,12 +27,13 @@ use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
 final class FailedConsumeBlockTest extends MessagingKernelTestCase
 {
     /**
-     * The commands of the two workers in compose (infra/docker-compose.yml) and the chart (the worker and
+     * The commands of the workers in compose (infra/docker-compose.yml) and the chart (the worker, worker-indexing and
      * worker-commands Deployments), argument for argument.
      */
     private const array WORKER_COMMANDS = [
         'worker' => ['outbox', 'events', '--time-limit=86400', '--memory-limit=192M'],
         'worker-commands' => ['payment_simulator', 'scheduled', 'promotions', 'jobs', '--time-limit=86400', '--memory-limit=192M'],
+        'worker-indexing' => ['indexing_finalize', 'indexing', '--time-limit=86400', '--memory-limit=192M'],
     ];
 
     protected function setUp(): void

@@ -13,6 +13,12 @@ framework:
             query.bus:
                 middleware:
                     - App\Shared\Infrastructure\Observability\CorrelationIdMiddleware
+            # Without doctrine_transaction: the handlers of the full rebuild of the search index (a batch, its
+            # finalization) wait seconds to minutes for Elasticsearch, which no transaction may span; their short
+            # writes to the database are explicit transactions (docs/features/async-indexing/spec.md, "Szyna").
+            indexing.bus:
+                middleware:
+                    - App\Shared\Infrastructure\Observability\CorrelationIdMiddleware
             event.bus:
                 middleware:
                     - App\Shared\Infrastructure\Observability\CorrelationIdMiddleware
@@ -103,6 +109,35 @@ framework:
                     max_retries: 5
                     delay: 1000
                     multiplier: 3
+            # The batches of an asynchronous full rebuild of the search index (IndexDocuments), sent by the producer of
+            # catalog:reindex --async straight to RabbitMQ, without the outbox: a lost batch leaves the run unfinished,
+            # and the run is repeated (docs/features/async-indexing/spec.md, D2). Consumed by worker-indexing only, so
+            # the queue of a rebuild never delays the events of the shop. A transient failure of the index or of the
+            # offers is retried after 1, 3, 9, 27 and 81 s, then `failed`; a permanent one goes to `failed` at once.
+            indexing:
+                dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/%env(urlencode:RABBITMQ_VHOST)%/indexing'
+                serializer: messenger.transport.symfony_serializer
+                options:
+                    # The producer fails the run when the broker did not confirm a batch (RoutedAmqpTransport also
+                    # checks that it was routed to a queue).
+                    confirm_timeout: 5
+                retry_strategy:
+                    max_retries: 5
+                    delay: 1000
+                    multiplier: 3
+            # The finalization of a run (FinalizeSearchRebuild), written in the transaction that moves the run to
+            # `finalizing`, on the same connection: it exists exactly when the move was committed. Consumed by
+            # worker-indexing before `indexing`, never by worker-commands, whose commands a finalization of minutes
+            # would hold up. redeliver_timeout is above the longest stage (the refresh and count of verify, the deletion
+            # of an index of millions of documents); every stage is idempotent, so a second delivery is harmless.
+            indexing_finalize:
+                dsn: 'doctrine://default?queue_name=indexing_finalize&auto_setup=false&redeliver_timeout=3600'
+                options:
+                    use_notify: false
+                retry_strategy:
+                    max_retries: 5
+                    delay: 1000
+                    multiplier: 3
             # A message retried from here that fails again stays here (KeepFailedMessageListener; spec
             # docs/features/async-reliability/spec.md, D6, W12): no retry of this strategy, so the listener writes it
             # back at once under a new id. An error that forces a retry (RecoverableExceptionInterface) is sent back by
@@ -123,3 +158,5 @@ framework:
             App\Pricing\Application\Command\PromotionBoundaryReached: promotions
             App\Pricing\Application\Command\RefreshPromotionProducts: promotions
             App\Catalog\Application\Command\ReindexCategoryBatch: jobs
+            App\Shared\Infrastructure\Indexing\IndexDocuments: indexing
+            App\Catalog\Application\Command\FinalizeSearchRebuild: indexing_finalize

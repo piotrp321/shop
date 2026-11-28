@@ -32,6 +32,7 @@ const transportLabels: Record<string, string> = {
   payment_simulator: "Webhooki symulatora płatności",
   promotions: "Granice promocji",
   jobs: "Zadania w tle",
+  indexing_finalize: "Finalizacja przebudowy indeksu",
 };
 
 /** The Polish name of a queue of the database; a queue the panel does not know is shown under the name the API sent. */
