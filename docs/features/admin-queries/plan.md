@@ -99,7 +99,7 @@ nakładają się na ciężkie pomiary PERF-2; każdy pomiar na worf.pl tylko za 
         "Kryterium 1 specyfikacji dla filtra kategorii, także z frazą, szkicami i bez zdjęć: równoważność z obecnym SQL, w tym produkt z kategorią główną i dodatkową w tym samym poddrzewie, produkt z kilkoma kategoriami dodatkowymi w poddrzewie (bez duplikatu na stronie i w liczniku) i kategoria pusta.",
         "Kryterium 2: testy planów na ok. 100 tys. wierszy dla małej kategorii, dużego liścia z typem na końcu alfabetu, działu, kategorii głównie dodatkowej, działu ze szkicami, działu bez zdjęć i działu z frazą średnią; asercje według zmiennej klasy wariantu.",
         "Zmiana nazwy i przeniesienie kategorii: lista po nich pokazuje produkty nowego poddrzewa (test).",
-        "Kryterium 8 (WAL i czas zapisu produktu przed i po) i rozmiar nowych indeksów na `medium` w raporcie zadania.",
+        "Kryterium 8 (WAL i czas zapisu produktu przed i po) i rozmiar nowych indeksów na `medium` mierzy zbiorczo zadanie 7, zadanie podaje polecenie.",
         "`make -C apps/api check` i `make -C apps/api test` przechodzą."
       ],
       "risk": "STANDARD",
