@@ -1913,7 +1913,7 @@ export interface components {
         /** @description A queue of the database that a worker takes messages from. */
         DashboardTransportResponse: {
             /**
-             * @description The name of the transport: outbox, scheduled, payment_simulator, promotions or jobs.
+             * @description The name of the transport: outbox, scheduled, payment_simulator, promotions, jobs or indexing_finalize.
              * @example outbox
              */
             name: string;
@@ -1946,7 +1946,7 @@ export interface components {
              */
             healthy: boolean;
             failed: components["schemas"]["DashboardFailedMessagesResponse"];
-            /** @description Always in this order: outbox, scheduled, payment_simulator, promotions, jobs. */
+            /** @description Always in this order: outbox, scheduled, payment_simulator, promotions, jobs, indexing_finalize. */
             transports: components["schemas"]["DashboardTransportResponse"][];
         };
         /** @description The state of the system, for administrators. */
