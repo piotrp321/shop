@@ -663,14 +663,15 @@ def relabel_rules(text, label):
 
 
 # The metrics that the exporters of the databases send, with the number of their series on worf.pl: the databases of the shop (shop,
-# keycloak and postgres; the template databases are dropped), the states of a session, the nodes of Elasticsearch (one), the
-# collectors of the garbage of the JVM, the areas of its memory, the pools and the breakers. The test compares the names with the allow
-# lists of the manifest, so a new metric is a new line here with its count.
-DATABASES, STATES, NODES, GC_COLLECTORS, JVM_AREAS, POOLS, BREAKERS, COLORS = 3, 6, 1, 3, 2, 3, 6, 3
+# keycloak and postgres; the template databases are dropped), the groups of sessions (a row of pg_stat_activity_count is a group of the
+# role, the application, the state and the wait; four roles, a few applications and states and the waits that show: an estimate, 40),
+# the nodes of Elasticsearch (one), the collectors of the garbage of the JVM, the areas of its memory, the pools and the breakers.
+# The test compares the names with the allow lists of the manifest, so a new metric is a new line here with its count.
+DATABASES, SESSION_GROUPS, NODES, GC_COLLECTORS, JVM_AREAS, POOLS, BREAKERS, COLORS = 3, 40, 1, 3, 2, 3, 6, 3
 POSTGRES_SERIES = {
     "up": 1, "pg_up": 1, "pg_database_size_bytes": DATABASES, "pg_long_running_transactions": 1,
     "pg_long_running_transactions_oldest_timestamp_seconds": 1, "pg_settings_max_connections": 1, "pg_settings_shared_buffers_bytes": 1,
-    "pg_stat_activity_count": DATABASES * STATES, "pg_stat_bgwriter_buffers_alloc_total": 1,
+    "pg_stat_activity_count": SESSION_GROUPS, "pg_stat_bgwriter_buffers_alloc_total": 1,
     "pg_stat_checkpointer_buffers_written_total": 1, "pg_stat_checkpointer_num_requested_total": 1, "pg_stat_checkpointer_num_timed_total": 1,
     "pg_stat_checkpointer_sync_time_total": 1, "pg_stat_checkpointer_write_time_total": 1,
     **{f"pg_stat_database_{n}": DATABASES for n in (
@@ -694,13 +695,14 @@ ELASTICSEARCH_SERIES = {
     "elasticsearch_os_cpu_percent": NODES, "elasticsearch_thread_pool_active_count": POOLS * NODES,
     "elasticsearch_thread_pool_queue_count": POOLS * NODES, "elasticsearch_thread_pool_rejected_count": POOLS * NODES,
 }
-# The names of the labels that the series may have, and the ones that must never be among them: the text of a query, who runs it and
-# where from (pg_stat_statements and pg_stat_activity have them; no collector of the list reads them, and the list of the labels is the
-# second lock), and the address of a pod (a new series each time the pod is made again).
-POSTGRES_LABELS = {"__name__", "job", "instance", "datname", "state"}
+# The names of the labels that the series may have, and the ones that must never be among them: the text of a query, the address of a
+# client (pg_stat_statements and pg_stat_activity have them; the collectors of the list do not read the text, and the list of the labels
+# is the second lock) and the address of a pod (a new series each time the pod is made again). usename, application_name, backend_type
+# and the wait are the groups of pg_stat_activity_count: without them two groups have the same labels and a session is lost.
+POSTGRES_LABELS = {"__name__", "job", "instance", "datname", "state", "usename", "application_name", "backend_type", "wait_event_type", "wait_event"}
 ELASTICSEARCH_LABELS = {"__name__", "job", "instance", "cluster", "name", "area", "gc", "type", "cache", "breaker", "color", "mount", "path"}
-QUERY_LABELS = {"query", "queryid", "query_id", "statement", "sql", "usename", "user", "application_name", "client_addr", "client_hostname",
-                "relname", "schemaname", "datid", "pid", "host"}
+QUERY_LABELS = {"query", "queryid", "query_id", "statement", "sql", "client_addr", "client_hostname", "client_port", "relname", "schemaname",
+                "datid", "pid", "host"}
 # The new series against the 10 thousand of the free plan of Grafana Cloud: this test allows a tenth of it.
 NEW_SERIES_BUDGET = 1000
 POSTGRES_COLLECTORS = ["database", "stat_bgwriter", "stat_checkpointer", "stat_database", "wal", "long_running_transactions"]
@@ -864,6 +866,55 @@ class ExportersRun(unittest.TestCase):
             wanted = block(extra_config(), component, label).replace('remote.kubernetes.secret.shop_exporter.data["POSTGRES_EXPORTER_DSN"]',
                                                                     "local.file.shop_exporter.content")
             self.assertEqual(wanted, block(ran, component, label), f"{component} {label}")
+
+
+class ExportersRealPostgres(unittest.TestCase):
+    """scripts/exporters.sh, the second run: the exporter against a real Postgres of the image of the chart, prepared by the script of the
+    shop (the role exporter with pg_monitor only), with eight sessions of five groups in the database shopdb."""
+
+    @staticmethod
+    def latest():
+        """The last value of every series that arrived: {sorted labels: value}."""
+        rows = [json.loads(line) for line in (RENDER / "exporters-real-sink.jsonl").read_text().splitlines() if line.strip()]
+        assert not [r for r in rows if "error" in r], "the receiver could not read a push of Alloy"
+        return {tuple(sorted(r["labels"].items())): r["value"] for r in rows if "labels" in r}
+
+    def test_the_sessions_of_every_group_arrive_and_add_up_to_the_sessions_of_postgres(self):
+        groups = {}
+        for line in (RENDER / "exporters-real-sessions.txt").read_text().splitlines():
+            usename, application, state, wait_type, wait, count = line.split("|")
+            groups[(usename, application, state, wait_type, wait)] = int(count)
+        self.assertEqual(8, sum(groups.values()), "the run did not start the sessions it describes")
+        self.assertEqual(5, len(groups))
+        got = {}
+        for key, value in self.latest().items():
+            labels = dict(key)
+            if labels["__name__"] == "pg_stat_activity_count" and labels.get("datname") == "shopdb":
+                got[tuple(labels.get(n, "") for n in ("usename", "application_name", "state", "wait_event_type", "wait_event"))] = int(value)
+        # Every group is a series with its count: no session is lost to two rows with the same labels (with only datname and state, the six
+        # active sessions of three groups would be one series and at most one of the three rows would be kept).
+        self.assertEqual(groups, got)
+        self.assertEqual(sum(groups.values()), sum(got.values()))
+        self.assertGreater(len(got), len({state for _, _, state, _, _ in got}), "no more series than states: the groups are cut")
+
+    def test_the_role_with_pg_monitor_only_gives_every_metric_of_the_list_and_no_other_label(self):
+        series = [dict(key) | {"value": value} for key, value in self.latest().items()]
+        names = {s["__name__"] for s in series if s.get("job") == "integrations/postgres"}
+        self.assertEqual([], sorted(set(POSTGRES_SERIES) - names), "metrics of the list that a real Postgres does not give")
+        self.assertEqual(1.0, next(s["value"] for s in series if s["__name__"] == "pg_up"))
+        for one in series:
+            if one.get("job") == "integrations/postgres":
+                self.assertLessEqual(set(one) - {"value"}, POSTGRES_LABELS, one)
+                self.assertNotIn(one.get("datname"), ("template0", "template1"))
+        # The exporter's own session is there, as the role exporter.
+        self.assertTrue(any(s["__name__"] == "pg_stat_activity_count" and s.get("usename") == "exporter" for s in series))
+        for text in ((RENDER / "exporters-real-sink.jsonl").read_text(), (RENDER / "exporters-real-alloy.log").read_text()):
+            for planted in ("planted-dsn-password", "planted-superuser-password", "planted-role-password"):
+                self.assertNotIn(planted, text)
+
+    def test_the_series_of_a_real_postgres_stay_within_the_estimate(self):
+        counted = sum(1 for key in self.latest() if dict(key).get("job") == "integrations/postgres" and dict(key)["__name__"] != "up")
+        self.assertLessEqual(counted, sum(POSTGRES_SERIES.values()) - POSTGRES_SERIES["up"], f"{counted} series of Postgres in the run")
 
 
 class AlertRules(unittest.TestCase):
