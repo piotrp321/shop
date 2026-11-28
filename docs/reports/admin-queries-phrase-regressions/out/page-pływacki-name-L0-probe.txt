@@ -1,0 +1,42 @@
+SELECT count(*) FROM (SELECT 1 FROM catalog_product w0 ORDER BY w0.name ASC, w0.id ASC LIMIT 20000) e
+
+Aggregate  (cost=2692.47..2692.48 rows=1 width=8) (actual time=3.795..3.796 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2442.47 rows=20000 width=58) (actual time=0.011..3.348 rows=20000.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.010..2.677 rows=20000.00 loops=1)
+              Heap Fetches: 671
+              Index Searches: 1
+              Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=472 read=1
+Planning Time: 0.530 ms
+Execution Time: 3.810 ms
+
+=====
+Aggregate  (cost=2692.47..2692.48 rows=1 width=8) (actual time=3.730..3.732 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2442.47 rows=20000 width=58) (actual time=0.012..3.258 rows=20000.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.011..2.576 rows=20000.00 loops=1)
+              Heap Fetches: 671
+              Index Searches: 1
+              Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=473
+Planning Time: 0.507 ms
+Execution Time: 3.745 ms
+
+=====
+Aggregate  (cost=2692.47..2692.48 rows=1 width=8) (actual time=3.587..3.589 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2442.47 rows=20000 width=58) (actual time=0.011..3.134 rows=20000.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=58) (actual time=0.011..2.472 rows=20000.00 loops=1)
+              Heap Fetches: 671
+              Index Searches: 1
+              Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=473
+Planning Time: 0.500 ms
+Execution Time: 3.602 ms

@@ -1,0 +1,39 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pływacki%' ORDER BY p.updated_at ASC, p.id ASC LIMIT 26
+
+Limit  (cost=0.42..555.55 rows=26 width=71) (actual time=0.085..1.177 rows=26.00 loops=1)
+  Buffers: shared hit=627 read=257
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=40380 width=71) (actual time=0.084..1.172 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pływacki%'::text)
+        Rows Removed by Filter: 853
+        Index Searches: 1
+        Buffers: shared hit=627 read=257
+Planning:
+  Buffers: shared hit=419 read=79
+Planning Time: 1.062 ms
+Execution Time: 1.186 ms
+
+=====
+Limit  (cost=0.42..555.55 rows=26 width=71) (actual time=0.043..0.677 rows=26.00 loops=1)
+  Buffers: shared hit=884
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=40380 width=71) (actual time=0.042..0.674 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pływacki%'::text)
+        Rows Removed by Filter: 853
+        Index Searches: 1
+        Buffers: shared hit=884
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.828 ms
+Execution Time: 0.686 ms
+
+=====
+Limit  (cost=0.42..555.55 rows=26 width=71) (actual time=0.048..0.695 rows=26.00 loops=1)
+  Buffers: shared hit=884
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=40380 width=71) (actual time=0.048..0.692 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pływacki%'::text)
+        Rows Removed by Filter: 853
+        Index Searches: 1
+        Buffers: shared hit=884
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.808 ms
+Execution Time: 0.705 ms

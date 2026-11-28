@@ -10,6 +10,9 @@ use App\Catalog\Application\Query\ProductCursor;
 use App\Catalog\Application\Query\ProductSort;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\Keyset;
+use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\Like;
+use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\PhraseSearch;
 use App\Shared\Domain\BoundedCount;
 use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
@@ -18,20 +21,27 @@ use Doctrine\DBAL\ParameterType;
 final readonly class DbalBackofficeProductSource implements BackofficeProductSource
 {
     // The conditions are constant fragments joined by AND; input only ever reaches the statement as parameters.
-    // The name term (ILIKE '%…%') is served by the trigram index from 3 characters on; pg_trgm extracts no trigram from
-    // a 2-character term, so those run as a scan of the (name, id) index with the term as a filter. The order and the
-    // keyset cursor are served by the (name, id) index, or by (updated_at, id) for the sort by the last change: both
-    // directions of a sort read the same index, forwards or backwards, because the direction of the id follows the
-    // one of the sorted column. The cursor is a row comparison in that direction, which keeps it an index condition.
-    // A category matches when the product's main category or one of its additional categories is in the subtree: the
-    // path of every category starts with the path of its ancestors (materialized path), so the subtree is a prefix
-    // match on the path.
+    // The order and the keyset cursor are served by the (name, id) index, or by (updated_at, id) for the sort by the last
+    // change: both directions of a sort read the same index, forwards or backwards, because the direction of the id
+    // follows the one of the sorted column. The cursor is a row comparison in that direction, which keeps it an index
+    // condition. A category matches when the product's main category or one of its additional categories is in the
+    // subtree: the path of every category starts with the path of its ancestors (materialized path), so the subtree is a
+    // prefix match on the path.
+    //
+    // The plans. A name term (ILIKE '%…%') is not left to the planner, which estimates it without knowing where in the
+    // order of the sort the hits lie: PhraseSearch chooses the way by the work (a walk of the index of the sort with a
+    // budget that grows by steps, then the candidates of a GIN index, the trigrams or, for a phrase without a word of
+    // three characters, the bigrams of catalog_name_bigrams(name)), and the count of the first page goes the same way.
+    // Without a term the filters stay with the planner, and so does a term together with the drafts or the products without
+    // images, each of which has a partial index that holds only those few products: the drafts in the order of the sorts
+    // ((name, id) and (updated_at, id) WHERE status = 'draft'), so the walk of it with the term as a filter reads at most all
+    // the drafts; the products without images by id (WHERE images = '[]'), so the planner reads those few products from it
+    // and sorts them, which costs by their number, not by the table (ProductsWithoutImagesPlanTest). The category filter
+    // stays the condition below, for a phrase too.
     private const string TERM = 'p.name ILIKE :pattern';
     // The exact predicate of the partial index catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb, which keeps
     // the few products without images cheap to find, count and page among millions.
     private const string WITHOUT_IMAGES = "p.images = '[]'::jsonb";
-    private const string AFTER_NAME = '(p.name, p.id) %s (:after_value, CAST(:after_id AS uuid))';
-    private const string AFTER_UPDATED_AT = '(p.updated_at, p.id) %s (CAST(:after_value AS timestamptz), CAST(:after_id AS uuid))';
     private const string CATEGORY = <<<'SQL'
         (
             p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
@@ -42,8 +52,14 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         )
         SQL;
 
-    public function __construct(private Connection $connection, private BoundedCounter $counter)
+    private PhraseSearch $phrases;
+
+    /**
+     * @param int $phraseBudget the rows of the index of the sort that the first walk of a phrase reads (each step after it reads ten times more)
+     */
+    public function __construct(private Connection $connection, private BoundedCounter $counter, int $phraseBudget = PhraseSearch::FIRST_BUDGET)
     {
+        $this->phrases = new PhraseSearch($connection, $phraseBudget);
     }
 
     public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array
@@ -52,18 +68,24 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
             throw new \InvalidArgumentException('The page limit must be at least 1.');
         }
 
+        if (null !== $after && $after->sort !== $sort) {
+            throw new \InvalidArgumentException('The cursor is of another sort.');
+        }
+        if (self::byPhrase($term, $status, $withoutImages)) {
+            [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
+
+            return $this->phrases->page($term, $conditions, $parameters, $after, $sort, $limit);
+        }
+
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
         $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
         $direction = $sort->isDescending() ? 'DESC' : 'ASC';
         $column = $sort->byUpdatedAt() ? 'p.updated_at' : 'p.name';
         if (null !== $after) {
-            if ($after->sort !== $sort) {
-                throw new \InvalidArgumentException('The cursor is of another sort.');
-            }
-            $conditions[] = \sprintf($sort->byUpdatedAt() ? self::AFTER_UPDATED_AT : self::AFTER_NAME, $sort->isDescending() ? '<' : '>');
-            $parameters['after_value'] = $after->value instanceof \DateTimeImmutable ? $after->value->format('Y-m-d H:i:s.uP') : $after->value;
-            $parameters['after_id'] = $after->id;
+            [$condition, $values] = Keyset::after('p', $sort, $after);
+            $conditions[] = $condition;
+            $parameters += $values;
         }
 
         $sql = 'SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p'
@@ -79,6 +101,12 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
 
     public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = BoundedCounter::DEFAULT_LIMIT): BoundedCount
     {
+        if (self::byPhrase($term, $status, $withoutImages)) {
+            [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
+
+            return $this->phrases->count($term, $conditions, $parameters, $limit);
+        }
+
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
 
         return $this->counter->count('catalog_product p', $conditions, $parameters, limit: $limit);
@@ -124,21 +152,44 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     }
 
     /**
+     * Whether the term is looked for by PhraseSearch: with the drafts or the products without images it stays a filter of
+     * the statement, over the partial indexes of those.
+     *
+     * @phpstan-assert-if-true string $term
+     */
+    private static function byPhrase(?string $term, ?ProductStatus $status, bool $withoutImages): bool
+    {
+        return null !== $term && ProductStatus::Draft !== $status && !$withoutImages;
+    }
+
+    /**
      * The conditions of the filters, the same for a page and for the count, without the cursor.
      *
      * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
      */
     private static function filter(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages): array
     {
+        [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
+        if (null !== $term) {
+            array_unshift($conditions, self::TERM);
+            $parameters['pattern'] = Like::contains($term);
+        }
+
+        return [$conditions, $parameters];
+    }
+
+    /**
+     * The conditions of the filters other than the term.
+     *
+     * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
+     */
+    private static function otherFilters(?CategoryPath $category, ?ProductStatus $status, bool $withoutImages): array
+    {
         $conditions = [];
         $parameters = [];
-        if (null !== $term) {
-            $conditions[] = self::TERM;
-            $parameters['pattern'] = '%'.self::escapeLike($term).'%';
-        }
         if (null !== $category) {
             $conditions[] = self::CATEGORY;
-            $parameters['prefix'] = self::escapeLike($category->toString()).'%';
+            $parameters['prefix'] = Like::escape($category->toString()).'%';
         }
         if (null !== $status) {
             // The status is a value of the domain enum, never input, and goes into the statement as a literal: only
@@ -151,13 +202,5 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         }
 
         return [$conditions, $parameters];
-    }
-
-    /**
-     * Makes `%`, `_` and the escape character `\` (PostgreSQL's default) match themselves in LIKE and ILIKE.
-     */
-    private static function escapeLike(string $text): string
-    {
-        return strtr($text, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']);
     }
 }

@@ -1,0 +1,60 @@
+SELECT count(*) FROM (SELECT 1 FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name, w0.id LIMIT 20000) w WHERE w.name ILIKE '%ka%' LIMIT 10001) bounded
+
+Aggregate  (cost=2796.01..2796.02 rows=1 width=8) (actual time=11.918..11.921 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.046..11.864 rows=1807.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.046..11.796 rows=1807.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 18193
+              Buffers: shared hit=17753
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.018..3.940 rows=20000.00 loops=1)
+                    Buffers: shared hit=17753
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.018..3.189 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.670 ms
+Execution Time: 11.939 ms
+
+=====
+Aggregate  (cost=2796.01..2796.02 rows=1 width=8) (actual time=12.398..12.400 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.046..12.343 rows=1807.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.046..12.273 rows=1807.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 18193
+              Buffers: shared hit=17753
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.018..4.014 rows=20000.00 loops=1)
+                    Buffers: shared hit=17753
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.018..3.243 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.679 ms
+Execution Time: 12.420 ms
+
+=====
+Aggregate  (cost=2796.01..2796.02 rows=1 width=8) (actual time=14.688..14.693 rows=1.00 loops=1)
+  Buffers: shared hit=17753
+  ->  Limit  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.048..14.624 rows=1807.00 loops=1)
+        Buffers: shared hit=17753
+        ->  Subquery Scan on w  (cost=0.42..2692.47 rows=8283 width=4) (actual time=0.047..14.553 rows=1807.00 loops=1)
+              Filter: ((w.name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 18193
+              Buffers: shared hit=17753
+              ->  Limit  (cost=0.42..2442.47 rows=20000 width=54) (actual time=0.018..4.414 rows=20000.00 loops=1)
+                    Buffers: shared hit=17753
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.018..3.647 rows=20000.00 loops=1)
+                          Heap Fetches: 671
+                          Index Searches: 1
+                          Buffers: shared hit=17753
+Planning:
+  Buffers: shared hit=468
+Planning Time: 0.699 ms
+Execution Time: 14.714 ms

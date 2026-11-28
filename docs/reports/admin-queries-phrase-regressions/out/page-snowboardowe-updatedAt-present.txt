@@ -1,0 +1,39 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%snowboardowe%' ORDER BY p.updated_at ASC, p.id ASC LIMIT 26
+
+Limit  (cost=0.42..2220.91 rows=26 width=71) (actual time=0.080..2.799 rows=26.00 loops=1)
+  Buffers: shared hit=1217 read=363 dirtied=9
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=10095 width=71) (actual time=0.079..2.795 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%snowboardowe%'::text)
+        Rows Removed by Filter: 1498
+        Index Searches: 1
+        Buffers: shared hit=1217 read=363 dirtied=9
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.804 ms
+Execution Time: 2.810 ms
+
+=====
+Limit  (cost=0.42..2220.91 rows=26 width=71) (actual time=0.065..1.725 rows=26.00 loops=1)
+  Buffers: shared hit=1511 read=19
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=10095 width=71) (actual time=0.064..1.721 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%snowboardowe%'::text)
+        Rows Removed by Filter: 1498
+        Index Searches: 1
+        Buffers: shared hit=1511 read=19
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.808 ms
+Execution Time: 1.734 ms
+
+=====
+Limit  (cost=0.42..2220.91 rows=26 width=71) (actual time=0.048..1.580 rows=26.00 loops=1)
+  Buffers: shared hit=1530
+  ->  Index Scan using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..862147.74 rows=10095 width=71) (actual time=0.048..1.577 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%snowboardowe%'::text)
+        Rows Removed by Filter: 1498
+        Index Searches: 1
+        Buffers: shared hit=1530
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.782 ms
+Execution Time: 1.590 ms

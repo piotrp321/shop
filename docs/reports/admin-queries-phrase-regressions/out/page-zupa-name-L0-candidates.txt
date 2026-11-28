@@ -1,0 +1,88 @@
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%') SELECT c.id, c.name, c.tax_class, c.updated_at, count(*) OVER () AS candidates FROM (SELECT * FROM m LIMIT 10001) c ORDER BY c.name ASC, c.id ASC LIMIT 26
+
+Limit  (cost=2361.68..2361.74 rows=26 width=532) (actual time=18.017..18.020 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=2.791..13.388 rows=8584.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8707
+          Buffers: shared hit=9159
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.180..2.181 rows=9162.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zupa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=452
+  ->  Sort  (cost=6.10..6.35 rows=100 width=532) (actual time=18.017..18.018 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9165
+        ->  WindowAgg  (cost=3.22..3.25 rows=100 width=532) (actual time=15.606..16.110 rows=8584.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1035kB
+              Buffers: shared hit=9159
+              ->  Limit  (cost=0.00..2.00 rows=100 width=524) (actual time=2.793..14.883 rows=8584.00 loops=1)
+                    Buffers: shared hit=9159
+                    ->  CTE Scan on m  (cost=0.00..2.00 rows=100 width=524) (actual time=2.792..14.593 rows=8584.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1035kB
+                          Buffers: shared hit=9159
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.855 ms
+Execution Time: 18.179 ms
+=====
+Limit  (cost=2361.68..2361.74 rows=26 width=532) (actual time=19.215..19.218 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=3.105..14.339 rows=8584.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8707
+          Buffers: shared hit=9159
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.331..2.331 rows=9162.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zupa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=452
+  ->  Sort  (cost=6.10..6.35 rows=100 width=532) (actual time=19.215..19.216 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9165
+        ->  WindowAgg  (cost=3.22..3.25 rows=100 width=532) (actual time=16.816..17.329 rows=8584.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1035kB
+              Buffers: shared hit=9159
+              ->  Limit  (cost=0.00..2.00 rows=100 width=524) (actual time=3.107..16.018 rows=8584.00 loops=1)
+                    Buffers: shared hit=9159
+                    ->  CTE Scan on m  (cost=0.00..2.00 rows=100 width=524) (actual time=3.107..15.690 rows=8584.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1035kB
+                          Buffers: shared hit=9159
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.963 ms
+Execution Time: 19.381 ms
+=====
+Limit  (cost=2361.68..2361.74 rows=26 width=532) (actual time=17.283..17.285 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=2.660..12.761 rows=8584.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+          Heap Blocks: exact=8707
+          Buffers: shared hit=9159
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.071..2.071 rows=9162.00 loops=1)
+                Index Cond: ((name)::text ~~* '%zupa%'::text)
+                Index Searches: 1
+                Buffers: shared hit=452
+  ->  Sort  (cost=6.10..6.35 rows=100 width=532) (actual time=17.282..17.283 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9165
+        ->  WindowAgg  (cost=3.22..3.25 rows=100 width=532) (actual time=14.879..15.380 rows=8584.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 1035kB
+              Buffers: shared hit=9159
+              ->  Limit  (cost=0.00..2.00 rows=100 width=524) (actual time=2.661..14.176 rows=8584.00 loops=1)
+                    Buffers: shared hit=9159
+                    ->  CTE Scan on m  (cost=0.00..2.00 rows=100 width=524) (actual time=2.661..13.885 rows=8584.00 loops=1)
+                          Storage: Memory  Maximum Storage: 1035kB
+                          Buffers: shared hit=9159
+Planning:
+  Buffers: shared hit=472
+Planning Time: 0.773 ms
+Execution Time: 17.418 ms

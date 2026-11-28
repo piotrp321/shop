@@ -20,6 +20,23 @@ final class RecordingConnection extends Connection
     /** @var list<array{string, array<int<0, max>|string, mixed>, array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string>}> */
     public array $queries = [];
 
+    /**
+     * For each of $queries, the statements (executeStatement) that were sent before it in the transactions this connection
+     * had open at that moment, oldest first: the settings a query was read under, as the code sent them.
+     *
+     * @var list<list<array{string, array<int<0, max>|string, mixed>, array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string>}>>
+     */
+    public array $statementsOfQueries = [];
+
+    /** @var list<string> `begin`, `commit` and `rollback` in the order this connection did them */
+    public array $transactionEvents = [];
+
+    /** Called with the SQL of each query before it runs; it may inspect the session or throw. */
+    public ?\Closure $beforeQuery = null;
+
+    /** @var list<list<array{string, array<int<0, max>|string, mixed>, array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string>}>> */
+    private array $scopes = [];
+
     public static function like(Connection $connection): self
     {
         return new self($connection->getParams(), $connection->getDriver(), $connection->getConfiguration());
@@ -28,8 +45,52 @@ final class RecordingConnection extends Connection
     public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
     {
         $this->queries[] = [$sql, $params, $types];
+        $this->statementsOfQueries[] = array_merge(...$this->scopes);
+        if (null !== $this->beforeQuery) {
+            ($this->beforeQuery)($sql);
+        }
 
         return parent::executeQuery($sql, $params, $types, $qcp);
+    }
+
+    public function executeStatement(string $sql, array $params = [], array $types = []): int|string
+    {
+        if ([] !== $this->scopes) {
+            $this->scopes[array_key_last($this->scopes)][] = [$sql, $params, $types];
+        }
+
+        return parent::executeStatement($sql, $params, $types);
+    }
+
+    public function beginTransaction(): void
+    {
+        parent::beginTransaction();
+        $this->scopes[] = [];
+        $this->transactionEvents[] = 'begin';
+    }
+
+    public function commit(): void
+    {
+        $this->transactionEvents[] = 'commit';
+        array_pop($this->scopes);
+        parent::commit();
+    }
+
+    public function rollBack(): void
+    {
+        $this->transactionEvents[] = 'rollback';
+        array_pop($this->scopes);
+        parent::rollBack();
+    }
+
+    /**
+     * Forgets everything recorded so far (the queries with what was sent before each of them, and the transactions).
+     */
+    public function forget(): void
+    {
+        $this->queries = [];
+        $this->statementsOfQueries = [];
+        $this->transactionEvents = [];
     }
 
     /**
