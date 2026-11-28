@@ -10,6 +10,7 @@ use App\Catalog\Application\Query\ProductCursor;
 use App\Catalog\Application\Query\ProductSort;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\CategoryList;
 use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\Keyset;
 use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\Like;
 use App\Catalog\Infrastructure\Persistence\Doctrine\BackofficeProductList\PhraseSearch;
@@ -36,8 +37,10 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // images, each of which has a partial index that holds only those few products: the drafts in the order of the sorts
     // ((name, id) and (updated_at, id) WHERE status = 'draft'), so the walk of it with the term as a filter reads at most all
     // the drafts; the products without images by id (WHERE images = '[]'), so the planner reads those few products from it
-    // and sorts them, which costs by their number, not by the table (ProductsWithoutImagesPlanTest). The category filter
-    // stays the condition below, for a phrase too.
+    // and sorts them, which costs by their number, not by the table (ProductsWithoutImagesPlanTest).
+    // A category without a term is CategoryList: a branch per category of its subtree from the index (primary_category_id, sort key,
+    // id) (the partial ones for the drafts and the products without images) and the products that are in it only by additional
+    // categories; with a term the category is the condition below, checked on the rows of PhraseSearch (a walk and the candidates).
     private const string TERM = 'p.name ILIKE :pattern';
     // The exact predicate of the partial index catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb, which keeps
     // the few products without images cheap to find, count and page among millions.
@@ -53,6 +56,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         SQL;
 
     private PhraseSearch $phrases;
+    private CategoryList $categories;
 
     /**
      * @param int $phraseBudget the rows of the index of the sort that the first walk of a phrase reads (each step after it reads ten times more)
@@ -60,6 +64,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     public function __construct(private Connection $connection, private BoundedCounter $counter, int $phraseBudget = PhraseSearch::FIRST_BUDGET)
     {
         $this->phrases = new PhraseSearch($connection, $phraseBudget);
+        $this->categories = new CategoryList($connection);
     }
 
     public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array
@@ -71,10 +76,16 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         if (null !== $after && $after->sort !== $sort) {
             throw new \InvalidArgumentException('The cursor is of another sort.');
         }
-        if (self::byPhrase($term, $status, $withoutImages)) {
+        if (null !== $term && self::byPhrase($status, $withoutImages)) {
             [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
 
             return $this->phrases->page($term, $conditions, $parameters, $after, $sort, $limit);
+        }
+
+        if (null === $term && null !== $category) {
+            [$conditions, $parameters] = self::otherFilters(null, $status, $withoutImages);
+
+            return $this->categories->page(Like::escape($category->toString()).'%', $conditions, $parameters, $after, $sort, $limit);
         }
 
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
@@ -101,10 +112,16 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
 
     public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = BoundedCounter::DEFAULT_LIMIT): BoundedCount
     {
-        if (self::byPhrase($term, $status, $withoutImages)) {
+        if (null !== $term && self::byPhrase($status, $withoutImages)) {
             [$conditions, $parameters] = self::otherFilters($category, $status, $withoutImages);
 
             return $this->phrases->count($term, $conditions, $parameters, $limit);
+        }
+
+        if (null === $term && null !== $category) {
+            [$conditions, $parameters] = self::otherFilters(null, $status, $withoutImages);
+
+            return $this->categories->count(Like::escape($category->toString()).'%', $conditions, $parameters, $limit);
         }
 
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
@@ -152,14 +169,12 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     }
 
     /**
-     * Whether the term is looked for by PhraseSearch: with the drafts or the products without images it stays a filter of
-     * the statement, over the partial indexes of those.
-     *
-     * @phpstan-assert-if-true string $term
+     * Whether a term is looked for by PhraseSearch: with the drafts or the products without images it stays a filter of the
+     * statement, over the partial indexes of those.
      */
-    private static function byPhrase(?string $term, ?ProductStatus $status, bool $withoutImages): bool
+    private static function byPhrase(?ProductStatus $status, bool $withoutImages): bool
     {
-        return null !== $term && ProductStatus::Draft !== $status && !$withoutImages;
+        return ProductStatus::Draft !== $status && !$withoutImages;
     }
 
     /**

@@ -17,13 +17,14 @@ use Doctrine\DBAL\Types\Type;
 trait MeasuresRowsRead
 {
     /**
-     * The rows read from catalog_product by all the statements recorded since the last reset.
+     * The rows read from catalog_product by all the statements recorded since the last reset, without the ones of the CTE of the
+     * name $exceptCte (a set that is measured on its own).
      */
-    private function rowsRead(): int
+    private function rowsRead(string $exceptCte = ''): int
     {
         $total = 0.0;
         foreach ($this->analyzedPlans() as $plan) {
-            $total += self::rowsReadBy($plan);
+            $total += self::rowsReadBy($plan, $exceptCte);
         }
 
         return (int) ceil($total);
@@ -63,8 +64,11 @@ trait MeasuresRowsRead
     /**
      * @param array<mixed> $node
      */
-    private static function rowsReadBy(array $node): float
+    private static function rowsReadBy(array $node, string $exceptCte = ''): float
     {
+        if ('' !== $exceptCte && 'CTE '.$exceptCte === ($node['Subplan Name'] ?? null)) {
+            return 0.0;
+        }
         $read = 0.0;
         $type = \is_string($node['Node Type'] ?? null) ? $node['Node Type'] : '';
         if ('catalog_product' === ($node['Relation Name'] ?? null) && str_contains($type, 'Scan') && !str_contains($type, 'Bitmap Index')) {
@@ -75,7 +79,7 @@ trait MeasuresRowsRead
         if (\is_array($children)) {
             foreach ($children as $child) {
                 if (\is_array($child)) {
-                    $read += self::rowsReadBy($child);
+                    $read += self::rowsReadBy($child, $exceptCte);
                 }
             }
         }
