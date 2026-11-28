@@ -8,6 +8,8 @@ use App\Catalog\Application\Event\IntegrationEvents;
 use App\Catalog\Application\Port\Clock;
 use App\Catalog\Application\Port\ProductImageStorage;
 use App\Catalog\Application\Port\ProductImageStorageUnavailable;
+use App\Catalog\Application\Port\SearchIndexRebuildLock;
+use App\Catalog\Application\Search\SearchIndexRebuildRunning;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\Ean;
@@ -51,6 +53,7 @@ final readonly class CreateProductHandler
         ProductImageStorage $imageStorage,
         private DomainEventPublisher $events,
         private Clock $clock,
+        private SearchIndexRebuildLock $rebuildLock,
     ) {
         $this->input = new ProductInput($categories, $imageStorage);
     }
@@ -71,9 +74,14 @@ final readonly class CreateProductHandler
      * @throws VariantAlreadyExists
      * @throws ImageNotFound                  when the original of an image is not stored
      * @throws ProductImageStorageUnavailable
+     * @throws SearchIndexRebuildRunning      while the search index is rebuilt (the share lasts to the end of the transaction of command.bus)
      */
     public function __invoke(CreateProduct $command): void
     {
+        if (!$this->rebuildLock->tryShareInTransaction()) {
+            throw new SearchIndexRebuildRunning();
+        }
+
         $id = ProductId::fromString($command->id);
 
         // save() overwrites a product with the same id, so creation has to refuse an existing one first.

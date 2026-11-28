@@ -28,7 +28,7 @@ Zakres: `apps/api` (Catalog, cienka warstwa w Shared), `infra/docker-compose.yml
   (jeśli pomiar wskaże je jako wąskie gardło, to osobne zadanie), indeksowanie pojedynczych zmian produktu (zostaje
   przez zdarzenia i outbox, `docs/features/search/spec.md`, „Wyzwalacze”), przebudowa online (dziś zapis pojedynczy idzie do aliasu i do aliasu przebudowy, więc zmiana produktu, ceny albo stanu
   w trakcie budowy trafia do nowego indeksu: `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”; produkt
-  utworzony w trakcie poniżej kursora odczytu kończy przebudowę błędem weryfikacji, #979), nowy framework pomiarowy (pomiar: Grafana, logi i istniejące narzędzia).
+  nie da się utworzyć w trakcie przebudowy, 409 `search-rebuild-running`; tworzenie bez odmowy: #979), nowy framework pomiarowy (pomiar: Grafana, logi i istniejące narzędzia).
 
 ## Stan wyjściowy (do zachowania albo zmiany)
 
@@ -376,7 +376,7 @@ kopia rozliczonej paczki zapisywana podczas `verify`/po `activate`: liczba dokum
 | Wiadomości paczek utracone w brokerze | Przebieg nie dochodzi do kompletu; martwy po limicie heartbeatu; `abort` i powtórzenie od początku |
 | Jednoczesne `catalog:reindex` (sync/async), `setup`, `reset` | Wzajemnie wykluczone blokadą i wierszem przebiegu (wyżej); druga odmawia z przyczyną |
 | Restart całego stosu w trakcie | Kolejka trwała, rejestr i finalizacja w Postgresie; przebieg kończy się, gdy workery wrócą |
-| Produkt zmieniony w trakcie przebiegu | Jak dziś (`docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”): zapis pojedynczy idzie do aliasu i do aliasu przebudowy, więc trafia też do nowego indeksu; produkt utworzony w trakcie poniżej kursora kończy przebieg błędem weryfikacji (#979) |
+| Produkt zmieniony w trakcie przebiegu | Jak dziś (`docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”): zapis pojedynczy idzie do aliasu i do aliasu przebudowy, więc trafia też do nowego indeksu; tworzenie produktu w trakcie przebiegu jest odrzucane (409 `search-rebuild-running`; tworzenie bez odmowy: #979) |
 
 ## Model zagrożeń
 

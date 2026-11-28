@@ -393,6 +393,11 @@ final class RebuildAliasWritesTest extends TestCase
                 return true;
             }
 
+            public function tryShareInTransaction(): bool
+            {
+                return true;
+            }
+
             public function release(): void
             {
             }

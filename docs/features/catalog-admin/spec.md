@@ -186,7 +186,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   i wycofanie opublikowanego robią to samo; publikacja opublikowanego i wycofanie szkicu (przy zgodnej wersji) to 200 bez zmian,
   bez nowej wersji i bez zdarzenia. Odpowiedzi panelu zwracają `version`.
 - Błędy typowane (`TypedProblem`, panel rozróżnia 409 po `type`): `slug-taken` (`SlugAlreadyTaken`), `sku-taken` (`SkuAlreadyTaken`), `slug-locked`,
-  `product-modified` (`ProductModifiedConcurrently`), `product-not-publishable`, `variant-locked`, `variant-in-use`.
+  `product-modified` (`ProductModifiedConcurrently`), `product-not-publishable`, `variant-locked`, `variant-in-use`,
+  `search-rebuild-running` (`SearchIndexRebuildRunning`, tylko tworzenie: `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”).
   Schemat OpenAPI
   `ProductConflictProblem` wylicza te wartości w `enum`.
 - Nieistniejący oryginał zdjęcia (port `ProductImageStorage::exists(key)`) → `ImageNotFound` (`InvalidInput`, 422
@@ -261,7 +262,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 |---|---|---|
 | `GET /products?q&category&status&images&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków po przycięciu według reguły tekstów, bez znaków sterujących i separatorów linii (400 „Szukana fraza zawiera niedozwolone znaki.”), lista szuka frazy przyciętej (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `images=none` (tylko produkty bez zdjęć, `catalog_product.images = '[]'::jsonb`; łączy się z `q`, `category`, `status` i `sort`; częściowy indeks `catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb`, migracja nietransakcyjna `CONCURRENTLY`; `ProductsWithoutImagesPlanTest` sprawdza plan na 100 000 produktów bez wyłączania skanów; inna wartość `images` to 400), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
 | `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, brand, description, parameters: [{name, value}], mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values, sku, ean}], updatedAt}` (`sku` i `ean` to pusty tekst przy braku kodu); 404 |
-| `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`, `sku-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria, zajęte SKU); 503 Garage niedostępny |
+| `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`, `sku-taken`, `search-rebuild-running`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria, zajęte SKU); 503 Garage niedostępny |
 | `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `sku-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
 | `POST /products/{id}/publish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `product-not-publishable` |
 | `POST /products/{id}/unpublish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified` |
@@ -429,6 +430,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 |---|---|
 | Równoległa edycja (nieaktualna wersja) | 409 `product-modified`, komunikat bez odczytu; szkic zostaje, stan z serwera po „Odrzuć moje zmiany i pokaż stan z serwera” |
 | Slug zajęty przez inny produkt | 409 `slug-taken` przy polu slug |
+| Dodanie produktu w trakcie przebudowy indeksu wyszukiwarki | 409 `search-rebuild-running`, komunikat „Trwa przebudowa indeksu wyszukiwarki. Dodawanie produktów jest wstrzymane do jej końca, spróbuj ponownie później.” nad formularzem; szkic zostaje |
 | Zmiana sluga po pierwszej publikacji | 409 `slug-locked` (panel i tak blokuje pole) |
 | Publikacja szkicu bez zdjęć albo usunięcie ostatniego zdjęcia opublikowanego produktu | 409 `product-not-publishable` |
 | SKU zajęte przez wariant innego produktu | 422 przy `variants[i].sku` („Kod SKU jest już używany przez inny produkt.”); przegrany wyścig dwóch zapisów to 409 `sku-taken` jako komunikat sekcji „Warianty” |
