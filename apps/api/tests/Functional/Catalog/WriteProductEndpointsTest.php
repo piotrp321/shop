@@ -9,11 +9,15 @@ use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Image\FlysystemProductImageStorage;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
+use Doctrine\DBAL\Configuration as DbalConfiguration;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Messenger\Envelope;
@@ -257,6 +261,31 @@ final class WriteProductEndpointsTest extends WebTestCase
         $this->api('POST', self::PRODUCTS, $this->body(['name' => 'Inne buty']));
 
         $this->assertProblem(409, 'slug-taken');
+    }
+
+    public function testWhileTheSearchIndexIsRebuiltACreationIsAConflictOfItsOwnTypeAndSavesNothing(): void
+    {
+        $connection = self::getContainer()->get('doctrine.dbal.default_connection');
+        self::assertInstanceOf(Connection::class, $connection);
+        $alias = self::getContainer()->getParameter('app.search.alias');
+        self::assertIsString($alias);
+        // Another process (the rebuild) holds the lock: a plain DBAL configuration, outside the DAMA transaction of the test.
+        /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
+        $params = $connection->getParams();
+        $holder = DriverManager::getConnection($params, new DbalConfiguration());
+        $rebuild = new PostgresSearchIndexRebuildLock($holder, $alias);
+        self::assertTrue($rebuild->tryAcquire());
+
+        try {
+            $this->api('POST', self::PRODUCTS, $this->body());
+            $this->assertProblem(409, 'search-rebuild-running', 'Trwa przebudowa indeksu wyszukiwarki. Dodawanie produktów jest wstrzymane do jej końca, spróbuj ponownie później.');
+        } finally {
+            $rebuild->release();
+            $holder->close();
+        }
+
+        // Nothing was saved: the same slug is free after the rebuild.
+        $this->createProduct();
     }
 
     public function testASlugDerivedFromTheNameThatIsTakenIsAConflictToo(): void

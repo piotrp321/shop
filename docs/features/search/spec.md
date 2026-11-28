@@ -196,6 +196,14 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   zapisem. Zmiana zatwierdzona, zanim alias powstał, jest w odczycie przebudowy; zmiana zatwierdzona później wywołuje
   reindeksację (zdarzenie po zatwierdzeniu), której zapis trafia do obu indeksów. Kolejność zapisu paczki i zapisu
   pojedynczego rozstrzyga wersja (jak w „Zapis i kolejność”), więc nowszy odczyt wygrywa w obu indeksach.
+- Tworzenie produktu w trakcie przebudowy jest odrzucane (409 `search-rebuild-running`, `SearchIndexRebuildRunning`):
+  produkt utworzony po odczycie swojej paczki byłby w nowym indeksie dokumentem, którego paczki nie policzyły, a
+  weryfikacja wymaga dokładnej równości. `CreateProduct` przed czymkolwiek bierze współdzieloną blokadę doradczą
+  transakcji na kluczu blokady przebudowy (`pg_try_advisory_xact_lock_shared`), a przebudowa i `setup` biorą ten klucz
+  na wyłączność (`pg_try_advisory_lock`), więc wykluczają się bez okna wyścigu: tworzenie trwające w chwili startu
+  przebudowy kończy się przed nim (przebudowa albo `setup` odmawia jak przy innej przebudowie i ponawia się je), a
+  rozpoczęte w trakcie przebudowy jest odrzucane. Zmiana, publikacja i wycofanie produktu nie dodają dokumentu, więc
+  zostają dozwolone. Tworzenie produktów w trakcie przebudowy bez odmowy: #979.
 - Zapis pojedynczy w chwili przepięcia aliasu. Przepięcie (`_aliases`) jest atomowe, a `_bulk` rozwiązuje aliasy
   wszystkich pozycji w jednym stanie klastra, przed zapisem na shardach. Źródło (Elasticsearch 9.4.0, tag `v9.4.0`):
   `server/src/main/java/org/elasticsearch/action/bulk/BulkOperation.java`, `doRun()` (l. 189–196) pobiera stan klastra
@@ -514,9 +522,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   na starym indeksie; nieudany przebieg zostawia alias bez zmian. Wdrożenie rozpoczęte w trakcie przebudowy kończy
   się nieudanym Jobem `migrate` (`catalog:search-index:setup` odmawia przy zajętej blokadzie przebudowy), który po
   końcu przebudowy ponawia `rerun`. Zmiany zapisane w trakcie przebudowy trafiają do nowego indeksu („Zapisy
-  w trakcie przebudowy”), więc przebudowa pod normalnym ruchem jest dopuszczalna. Produkt utworzony w jej trakcie
-  z identyfikatorem poniżej kursora odczytu paczek albo po odczycie ostatniej paczki kończy ją jednak błędem
-  weryfikacji liczby dokumentów (alias bez zmian, ponowienie; #979). Nieudaną przebudowę ponawia się
+  w trakcie przebudowy”), więc przebudowa pod normalnym ruchem jest dopuszczalna; dodawanie produktów w panelu jest
+  w jej trakcie wstrzymane (409 `search-rebuild-running`). Nieudaną przebudowę ponawia się
   kolejnym uruchomieniem celu (zaczyna od początku, alias do tego czasu na starym indeksie).
 - Zmiana definicji indeksu na klastrze (M7) to okno serwisowe, za zgodą użytkownika na każdy krok: wdrożenie
   (`setup` w Jobie `migrate` ostrzega o nieaktualnym indeksie i wdrożenie przechodzi), potem

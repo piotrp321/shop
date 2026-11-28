@@ -8,6 +8,7 @@ use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Command\CreateProductHandler;
 use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\Port\ProductImageStorageUnavailable;
+use App\Catalog\Application\Search\SearchIndexRebuildRunning;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
@@ -32,6 +33,7 @@ use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
+use App\Tests\Unit\Catalog\Search\FakeSearchIndexRebuildLock;
 use PHPUnit\Framework\TestCase;
 
 final class CreateProductHandlerTest extends TestCase
@@ -49,6 +51,7 @@ final class CreateProductHandlerTest extends TestCase
     private InMemoryProductImageStorage $images;
     private RecordingDomainEventPublisher $events;
     private FixedCatalogClock $clock;
+    private FakeSearchIndexRebuildLock $rebuild;
     private CreateProductHandler $handler;
 
     protected function setUp(): void
@@ -61,7 +64,31 @@ final class CreateProductHandlerTest extends TestCase
         $this->images->existing = ['originals/'.str_repeat('a', 64).'.jpg'];
         $this->events = new RecordingDomainEventPublisher();
         $this->clock = new FixedCatalogClock();
-        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->images, $this->events, $this->clock);
+        $this->rebuild = new FakeSearchIndexRebuildLock();
+        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->images, $this->events, $this->clock, $this->rebuild);
+    }
+
+    public function testACreationSharesTheRebuildLockSoNoRebuildStartsBeforeItsTransactionEnds(): void
+    {
+        ($this->handler)($this->command());
+
+        self::assertSame(1, $this->rebuild->shares);
+        self::assertSame(1, $this->products->count());
+    }
+
+    public function testWhileARebuildOfTheSearchIndexRunsAProductIsRefusedAndNothingIsSavedOrPublished(): void
+    {
+        $handler = new CreateProductHandler($this->products, $this->categories, $this->images, $this->events, $this->clock, new FakeSearchIndexRebuildLock(takenElsewhere: true));
+
+        try {
+            $handler($this->command());
+            self::fail('Expected SearchIndexRebuildRunning.');
+        } catch (SearchIndexRebuildRunning $refusal) {
+            self::assertSame('Trwa przebudowa indeksu wyszukiwarki. Dodawanie produktów jest wstrzymane do jej końca, spróbuj ponownie później.', $refusal->getMessage());
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
     }
 
     public function testProductWithMainAndAdditionalCategoryIsSavedAndProductCreatedPublishedOnce(): void

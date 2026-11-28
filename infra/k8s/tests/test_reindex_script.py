@@ -237,7 +237,7 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertIn("the shop stays open", result.stdout)
         self.assertIn("written during the build reaches the new index too", result.stdout)
         self.assertIn("products-rebuild", result.stdout)
-        self.assertIn("a product created in the admin panel during the build fails the check of the new index", result.stdout)
+        self.assertIn("the admin panel cannot create products until the build ends", result.stdout)
         self.assertNotIn("may be missing from the new index", result.stdout)
         self.assertIn("no deployment until the Job ends", result.stdout)
 

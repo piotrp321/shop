@@ -125,8 +125,7 @@ reindex: in the namespace $namespace of the cluster of $KUBE_DIR/config:
     the database, checked, and only then the alias moves to it and the index $before_index is deleted;
   - the shop stays open and is served by the index $before_index until then; a run that fails leaves the alias on it.
   - a change of a product, a price or a stock level written during the build reaches the new index too (the alias
-    $alias_name-rebuild); a product created in the admin panel during the build fails the check of the new index: the alias
-    stays on $before_index and the rebuild has to be run again (#979);
+    $alias_name-rebuild); the admin panel cannot create products until the build ends (409 search-rebuild-running);
   - no deployment until the Job ends: the Job migrate of a new revision fails while the index is rebuilt (its
     catalog:search-index:setup refuses), and has to be run again after it (make -C infra/k8s rerun JOB=<migrate job>).
 EOF

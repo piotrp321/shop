@@ -3566,7 +3566,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The slug belongs to another product (`type` slug-taken), or an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU). */
+            /** @description The slug belongs to another product (`type` slug-taken), an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU), or the search index is being rebuilt, which pauses the creation of products until it ends (`type` search-rebuild-running). */
             409: {
                 headers: {
                     [name: string]: unknown;
