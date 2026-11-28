@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Delivery\Domain;
 
+use App\Shared\Domain\Text;
+
 /**
- * What the customer reads under the name of a method, usually the time of the delivery: 0 to 200 characters once
- * trimmed of Unicode whitespace, one line (a line break is a control character). No description is the empty text.
+ * What the customer reads under the name of a method, usually the time of the delivery: a text by the rule of texts
+ * (Text), 0 to 200 characters once trimmed, one line (a line break is a control character). No description, also a
+ * text the rule takes for empty, is the empty text.
  */
 final readonly class DeliveryMethodDescription
 {
@@ -17,7 +20,7 @@ final readonly class DeliveryMethodDescription
     }
 
     /**
-     * @param string|null $description null and a text of white space only are no description
+     * @param string|null $description null and a text without a visible character are no description
      *
      * @throws InvalidDeliveryMethod
      */
@@ -26,15 +29,23 @@ final readonly class DeliveryMethodDescription
         if (null === $description) {
             return new self('');
         }
-        if (DeliveryText::hasForbiddenCharacters($description)) {
+        if (Text::hasForbiddenCharacters($description)) {
             throw InvalidDeliveryMethod::descriptionCharacters();
         }
-        $trimmed = DeliveryText::trim($description);
+        $trimmed = Text::normalize($description);
         if (mb_strlen($trimmed) > self::MAX_LENGTH) {
             throw InvalidDeliveryMethod::descriptionTooLong();
         }
 
         return new self($trimmed);
+    }
+
+    /**
+     * A description as stored, without the rule (spec api-input-contract, E7); only a write goes through of().
+     */
+    public static function stored(string $description): self
+    {
+        return new self($description);
     }
 
     public function toString(): string

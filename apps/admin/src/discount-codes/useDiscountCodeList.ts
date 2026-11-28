@@ -27,8 +27,10 @@ interface CodeQuery {
   perPage?: number;
 }
 
-// The API trims a search of white space, separators and invisible format characters (U+200B, U+00AD, U+2060, ...), so a
-// search of only those is an empty one. `trim()` does not remove the format characters.
+// The panel trims a search of white space, separators and all format characters (U+200B, U+00AD, U+2060, ...), so a
+// search of only those is an empty one. The API trims a narrower set (white space, separators, U+200B, U+2060, U+FEFF,
+// U+00AD) and takes a text without a visible character as empty, so the panel can trim more than the API does.
+// `trim()` does not remove the format characters.
 const SEARCH_EDGES = /^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu;
 
 function normalise(text: string): string {
@@ -64,7 +66,7 @@ function failureMessage(status: number): string {
  * dashboard or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
  * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays
  * here is the request to the API with its messages, and the rules of the search of codes (1 to 32 code points after
- * trimming the characters the API trims; the longer text is not sent and the hint says why). The status and the uses of a
+ * trimming the ends as the panel does; the longer text is not sent and the hint says why). The status and the uses of a
  * row are the API's; the panel computes nothing.
  */
 export function useDiscountCodeList() {

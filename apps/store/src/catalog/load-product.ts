@@ -34,6 +34,17 @@ function catalogClient(tags: NextCacheTag[]) {
 
 const isList = (value: unknown) => Array.isArray(value);
 
+const isText = (value: unknown) => typeof value === "string";
+
+function isParameter(value: unknown): boolean {
+  return typeof value === "object" && value !== null && isText((value as ProductDetails["parameters"][number]).name) && isText((value as ProductDetails["parameters"][number]).value);
+}
+
+function isVariant(value: unknown): boolean {
+  const variant = value as ProductDetails["variants"][number] | null;
+  return typeof variant === "object" && variant !== null && isText(variant.sku) && isText(variant.ean) && isText(variant.gtin);
+}
+
 function isDetails(value: ProductDetails | undefined): value is ProductDetails {
   return (
     typeof value === "object" &&
@@ -42,10 +53,15 @@ function isDetails(value: ProductDetails | undefined): value is ProductDetails {
     typeof value.slug === "string" &&
     typeof value.name === "string" &&
     typeof value.shortDescription === "string" &&
+    isText(value.brand) &&
+    isText(value.description) &&
+    Array.isArray(value.parameters) &&
+    value.parameters.every(isParameter) &&
     isList(value.breadcrumb) &&
     isList(value.images) &&
     isList(value.variantAxes) &&
-    isList(value.variants)
+    Array.isArray(value.variants) &&
+    value.variants.every(isVariant)
   );
 }
 

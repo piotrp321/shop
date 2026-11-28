@@ -207,7 +207,7 @@ async function dismiss(index: number, id: number): Promise<void> {
             :id="`image-alt-${index}`"
             data-testid="image-alt"
             :model-value="image.alt"
-            :disabled="readOnly"
+            :readonly="readOnly"
             :aria-invalid="errorsAt(`images[${index}]`).length > 0 ? 'true' : undefined"
             :aria-describedby="errorsAt(`images[${index}]`).length > 0 ? `image-alt-${index}-error` : undefined"
             maxlength="200"

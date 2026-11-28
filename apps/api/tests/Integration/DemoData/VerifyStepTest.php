@@ -6,6 +6,8 @@ namespace App\Tests\Integration\DemoData;
 
 use App\DemoData\Copy\Sql;
 use App\DemoData\Verify\PricingVerifier;
+use App\DemoData\Verify\SeedCatalog;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 
@@ -115,6 +117,89 @@ final class VerifyStepTest extends KernelTestCase
         // The id is not the one the seed gives the product, so it is reported as taken by another product.
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('belongs to another product', $tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the statement that spoils the product with the lowest id (":product" is its id, the product of a variant too), the violation that names it
+     */
+    public static function spoiledContent(): iterable
+    {
+        yield 'a product without a brand' => ["UPDATE catalog_product SET brand = '' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product without a description' => ["UPDATE catalog_product SET description = '' WHERE id = :product", 'A generated product has no description'];
+        yield 'a product without parameters' => ["UPDATE catalog_product SET parameters = '[]'::jsonb WHERE id = :product", 'A generated product has no parameters'];
+        yield 'a variant without a SKU' => ['UPDATE catalog_product_variant SET sku = NULL WHERE id = (SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)', 'A generated variant has no SKU'];
+        yield 'a variant without an EAN' => ['UPDATE catalog_product_variant SET ean = NULL WHERE id = (SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)', 'A generated variant has no EAN'];
+
+        // The API gives no code as an empty text (the receiver does not tell NULL from ''), so a generator fault that writes
+        // an empty or a blank text is a missing value as well: the rule of the texts (T3), not the ASCII `btrim`.
+        $firstVariant = '(SELECT id FROM catalog_product_variant WHERE product_id = :product ORDER BY position LIMIT 1)';
+        yield 'a variant with an empty SKU' => ["UPDATE catalog_product_variant SET sku = '' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with an empty EAN' => ["UPDATE catalog_product_variant SET ean = '' WHERE id = $firstVariant", 'A generated variant has no EAN'];
+        yield 'a variant with a SKU of spaces' => ["UPDATE catalog_product_variant SET sku = '   ' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with a SKU of no-break spaces' => ["UPDATE catalog_product_variant SET sku = '\u{00A0}\u{00A0}' WHERE id = $firstVariant", 'A generated variant has no SKU'];
+        yield 'a variant with an EAN of an em space and a zero width space' => ["UPDATE catalog_product_variant SET ean = '\u{2003}\u{200B}' WHERE id = $firstVariant", 'A generated variant has no EAN'];
+        yield 'a product with a brand of a space' => ["UPDATE catalog_product SET brand = ' ' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a brand of a no-break space' => ["UPDATE catalog_product SET brand = '\u{00A0}' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a brand of invisible characters' => ["UPDATE catalog_product SET brand = '\u{3000}\u{200D}\u{FE0F}\u{3164}' WHERE id = :product", 'A generated product has no brand'];
+        yield 'a product with a description of a no-break space' => ["UPDATE catalog_product SET description = '\u{00A0}' WHERE id = :product", 'A generated product has no description'];
+        yield 'a product with a parameter without a name' => ['UPDATE catalog_product SET parameters = \'[{"name":"","value":"2,4 kg"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
+        yield 'a product with a parameter of a blank value' => ["UPDATE catalog_product SET parameters = '[{\"name\":\"Waga\",\"value\":\"\u{00A0}\"}]'::jsonb WHERE id = :product", 'A generated product has a parameter without a name or a value'];
+        yield 'a product with a parameter without the key of a value' => ['UPDATE catalog_product SET parameters = \'[{"name":"Waga"}]\'::jsonb WHERE id = :product', 'A generated product has a parameter without a name or a value'];
+
+        // A name or a value that is no JSON string (->> would turn a number or a boolean into a visible text, and a missing
+        // key into SQL NULL, which a plain <> would not count).
+        $parameter = 'A generated product has a parameter without a name or a value';
+        $withParameters = static fn (string $json): string => "UPDATE catalog_product SET parameters = '$json'::jsonb WHERE id = :product";
+        yield 'a parameter with a number for a name' => [$withParameters('[{"name":5,"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a number for a value' => [$withParameters('[{"name":"Waga","value":5}]'), $parameter];
+        yield 'a parameter with a boolean for a value' => [$withParameters('[{"name":"Waga","value":true}]'), $parameter];
+        yield 'a parameter with an object for a value' => [$withParameters('[{"name":"Waga","value":{"kg":"2,4"}}]'), $parameter];
+        yield 'a parameter with an array for a name' => [$withParameters('[{"name":["Waga"],"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a JSON null for a name' => [$withParameters('[{"name":null,"value":"2,4 kg"}]'), $parameter];
+        yield 'a parameter with a JSON null for a value' => [$withParameters('[{"name":"Waga","value":null}]'), $parameter];
+        yield 'a parameter without the key of a name' => [$withParameters('[{"value":"2,4 kg"}]'), $parameter];
+        yield 'parameters as an object' => [$withParameters('{}'), 'A generated product has no parameters'];
+        yield 'parameters as a JSON null' => [$withParameters('null'), 'A generated product has no parameters'];
+        yield 'a parameter that is no object' => [$withParameters('[5]'), $parameter];
+    }
+
+    #[DataProvider('spoiledContent')]
+    public function testItListsAGeneratedProductOrVariantWithoutTheContentFieldsAndNamesTheViolation(string $statement, string $violation): void
+    {
+        $this->allSteps();
+        $connection = $this->connection();
+        $row = $connection->fetchAssociative('SELECT id, slug FROM catalog_product ORDER BY id LIMIT 1');
+        self::assertIsArray($row);
+        $connection->executeStatement(str_replace(':product', "'".Sql::string($row['id'])."'", $statement));
+
+        $tester = $this->verify();
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertStringContainsString('1 violation(s)', $tester->getDisplay(), 'Only the spoiled row is a violation.');
+        self::assertStringContainsString($violation.': '.Sql::string($row['slug']), $tester->getDisplay());
+    }
+
+    public function testASeedProductAndItsVariantsWithoutTheContentFieldsAreNotViolations(): void
+    {
+        $this->allSteps();
+        $connection = $this->connection();
+        // A product of fixtures/catalog.yaml, with the id the seed gives it, is not a generated one: the seed writes its
+        // own content (and a variant of the seed has the codes of the seed), whatever the verification of the tail asks.
+        $seed = new SeedCatalog(\dirname(__DIR__, 3).'/fixtures/catalog.yaml')->products();
+        $slug = array_key_first($seed);
+        self::assertIsString($slug);
+        $category = $connection->fetchOne('SELECT id FROM catalog_category LIMIT 1');
+        $connection->executeStatement(
+            "INSERT INTO catalog_product (id, slug, name, short_description, brand, description, parameters, tax_class, images, variant_axes, status, primary_category_id, updated_at) VALUES (?, ?, 'x', '', '', '', '[]', 'standard', '[]', '[]', 'draft', ?, now())",
+            [$seed[$slug], $slug, $category],
+        );
+        $connection->executeStatement("INSERT INTO catalog_product_variant (id, product_id, position, option_values, values_key, sku, ean) VALUES (gen_random_uuid(), ?, 0, '[]', '[]', NULL, NULL)", [$seed[$slug]]);
+
+        $display = $this->verify()->getDisplay();
+
+        foreach (['has no brand', 'has no description', 'has no parameters', 'has no SKU', 'has no EAN'] as $violation) {
+            self::assertStringNotContainsString($violation, $display);
+        }
     }
 
     public function testItListsAnIncompleteCategoryTree(): void

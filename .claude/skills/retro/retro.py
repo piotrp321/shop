@@ -143,8 +143,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _load(name):
-    """A sibling skill script (ao-run) imported by path, never copied."""
-    path = os.path.join(HERE, '..', 'ao-run', name + '.py')
+    """A module of tools/ash imported by path, never copied."""
+    path = os.path.join(HERE, '..', '..', '..', 'tools', 'ash', name + '.py')
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -2659,7 +2659,7 @@ LIMITS = {'fix': 5, 'issue': 3}
 CLASSES = ('corrective', 'planned', 'product')
 ALLOWED_FILES = [re.compile(pattern) for pattern in (
     r'CLAUDE\.md', r'apps/[^/]+/CLAUDE\.md', r'\.claude/skills/[^/]+/SKILL\.md', r'\.claude/agents/[^/]+\.md',
-    r'docs/features/(?:ao-run|prepare-epic|groom|agent-tester-ux|retro)/spec\.md',
+    r'docs/features/(?:prepare-epic|groom|agent-tester-ux|retro)/spec\.md',
     r'docs/adr/agentic-software-house\.md')]
 
 
@@ -2909,6 +2909,7 @@ class Validation:
 
     def check_applied(self, item, known):
         n, key = item['n'], item['key']
+        own = []
         for row in self.applied:
             shared = [i for i in known if i in (row.get('incidents') or [])]
             if row.get('key') != key:
@@ -2916,6 +2917,11 @@ class Validation:
                     self.add(n, 'applied', 'item %s: incident %s belongs to the fix %r applied in PR %s'
                              % (n, shared[0], row.get('key'), row.get('pr')))
                 continue
+            own.append(row)
+        if own:
+            # A key fixed more than once is judged against its latest fix; an unknown merge time counts as
+            # the latest, so no incident is new against it.
+            row = max(own, key=lambda r: (r.get('merged_at') is None, r.get('merged_at') or 0))
             moment = row.get('merged_at')
             fresh = [i for i in known if i not in (row.get('incidents') or []) and moment is not None
                      and (self.epic_of(i).get('created_at') or 0) > moment]

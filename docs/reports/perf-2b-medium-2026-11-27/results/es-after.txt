@@ -1,0 +1,13 @@
+catalog:reindex on after: exit 0, 246 s
+== _cat/indices
+health status index                             uuid                   pri rep docs.count docs.deleted store.size pri.store.size dataset.size
+green  open   products_20261127205507738_d50761 8wi3JGK7SnC4LqU9khHPcQ   1   0    4009541            0  983628815      983628815    983628815
+== _cat/aliases
+alias    index                             filter routing.index routing.search is_write_index
+products products_20261127205507738_d50761 -      -             -              -
+== products/_count
+{"count":1000191,"_shards":{"total":1,"successful":1,"skipped":0,"failed":0}}
+== products/_settings
+{"products_20261127205507738_d50761":{"settings":{"index.analysis.analyzer.folded_text.filter":["lowercase","asciifolding"],"index.analysis.analyzer.folded_text.tokenizer":"standard","index.analysis.analyzer.folded_text.type":"custom","index.analysis.analyzer.polish_text.filter":["lowercase","polish_stem","asciifolding"],"index.analysis.analyzer.polish_text.tokenizer":"standard","index.analysis.analyzer.polish_text.type":"custom","index.analysis.normalizer.sort_normalizer.filter":["lowercase","asciifolding"],"index.analysis.normalizer.sort_normalizer.type":"custom","index.creation_date":"1795812907747","index.number_of_replicas":"0","index.number_of_shards":"1","index.provided_name":"products_20261127205507738_d50761","index.refresh_interval":"5s","index.routing.allocation.include._tier_preference":"data_content","index.sort.field":"sort_path","index.sort.order":"asc","index.uuid":"8wi3JGK7SnC4LqU9khHPcQ","index.version.created":"9094000"}}}
+== products/_stats/docs,store
+{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"docs":{"count":4009541,"deleted":0,"total_size_in_bytes":983627637},"store":{"size_in_bytes":983628815,"total_data_set_size_in_bytes":983628815,"reserved_in_bytes":0}},"total":{"docs":{"count":4009541,"deleted":0,"total_size_in_bytes":983627637},"store":{"size_in_bytes":983628815,"total_data_set_size_in_bytes":983628815,"reserved_in_bytes":0}}},"indices":{"products_20261127205507738_d50761":{"uuid":"8wi3JGK7SnC4LqU9khHPcQ","health":"green","status":"open","primaries":{"docs":{"count":4009541,"deleted":0,"total_size_in_bytes":983627637},"store":{"size_in_bytes":983628815,"total_data_set_size_in_bytes":983628815,"reserved_in_bytes":0}},"total":{"docs":{"count":4009541,"deleted":0,"total_size_in_bytes":983627637},"store":{"size_in_bytes":983628815,"total_data_set_size_in_bytes":983628815,"reserved_in_bytes":0}}}}}

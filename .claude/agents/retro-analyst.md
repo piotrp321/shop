@@ -116,7 +116,7 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   incydentów z `input.json`, tylko istniejących), `classes`, `cause`, `why_prevents` (dlaczego zapobiegnie podobnemu
   problemowi), `verify` (po czym w kolejnych epikach poznamy, że działa).
 - **`fix`:** dodatkowo `files` i `change`. `files` tylko z listy dozwolonej: `CLAUDE.md`, `apps/*/CLAUDE.md`,
-  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`,
+  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{agent-tester-ux,retro}/spec.md`,
   `docs/adr/agentic-software-house.md` („Przebieg epiku”).
   Zmiana w innym pliku (np. skrypt, `retro.py`, `docs/` poza listą, plany) to `issue` z `repo: "shop"`.
 - **`issue`:** `repo` (`ao` albo `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo
@@ -135,7 +135,8 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   Bez nowego incydentu nie proponuj jej wcale (zostaje w `observations` albo nic).
 - **Skuteczność** (`applied.jsonl`): pozycja z `key` zastosowanej poprawki albo z jej incydentem przy innym `key` jest
   dopuszczalna tylko z incydentem z epiku rozpoczętego po merge'u tej poprawki, pod tym samym `key` i z polem
-  `previous_fix` (numer PR). PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała: wpisz w `cause`, dlaczego.
+  `previous_fix` (numer PR). `key` zastosowany kilka razy: liczy się ostatnia poprawka (najpóźniejszy `merged_at`),
+  a `previous_fix` to jej PR. PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała: wpisz w `cause`, dlaczego.
   Poprawka z `applied.jsonl` bez nowego incydentu to nie powód do pozycji.
 - **`status`:** pozycja zmiany statusu kroku planu Agentic Software House: `n`, `kind: "status"`, `target` (np.
   `krok 12`), `change`, `evidence` (ID incydentu albo faktu `status/*`). Krok oznaczony jako zweryfikowany bez dowodu to
@@ -155,7 +156,7 @@ Zapisz `<run_dir>/proposals.json`:
   "items": [
     {"n": 1, "kind": "fix", "key": "...", "title": "...", "evidence": ["<ID incydentu>"],
      "classes": {"<ID incydentu>": {"class": "corrective", "corrective_reason": "..."}},
-     "cause": "...", "files": [".claude/skills/ao-run/SKILL.md"], "change": "...",
+     "cause": "...", "files": [".claude/skills/retro/SKILL.md"], "change": "...",
      "why_prevents": "...", "verify": "...", "previously_rejected": null, "previous_fix": null, "updates": null},
     {"n": 2, "kind": "issue", "key": "...", "repo": "ao", "title": "...", "existing_issue": 46, "body": null,
      "evidence": ["..."], "classes": {}, "cause": "...", "why_prevents": "...", "verify": "...",

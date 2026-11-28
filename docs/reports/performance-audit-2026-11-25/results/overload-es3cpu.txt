@@ -1,0 +1,9 @@
+# Przebieg przeciążenia z 2026-11-25 (Elasticsearch ograniczony `docker update --cpus=3`), przepisany z wyjścia konsoli
+# sesji prowadzącej: trzy równoległe wywołania scripts/lt.py nie zapisywały wyniku do pliku .jsonl.
+overload listing c32 | rps 15.68 ok 0.0 err% 100.0 p50 2027 p95 2082 max 2104 {'503': 320}      # GET /api/v1/products?page=3, 32 klientów, 20 s
+health during overload | rps 5.24 ok 5.24 err% 0.0 p50 15 p95 1888 max 1930 {'200': 64}         # GET /health, 1 klient, 12 s, start 4 s po listingu
+pdp c4 during overload | rps 12.6 ok 12.6 err% 0.0 p50 23 p95 1910 max 1955 {'200': 154}        # GET /api/v1/products/<slug>, 4 klientów, 12 s
+health after | 200, 0.002 s
+_cat/thread_pool/search (active queue rejected completed) po przebiegu: 0 0 0 45063
+_tasks?actions=*search* po przebiegu: {"nodes":{}}
+# Zapytanie o połączenia Postgresa w trakcie przebiegu nie wykonało się (błąd wywołania psql), więc liczby połączeń brak.

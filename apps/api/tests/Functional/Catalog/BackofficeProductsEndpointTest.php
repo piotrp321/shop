@@ -90,7 +90,7 @@ final class BackofficeProductsEndpointTest extends WebTestCase
 
     public function testTheListHoldsTheSummaryOfEachProduct(): void
     {
-        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => ['M']], ['variantId' => null, 'values' => ['L']], ['variantId' => null, 'values' => ['XL']]]]);
+        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => ['M'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['L'], 'sku' => '', 'ean' => ''], ['variantId' => null, 'values' => ['XL'], 'sku' => '', 'ean' => '']]]);
 
         $body = $this->api('GET', '/api/v1/admin/products');
 
@@ -327,6 +327,44 @@ final class BackofficeProductsEndpointTest extends WebTestCase
 
         self::assertNotSame([], $this->violations(400));
         self::assertStringNotContainsString('garbage', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * The rule of texts (spec api-input-contract, E6): a phrase without a visible character is too short and a
+     * forbidden character is refused, each with one violation of `q`.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function phrasesOutsideTheRule(): iterable
+    {
+        $tooShort = 'Ta wartość jest zbyt krótka. Powinna mieć 2 lub więcej znaków.';
+        yield 'three ASCII spaces' => ['%20%20%20', $tooShort];
+        yield 'two NBSP' => ['%C2%A0%C2%A0', $tooShort];
+        yield 'three U+200B' => ['%E2%80%8B%E2%80%8B%E2%80%8B', $tooShort];
+        yield 'three U+3164' => ['%E3%85%A4%E3%85%A4%E3%85%A4', $tooShort];
+        yield 'U+009F inside' => ['bi%C2%9Fdon', 'Szukana fraza zawiera niedozwolone znaki.'];
+        yield 'U+2028 at the end' => ['bidon%E2%80%A8', 'Szukana fraza zawiera niedozwolone znaki.'];
+    }
+
+    #[DataProvider('phrasesOutsideTheRule')]
+    public function testAPhraseOutsideTheRuleIsRejected(string $phrase, string $title): void
+    {
+        $this->createProduct(['name' => 'Bidon', 'slug' => 'bidon']);
+
+        $this->api('GET', '/api/v1/admin/products?q='.$phrase);
+
+        self::assertSame([['propertyPath' => 'q', 'title' => $title]], $this->violations(400));
+    }
+
+    public function testThePhraseIsSearchedForWithoutTheWhiteSpaceAndInvisibleCharactersAtItsEnds(): void
+    {
+        $this->createProduct(['name' => 'Bidon', 'slug' => 'bidon']);
+        $this->createProduct(['name' => 'Plecak', 'slug' => 'plecak']);
+
+        $found = $this->api('GET', '/api/v1/admin/products?q=%E2%80%8B%C2%A0bidon%C2%A0%E2%80%8B');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['Bidon'], array_column(self::list($found['items']), 'name'));
     }
 
     public function testAnUnknownCategoryIsNotFound(): void

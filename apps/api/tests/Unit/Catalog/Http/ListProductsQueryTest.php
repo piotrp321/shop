@@ -38,6 +38,50 @@ final class ListProductsQueryTest extends TestCase
         self::assertSame(['q'], $this->paths(new ListProductsQuery(q: ' a ')));
     }
 
+    /**
+     * The rule of texts (spec api-input-contract, T1–T4, E6): a phrase without a visible character is too short, a
+     * forbidden character is refused, and the length counts after the trim of white space and invisible characters.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function phrasesOutsideTheRule(): iterable
+    {
+        $tooShort = 'This value is too short. It should have 2 characters or more.';
+        $forbidden = 'Szukana fraza zawiera niedozwolone znaki.';
+        yield 'two NBSP' => ["\u{A0}\u{A0}", $tooShort];
+        yield 'three U+200B' => ["\u{200B}\u{200B}\u{200B}", $tooShort];
+        yield 'three U+3164' => ["\u{3164}\u{3164}\u{3164}", $tooShort];
+        yield 'one letter between U+200B' => ["\u{200B}a\u{200B}", $tooShort];
+        yield 'a NUL inside' => ["a\u{0}b", $forbidden];
+        yield 'U+009F inside' => ["a\u{9F}b", $forbidden];
+        yield 'U+2028 inside' => ["a\u{2028}b", $forbidden];
+        yield 'U+2028 at the end' => ["ab\u{2028}", $forbidden];
+        yield 'a tab at the start' => ["\tab", $forbidden];
+    }
+
+    #[DataProvider('phrasesOutsideTheRule')]
+    public function testAPhraseOutsideTheRuleIsOneViolationOfQ(string $phrase, string $message): void
+    {
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+        $violations = [];
+        foreach ($validator->validate(new ListProductsQuery(q: $phrase)) as $violation) {
+            $violations[] = [$violation->getPropertyPath(), (string) $violation->getMessage()];
+        }
+
+        self::assertSame([['q', $message]], $violations);
+    }
+
+    public function testTheLengthOfAPhraseIsCountedAfterTheTrim(): void
+    {
+        self::assertSame([], $this->paths(new ListProductsQuery(q: "\u{200B}\u{200B}".str_repeat('ż', 100)."\u{FEFF}\u{A0}")));
+    }
+
+    public function testThePhraseIsTrimmedOfWhiteSpaceAndInvisibleCharacters(): void
+    {
+        self::assertSame('buty', (new ListProductsQuery(q: "\u{200B}\u{A0}buty\u{3000}\u{FEFF}"))->phrase());
+        self::assertSame("bu\u{200B}ty", (new ListProductsQuery(q: "bu\u{200B}ty"))->phrase());
+    }
+
     public function testRelevanceIsValidWithAPhrase(): void
     {
         self::assertSame([], $this->paths(new ListProductsQuery(q: 'buty', sort: 'relevance')));

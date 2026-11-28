@@ -11,15 +11,19 @@ namespace App\Catalog\UI\Http;
 final readonly class ProductWriteData
 {
     /**
-     * @param list<string>                                              $additionalCategoryIds
-     * @param list<array{key: string, alt: string}>                     $images
-     * @param list<string>                                              $variantAxes
-     * @param list<array{variantId: string|null, values: list<string>}> $variants
+     * @param list<array{name: string, value: string}>                                            $parameters
+     * @param list<string>                                                                        $additionalCategoryIds
+     * @param list<array{key: string, alt: string}>                                               $images
+     * @param list<string>                                                                        $variantAxes
+     * @param list<array{variantId: string|null, values: list<string>, sku: string, ean: string}> $variants
      */
     private function __construct(
         public string $name,
         public string $slug,
         public string $shortDescription,
+        public string $brand,
+        public string $description,
+        public array $parameters,
         public string $mainCategoryId,
         public array $additionalCategoryIds,
         public string $taxClass,
@@ -29,25 +33,29 @@ final readonly class ProductWriteData
     ) {
     }
 
-    public static function of(mixed $name, mixed $slug, mixed $shortDescription, mixed $mainCategoryId, mixed $additionalCategoryIds, mixed $taxClass, mixed $images, mixed $variantAxes, mixed $variants): self
+    public static function of(mixed $name, mixed $slug, mixed $shortDescription, mixed $brand, mixed $description, mixed $parameters, mixed $mainCategoryId, mixed $additionalCategoryIds, mixed $taxClass, mixed $images, mixed $variantAxes, mixed $variants): self
     {
-        \assert(\is_string($name) && \is_string($slug) && \is_string($shortDescription) && \is_string($mainCategoryId) && \is_string($taxClass));
-        \assert(\is_array($additionalCategoryIds) && \is_array($images) && \is_array($variantAxes) && \is_array($variants));
+        \assert(\is_string($name) && \is_string($slug) && \is_string($shortDescription) && \is_string($brand) && \is_string($description) && \is_string($mainCategoryId) && \is_string($taxClass));
+        \assert(\is_array($parameters) && \is_array($additionalCategoryIds) && \is_array($images) && \is_array($variantAxes) && \is_array($variants));
 
+        /** @var list<array{name: string, value: string}> $parameters */
         /** @var list<string> $additionalCategoryIds */
         /** @var list<array{key: string, alt: string}> $images */
         /** @var list<string> $variantAxes */
-        /** @var list<array{variantId: string|null, values: list<string>}> $variants */
+        /** @var list<array{variantId: string|null, values: list<string>, sku: string, ean: string}> $variants */
         return new self(
             $name,
             $slug,
             $shortDescription,
+            $brand,
+            $description,
+            array_map(static fn (array $parameter): array => ['name' => $parameter['name'], 'value' => $parameter['value']], $parameters),
             $mainCategoryId,
             $additionalCategoryIds,
             $taxClass,
             array_map(static fn (array $image): array => ['key' => $image['key'], 'alt' => $image['alt']], $images),
             $variantAxes,
-            array_map(static fn (array $row): array => ['variantId' => $row['variantId'], 'values' => $row['values']], $variants),
+            array_map(static fn (array $row): array => ['variantId' => $row['variantId'], 'values' => $row['values'], 'sku' => $row['sku'], 'ean' => $row['ean']], $variants),
         );
     }
 }

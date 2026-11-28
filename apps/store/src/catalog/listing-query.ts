@@ -65,9 +65,11 @@ function all(value: string | string[] | undefined): string[] {
   return (Array.isArray(value) ? value : [value]).filter((item): item is string => item !== undefined && item !== "");
 }
 
-// The API trims the phrase with PHP `trim`, which also strips NUL; `String.trim` does not, so a phrase the front counts
-// as 2 characters would be 1 for the API (400, an invalid filter instead of the message about 2 characters). One walk
-// from each end, so linear: a regex trim backtracks quadratically over a long run of spaces inside the phrase.
+// The front trims the white space and NUL from the ends of the phrase before it counts the characters. The API trims by
+// the rule of texts (white space, separators and the invisible characters U+200B, U+2060, U+FEFF and U+00AD) and
+// refuses NUL and other control characters, so the count of the front and of the API can differ for a phrase with such
+// characters at its ends. One walk from each end, so linear: a regex trim backtracks quadratically over a long run of
+// spaces inside the phrase.
 const isTrimmed = (char: string) => char === "\0" || /\s/.test(char);
 
 function trimPhrase(phrase: string | undefined): string | undefined {

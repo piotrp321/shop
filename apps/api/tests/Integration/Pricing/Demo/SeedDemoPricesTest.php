@@ -22,6 +22,7 @@ use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
@@ -162,6 +163,39 @@ final class SeedDemoPricesTest extends KernelTestCase
         self::assertStringContainsString('Nothing was changed', $display);
         self::assertSame(89900, $this->price($tent)['gross_amount']);
         self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_variant_price'));
+        self::assertSame([20], $this->connection->fetchFirstColumn('SELECT percent_off FROM pricing_promotion'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function namesThePromotionRefuses(): iterable
+    {
+        yield 'only U+200B' => ['"\u200B"'];
+        yield 'only U+3164' => ['"\u3164"'];
+        yield 'U+2028 inside' => ['"Namioty\u2028tanio"'];
+        yield 'U+0085 inside' => ['"Namioty\u0085tanio"'];
+        yield 'a C1 control at the end' => ['"Namioty\u009F"'];
+        yield 'a tab inside' => ['"Namioty\ttanio"'];
+    }
+
+    /**
+     * The check before the reset judges the name by the rule of texts of the domain (Promotion), so a file whose name
+     * the domain refuses stops the seed before anything is reset.
+     */
+    #[DataProvider('namesThePromotionRefuses')]
+    public function testAPromotionNameTheDomainRefusesFailsBeforeTheResetAndLeavesThePricesAndPromotionsUnchanged(string $name): void
+    {
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
+        $this->tester("\"namiot-*\": 89900\n", "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n")->execute([]);
+        self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_promotion'));
+
+        $tester = $this->tester("\"namiot-*\": 99900\n", "- name: {$name}\n  percentOff: 30\n  days: 30\n  variants: [\"namiot-*\"]\n");
+
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+        self::assertStringContainsString('Nothing was changed', preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '');
+        self::assertSame(89900, $this->price($tent)['gross_amount']);
+        self::assertSame(['Namioty'], $this->connection->fetchFirstColumn('SELECT name FROM pricing_promotion'));
         self::assertSame([20], $this->connection->fetchFirstColumn('SELECT percent_off FROM pricing_promotion'));
     }
 

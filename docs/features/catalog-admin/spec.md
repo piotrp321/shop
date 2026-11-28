@@ -33,7 +33,8 @@ Poza zakresem:
 - usuwanie produktu (zamiast niego wycofanie publikacji);
 - przekierowania 301 po zmianie sluga produktu (slug jest stały od pierwszej publikacji, decyzja K4);
 - import hurtowy, eksport, operacje masowe;
-- długi opis, pola SEO (własny tytuł i opis), marka jako pole, kody SKU i EAN, zdjęcia per wariant;
+- pola SEO (własny tytuł i opis), zdjęcia per wariant (marka, długi opis, parametry produktu oraz SKU i EAN wariantu:
+  `docs/features/product-data/spec.md`); wyszukiwanie po SKU i EAN, kody na listach cen i stanów i na zamówieniach;
 - generator kombinacji wariantów (wiersze wariantów dodaje się pojedynczo);
 - kadrowanie i edycja zdjęć w panelu, sprzątanie nieużywanych oryginałów w Garage (K7);
 - ustawianie ceny i stanu z formularza produktu (robią to istniejące listy cen i stanów);
@@ -48,7 +49,7 @@ Poza zakresem:
 | K2 | Publikacja szkicu wymaga co najmniej jednego zdjęcia. Cena i stan nie są wymagane: opublikowany produkt bez ceny albo stanu jest w sklepie „Niedostępny” (E3 VARIANTS). Zapis opublikowanego produktu, który miał zdjęcia, nie może usunąć ostatniego. Opublikowany produkt bez zdjęć (dane demo `imagelessEvery: 50`, `PhotoPlaceholder` w sklepie) jest edytowalny bez dodawania zdjęcia. |
 | K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik z rolą personelu (`admin`, `support`, `warehouse`, `marketing`). |
 | K4 | Slug: na tworzeniu opcjonalny (pusty: API wylicza go z nazwy); zmienny, dopóki produkt nie był nigdy opublikowany; od pierwszej publikacji stały (także po wycofaniu). Bez przekierowań 301. |
-| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany klucza porównania (`VariantValues::comparisonKey()`: wielkość liter i spacje na brzegach, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany klucza porównania); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
+| K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany tożsamości tekstu (tekst przycięty według reguły tekstów, bez względu na wielkość liter: wielkość liter i znaki przycinane z brzegów, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany tożsamości tekstu); zapisana nazwa osi albo wartość ze znakiem niedozwolonym zachowuje tożsamość swojej poprawki (tego samego tekstu bez znaków niedozwolonych i białych znaków), a bez znaku widocznego nie ma tożsamości; wyjątek (decyzja właściciela z 2026-11-25): druga oś, której zapisana nazwa powtarza zapisaną nazwę pierwszej osi (po zastąpieniu znaków niedozwolonych odstępem i przycięciu T2, bez względu na wielkość liter, np. „Kolor” i „Kolor” U+200B), może jednorazowo dostać nową nazwę, a pierwsza zostaje chroniona; nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
 | K7 | Oryginały zdjęć w Garage nie są usuwane (także po usunięciu zdjęcia z produktu albo uploadzie bez zapisu produktu). Klucz wynika z treści, więc ten sam plik nie zajmuje miejsca dwa razy. |
 | K8 | Limity uploadu: 64 MB i 50 MP na plik, typy JPEG, PNG, WebP, AVIF, HEIC. Jeden plik na żądanie, panel wysyła kilka po kolei. |
@@ -80,7 +81,10 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
   `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
   `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
-- `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
+- `edit(name, slug, shortDescription, brand, description, parameters, categories, taxClass, images, variants)`:
+  zastępuje dane produktu. Marka, opis i parametry (value objecty `ProductBrand`, `ProductDescription`,
+  `ProductParameters`) nie należą do tożsamości wariantów i zmieniają się także po publikacji; same one też podnoszą
+  wersję i zapisują `ProductChanged`. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
   nich (K2). Zapisuje `ProductChanged`, także gdy dane się nie zmieniły (zapis idempotentny dla konsumentów).
@@ -91,20 +95,73 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   jego odpowiednik integracyjny `Catalog\Application\Event\ProductChanged` z tymi samymi polami (A2). `slug` po
   zmianie (konsument unieważnia tag tego sluga).
 - Warianty (K5): `edit` przyjmuje gotowe `ProductVariants` (reguły VARIANTS: 1–100 wariantów, 0–2 osie,
-  unikalne kombinacje, produkt bez osi ma jeden wariant domyślny). Handler buduje je z listy wierszy: wiersz
+  unikalne kombinacje, unikalne SKU, produkt bez osi ma jeden wariant domyślny). Handler buduje je z listy wierszy: wiersz
   z `variantId` tego produktu zachowuje identyfikator, wiersz bez `variantId` dostaje nowy UUIDv7, `variantId`
-  spoza produktu → `UnknownVariant` (`InvalidInput`, 422). Produkt bez osi, któremu dochodzą osie (tylko przed
+  spoza produktu → `UnknownVariant` (`InvalidInput`, 422). Wiersz niesie też kody wariantu (`sku`, `ean`), które
+  należą do wariantu (jego identyfikatora), nie do jego wartości: nie są częścią tożsamości, więc zmieniają się także
+  po publikacji, zostają przy każdej zmianie osi i wartości dozwolonej w K5, a pusty tekst w wierszu to brak kodu.
+- SKU i EAN wariantu (value objecty `Sku` i `Ean`, reguły: `docs/features/product-data/spec.md`, „Pola i reguły”):
+  kolejność T1 na wartości, jak przyszła, T2, potem format (SKU: 1–40 znaków `A–Z0–9-_./`, pierwszy litera albo
+  cyfra, litery ASCII zapisane wielkimi; EAN: 8, 12, 13 albo 14 cyfr z cyfrą kontrolną GS1). Brak klucza i zły typ
+  (liczba JSON też) to naruszenie przy `variants[i].sku` albo `variants[i].ean`, nie 500. SKU jest unikalne wśród
+  wszystkich wariantów wszystkich produktów, także szkiców: powtórzone w żądaniu (`SkuRepeated`, późniejszy wiersz)
+  albo zajęte przez wariant innego produktu (`SkuUsedByAnotherProduct`, sprawdza handler przez
+  `ProductRepository::skusOfOtherProducts` przed zapisem; kody wariantów zapisywanego produktu nie liczą się) to 422
+  przy `variants[i].sku`. Gwarancją jest indeks unikalny `catalog_product_variant_sku_key` (osobna migracja
+  nietransakcyjna `CONCURRENTLY`): zapis, który przegrał wyścig, to 409 `sku-taken` (`SkuAlreadyTaken`, bez
+  `violations`), rozpoznawany po nazwie ograniczenia jak `slug-taken`. Przed zmianą jakiegokolwiek wiersza repozytorium bierze blokadę doradczą transakcji (`pg_advisory_xact_lock(int, int)`) na każde SKU, które zapis wstawia albo usuwa, jednym zapytaniem w rosnącej kolejności kluczy, więc dwa zapisy tego samego SKU ustawiają się w kolejce na blokadzie, a nie na indeksie (usunięty, niezatwierdzony wiersz trzyma SKU dla wstawienia innego zapisu i dwa zapisy mogłyby zakleszczyć się na indeksie, co dałoby 500); drugi zapis widzi stan zatwierdzony: SKU zajęte (`sku-taken`) albo wolne. Wiersze wariantów są wstawiane w kolejności SKU. EAN nie jest unikalny. `gtin` odpowiedzi sklepu
+  liczy `Ean::gtin()`: równy EAN dla globalnego numeru towaru, pusty dla numeru obiegu ograniczonego (RCN, GS1
+  General Specifications 26.0, §2.1.11) i dla braku EAN. Produkt bez osi, któremu dochodzą osie (tylko przed
   pierwszą publikacją), zachowuje identyfikator wariantu domyślnego w pierwszym wierszu, jeśli panel go odeśle.
 - Tożsamość wariantu po publikacji (K5), w `edit` dla `firstPublishedAt ≠ null`:
-  - osie: ta sama liczba i kolejność, każda nazwa z tym samym kluczem porównania co w `VariantAxes`
-    (`mb_strtolower` po przycięciu);
-  - wariant zachowany (ten sam `variantId`): `VariantValues::comparisonKey()` taki sam jak zapisanego wariantu;
-  - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym etykietę
-    wariantu albo nazwę osi; nowe warianty bez ograniczeń.
+  - tożsamość tekstu (`IdentityText`): nazwa osi albo wartość przycięta według reguły tekstów, `mb_strtolower`.
+    Porównanie przycina obie strony, więc tekst zapisany przed regułą ze znakami, które reguła przycina (np. U+200B
+    na brzegu), ma tę samą tożsamość co tekst bez nich, a zapis zapisuje tekst przycięty. Zapisany tekst ze znakiem
+    niedozwolonym (T1) porównuje się po usunięciu z niego znaków niedozwolonych i białych znaków (`\s`, kategoria Z),
+    a z tekstu wysłanego białych znaków: przyjęta jest tylko jego poprawka (`czar` U+009F `ne` → „czarne” albo
+    „czar ne”, `Kol` U+0009 `or` → „Kolor” albo „Kol or”; „zielone” albo „Materiał” to zmiana tożsamości, 409).
+    Zapisany tekst bez znaku widocznego, także po usunięciu znaków niedozwolonych (np. U+200B, U+3164), nie ma
+    tożsamości: na jego miejsce wolno wpisać dowolny poprawny tekst. Poprawka jest jednorazowa i zapisuje tekst tak,
+    jak został wysłany: po zapisie „czar ne” wartość ma tę tożsamość i nie da się jej już zmienić na „czarne”. Po
+    zapisie poprawiony tekst jest chroniony jak każdy inny;
+  - osie: ta sama liczba i kolejność, każda nazwa z tą samą tożsamością tekstu;
+  - wyjątek dla dwóch zapisanych nazw osi, które się powtarzają (decyzja właściciela z 2026-11-25: „Wyjątek dotyczy
+    wyłącznie drugiej osi. Przy ustalaniu kolizji zastąp niedozwolone znaki odstępami, zastosuj T2 i dotychczasowe
+    porównanie bez względu na wielkość liter.”): zapis sprzed reguły tekstów mógł przyjąć dwie nazwy, które teraz są
+    jedną. Kolizję liczy `IdentityText::same` wyłącznie z nazw zapisanych w produkcie, nie z nazw wysłanych: w każdej
+    znaki niedozwolone (T1) zastępuje odstęp, potem przycięcie T2 i porównanie bez względu na wielkość liter, tak jak
+    reguła powtórzonej osi; nazwa bez znaku widocznego z niczym nie koliduje. Kolidują np. „Kolor” i „Kolor” U+200B,
+    „Kolor” i „Kolor” U+009F, „A” i U+009F „A”. Nie kolidują „Kolor” i `Kol` U+009F `or` (to „Kol or”) ani „Kolor”
+    i `Ko` U+009F ` lor`: druga nazwa przyjmuje wtedy tylko swoją poprawkę („Kol or” albo „Ko lor”; poprawka bez odstępu
+    to powtórzona oś), a nowa nazwa daje 409 ze wskazówką o znakach niedozwolonych. Zapis z niezmienioną drugą nazwą
+    kolidującą daje 422 przy `variantAxes[1]`: „Nazwa osi już jest użyta.”, a dla nazwy ze znakiem niedozwolonym
+    najpierw „Nazwa osi zawiera niedozwolone znaki.” (po usunięciu znaku: „Nazwa osi już jest użyta.”). Druga oś może
+    wtedy dostać dowolną nazwę, która nie powtarza pierwszej (inaczej dalej 422 powtórzonej osi). Pierwsza oś
+    zachowuje blokadę; liczba i kolejność osi, wartości wariantów i ich identyfikatory zostają bez zmian (dodanie,
+    usunięcie i przestawienie osi dalej daje 409). Po zapisie nazwy osi się nie powtarzają i obie chroni zwykła
+    reguła. Zmiana nazwy pierwszej osi przy kolizji daje komunikat z dopiskiem: „Oś „Kolor” nie może zmienić nazwy po
+    pierwszej publikacji. Popraw tylko wielkość liter. Nową nazwę może dostać tylko druga oś, która powtarza tę
+    nazwę.” (dla zapisanej nazwy ze znakiem niedozwolonym dopisek idzie po wskazówce poprawki);
+  - wariant zachowany (ten sam `variantId`): każda wartość z tą samą tożsamością tekstu co wartość zapisana na tej
+    pozycji;
+  - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym wariant albo
+    oś; nowe warianty bez ograniczeń. `detail` nazywa zapisany tekst tak, jak czyta go człowiek (`IdentityText::shown`):
+    bez znaków niedozwolonych (T1) i bez znaków przycinanych z brzegów, więc nie niesie znaków, których panel nie
+    pokazuje; ten sam zapis nazywa wariant w `VariantInUse` (wariant bez żadnej widocznej wartości: „Wariant bez
+    widocznej wartości”). Dla tekstu bez znaków niedozwolonych komunikat to:
+    „Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Popraw tylko wielkość liter albo dodaj nowy
+    wariant i usuń stary.” i „Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji. Popraw tylko wielkość liter.”
+    Gdy zapisany tekst ma znak niedozwolony (zapis sprzed etapu reguły tekstu; dla wariantu: wartość, która nie
+    zachowała tożsamości i wywołała odmowę, a nie każda wartość wariantu), wskazówka mówi, jaka poprawka jest
+    dozwolona: „Wariant „czarne, M” nie może zmienić wartości po pierwszej publikacji. Zapisana wartość ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość
+    liter, albo dodaj nowy wariant i usuń stary.” i „Oś „Kolor” nie może zmienić nazwy po pierwszej publikacji.
+    Zapisana nazwa ma znaki niedozwolone: usuń je albo zastąp odstępem i popraw tylko wielkość liter.” (etykieta
+    to tekst po usunięciu znaków niedozwolonych; wartość bez znaku widocznego nie ma w niej tekstu, więc dwa warianty
+    różniące się tylko takimi wartościami mają w komunikacie tę samą etykietę, tak jak wyglądają w panelu);
 - Usunięcie wariantu (każdy wariant produktu, którego nie ma w nowej liście; także przed publikacją): handler
   pobiera z portu `VariantStockFacts::inUse(variantIds)` identyfikatory wariantów ze stanem fizycznym > 0 albo
   zarezerwowanym > 0 i przekazuje je do `edit`; usunięcie któregoś z nich → `VariantInUse` (`Conflict`, typ
-  `variant-in-use`) z `detail` z etykietą pierwszego takiego wariantu. Odczyt faktów bez blokady (patrz „Ryzyka”).
+  `variant-in-use`) z `detail` z nazwą pierwszego takiego wariantu (jak w `variant-locked`). Odczyt faktów bez blokady (patrz „Ryzyka”).
 - Identyfikator pracownika ostatniej zmiany (`sub` z tokena; zasada „Klienci i pracownicy” w `docs/vision.md`)
   i czas zmiany są metadanymi zapisu w rekordzie produktu (`updated_by`, `updated_at`), nie częścią agregatu
   (inaczej niż `PriceChangeOrigin` w Pricing, bo produkt nie ma historii zmian). Repozytorium dostaje je w
@@ -128,8 +185,9 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   (przez `incrementVersion` w repozytorium, jak przy zmianie samych wariantów albo kategorii). Publikacja szkicu
   i wycofanie opublikowanego robią to samo; publikacja opublikowanego i wycofanie szkicu (przy zgodnej wersji) to 200 bez zmian,
   bez nowej wersji i bez zdarzenia. Odpowiedzi panelu zwracają `version`.
-- Błędy typowane (`TypedProblem`, panel rozróżnia 409 po `type`): `slug-taken` (`SlugAlreadyTaken`), `slug-locked`,
-  `product-modified` (`ProductModifiedConcurrently`), `product-not-publishable`, `variant-locked`, `variant-in-use`.
+- Błędy typowane (`TypedProblem`, panel rozróżnia 409 po `type`): `slug-taken` (`SlugAlreadyTaken`), `sku-taken` (`SkuAlreadyTaken`), `slug-locked`,
+  `product-modified` (`ProductModifiedConcurrently`), `product-not-publishable`, `variant-locked`, `variant-in-use`,
+  `search-rebuild-running` (`SearchIndexRebuildRunning`, tylko tworzenie: `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”).
   Schemat OpenAPI
   `ProductConflictProblem` wylicza te wartości w `enum`.
 - Nieistniejący oryginał zdjęcia (port `ProductImageStorage::exists(key)`) → `ImageNotFound` (`InvalidInput`, 422
@@ -202,30 +260,54 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /products?q&category&status&images&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `images=none` (tylko produkty bez zdjęć, `catalog_product.images = '[]'::jsonb`; łączy się z `q`, `category`, `status` i `sort`; częściowy indeks `catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb`, migracja nietransakcyjna `CONCURRENTLY`; `ProductsWithoutImagesPlanTest` sprawdza plan na 100 000 produktów bez wyłączania skanów; inna wartość `images` to 400), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
-| `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
-| `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria); 503 Garage niedostępny |
-| `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
+| `GET /products?q&category&status&images&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków po przycięciu według reguły tekstów, bez znaków sterujących i separatorów linii (400 „Szukana fraza zawiera niedozwolone znaki.”), lista szuka frazy przyciętej (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `images=none` (tylko produkty bez zdjęć, `catalog_product.images = '[]'::jsonb`; łączy się z `q`, `category`, `status` i `sort`; częściowy indeks `catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb`, migracja nietransakcyjna `CONCURRENTLY`; `ProductsWithoutImagesPlanTest` sprawdza plan na 100 000 produktów bez wyłączania skanów; inna wartość `images` to 400), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
+| `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, brand, description, parameters: [{name, value}], mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values, sku, ean}], updatedAt}` (`sku` i `ean` to pusty tekst przy braku kodu); 404 |
+| `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`, `sku-taken`, `search-rebuild-running`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria, zajęte SKU); 503 Garage niedostępny |
+| `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `sku-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
 | `POST /products/{id}/publish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `product-not-publishable` |
 | `POST /products/{id}/unpublish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified` |
 | `POST /product-images` (`multipart/form-data`, pole `file`) | zarządzanie | 201 `{key, preview: ImagePreview}` (`ImagePreview`: `size`, `aspectRatio`, `variants` rozmiaru `thumbnail`, bez `alt`); 422 brak pliku, za duży, nieobsługiwany typ, nieczytelne wymiary, za duża rozdzielczość (`detail` po polsku); 503 Garage niedostępny |
 | `GET /tax-classes` | widok | 200 `[{code, name}]` (nazwy po polsku z jednego miejsca w Catalog) |
 
-- Ciało `POST`/`PUT`: `{name, slug, shortDescription, mainCategoryId, additionalCategoryIds, taxClass,
-  images: [{key, alt}], variantAxes, variants: [{variantId: string|null, values}]}` (+ `version` w `PUT`).
-  Walidacja DTO z limitami domeny (nazwa 1–200, slug ≤ 200 i format, opis ≤ 500, do 10 kategorii dodatkowych,
+- Ciało `POST`/`PUT`: `{name, slug, shortDescription, brand, description, parameters: [{name, value}],
+  mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt}], variantAxes, variants: [{variantId:
+  string|null, values, sku, ean}]}` (+ `version` w `PUT`); wszystkie klucze są wymagane, brak `brand`, `description`,
+  `parameters`, `sku` albo `ean` to naruszenie przy polu (jak każdego innego). Walidacja DTO z limitami domeny (nazwa 1–200, slug ≤ 200
+  i format, krótki opis ≤ 500, marka ≤ 60, opis ≤ 5000, do 30 parametrów z nazwą 1–60 i wartością 1–200 znaków,
+  nazwy parametrów różne bez względu na wielkość liter, do 10 kategorii dodatkowych,
   do 10 zdjęć, alt 1–200, 0–2 osie po 1–30 znaków bez `:`, wartości 1–40, 1–100 wariantów); 422 z `violations`
   ze ścieżkami pól (`variants[3].values[1]`).
-- Reguły tekstu (jedna klasa `ProductText` w `Catalog\Domain\Product`, używają jej value objecty `ProductName`,
-  `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues` i walidator DTO): znaki sterujące C0 i DEL
-  (U+0000–U+001F, U+007F) oraz U+0085, U+2028 i U+2029 są niedozwolone, a tekst, który nie jest poprawnym UTF-8, też.
-  Jedynym wyjątkiem jest LF w krótkim opisie (pozostałe teksty są jednoliniowe). Znaki niedozwolone są szukane
-  w wartości przed przycięciem (przycięcie ucięłoby np. końcowy NUL po cichu). Naruszenie to 422 przy polu
-  (`name`, `shortDescription`, `images[i].alt`, `variantAxes[i]`, `variants[i].values[j]`): „Nazwa produktu zawiera
-  niedozwolone znaki.”, „Krótki opis …”, „Tekst alternatywny …”, „Nazwa osi …”, „Wartość wariantu …”. Końce tekstu są
-  przycinane z białych znaków Unicode (`\s` i `\p{Z}`, także NBSP), a długość liczy się po przycięciu. Nazwa, tekst
-  alternatywny, nazwa osi i wartość wariantu z samych białych znaków to jak puste pole (422 „wymagane” przy tym polu,
-  nie przy `slug`); krótki opis z samych białych znaków jest zapisany jako pusty. Zapisywane są teksty przycięte.
+- Reguły tekstu: reguła tekstów `App\Shared\Domain\Text` (`docs/features/api-input-contract/spec.md`, „Etap 2:
+  reguła tekstu”, T1–T5), której używają value objecty `ProductName`, `ShortDescription`, `ProductBrand`,
+  `ProductDescription`, `ProductParameter`, `ProductImage`, `VariantAxes`, `VariantValues` i walidator DTO; `Sku` i `Ean`
+  (poza regułą, `docs/features/api-input-contract/spec.md`, „Pola tekstowe poza regułą”) wołają `Text` w tej samej
+  kolejności, a potem sprawdzają swój format. Niedozwolone są wszystkie znaki sterujące (C0, DEL i C1:
+  U+0000–U+001F, U+007F–U+009F), U+2028 i U+2029, a tekst, który nie jest poprawnym UTF-8, też. Jedynym wyjątkiem jest
+  LF w krótkim i długim opisie (pozostałe teksty, także marka i parametry, są jednoliniowe; U+000D w opisie jest
+  niedozwolone). Znaki niedozwolone są szukane w wartości, jak przyszła, przed
+  przycięciem (przycięcie ucięłoby np. końcowy NUL albo U+2028 po cichu). Naruszenie to 422 przy polu (`name`,
+  `shortDescription`, `brand`, `description`, `parameters[i].name`, `parameters[i].value`, `images[i].alt`,
+  `variantAxes[i]`, `variants[i].values[j]`): „Nazwa produktu zawiera niedozwolone znaki.”, „Krótki opis …”, „Marka …”,
+  „Opis …”, „Nazwa parametru …”, „Wartość parametru …”, „Tekst alternatywny …”, „Nazwa osi …”, „Wartość
+  wariantu …” (komunikaty i `propertyPath` pól marki, opisu i parametrów: `docs/features/product-data/spec.md`,
+  „Naruszenia”). Z końców tekstu
+  znikają białe znaki Unicode (`\s` i kategoria Z, także NBSP) oraz U+200B, U+2060, U+FEFF i U+00AD; w środku nic nie
+  jest usuwane, więc emoji z U+200D i flaga na końcu zostają. Długość liczy się po przycięciu. Nazwa, tekst
+  alternatywny, nazwa osi i wartość wariantu bez znaku widocznego (same białe znaki albo znaki niewidoczne, np. U+200B,
+  U+3164) to jak puste pole (422 „wymagane” przy tym polu, nie przy `slug`); krótki opis, marka i opis bez znaku widocznego
+  są zapisane jako puste; nazwa albo wartość parametru bez znaku widocznego to naruszenie przy polu. Zapisywane są teksty przycięte; powtórzona oś i kombinacja wartości są porównywane po
+  przycięciu. Repozytorium i odczyty odtwarzają teksty zapisanego wiersza bez reguły i bez przycinania
+  (`stored()`), więc produkt zapisany przed ostrzejszą regułą jest czytany bez zmian. Zapis z panelu wysyła wszystkie
+  pola: tekst ze znakami, które reguła przycina, jest zapisany przycięty, a tekst, którego reguła nie przyjmuje, daje
+  422 przy polu, dopóki nie zostanie poprawiony; poprawka osi albo wartości wariantu opublikowanego produktu nie
+  narusza tożsamości wariantu (K5, „Tożsamość wariantu po publikacji”). Klucz porównania wariantów (`VariantValues::comparisonKey()`, kolumna
+  `values_key`) liczy się z wartości, jak są zapisane, więc warianty zapisane przed regułą, które po przycięciu są
+  jedną kombinacją, dają się odczytać, a ich zapis z panelu jest powtórzoną kombinacją (422 przy
+  `variants[i].values` każdego wariantu po pierwszym). Wyjściem jest usunięcie wszystkich poza jednym: korekta ich
+  stanu fizycznego do zera, potem zapis produktu bez nich; rezerwacja blokuje usunięcie (`variant-in-use`), dopóki
+  nie zostanie zwolniona albo zatwierdzona. Dwie zapisane nazwy osi, które się powtarzają, to powtórzona oś (422 przy
+  `variantAxes[1]`), a wyjściem jest nowa nazwa drugiej osi także po publikacji (K5, „Tożsamość wariantu po
+  publikacji”).
   Niepoprawny UTF-8 w treści JSON nie dociera do walidatora: dekoder odpowiada 400 (bajt poza UTF-8 albo samotny
   surogat `\udc80` w ucieczce).
 - DTO sprawdza też reguły domeny, które bez tego dałyby 500 albo 422 bez ścieżki pola: format klucza zdjęcia
@@ -262,11 +344,14 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Formularz (`useProductForm`, układ według standardu formularza z `docs/features/admin-design/spec.md`): H1 („Nowy
   produkt”, nazwa produktu, a gdy istniejący produkt się nie wczytał, „Nie udało się wczytać produktu”) z okruszkami
   „Katalog › Produkty › produkt”. Kolumna główna: „Dane produktu” (nazwa, slug z podpowiedzią „pusty: wyliczony
-  z nazwy”, zablokowany przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, klasa podatkowa z
-  `GET /tax-classes` jako lista wyboru „Klasa podatkowa”), „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
+  z nazwy”, zablokowany przy `slugLocked` z wyjaśnieniem, marka (`maxlength` 60), krótki opis z licznikiem znaków, opis
+  z licznikiem `n/5000`, klasa podatkowa z `GET /tax-classes` jako lista wyboru „Klasa podatkowa”), „Parametry”,
+  „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
   zapisany produkt: etykieta, „Opublikuj” albo „Wycofaj z publikacji”) i „Organizacja” (kategoria główna i dodatkowe
   z drzewa, wybór z wyszukiwaniem po nazwie i ścieżce). Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko do
-  odczytu, bez akcji i bez paska zapisu.
+  odczytu, bez akcji i bez paska zapisu. Pola tekstowe mają wtedy `readonly`, nie `disabled` (slug po pierwszej publikacji ma `readonly` także w edytorze): wartość
+  szerszą niż pole (długi parametr, SKU) da się sfokusować, zaznaczyć, przewinąć i odczytać czytnikiem ekranu. `disabled` zostaje na czas
+  żądania (zablokowany `fieldset`) i dla list wyboru.
 - Pasek zapisu (przyklejony do dołu): „Niezapisane zmiany” z „Odrzuć” (przywraca produkt z ostatniej odpowiedzi API
   bez żądania) i „Zapisz” pojawia się po pierwszej zmianie i znika po zapisie; nowy produkt ma go od początku
   („Nowy produkt”, „Anuluj” wraca do listy). Pole z fokusem nie jest pod paskiem.
@@ -275,6 +360,13 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   nagłówek karty „Status” po publikacji i wycofaniu (przycisk został zastąpiony), chyba że pracownik w trakcie
   żądania przeniósł fokus do pola: wtedy zostaje w polu. Po błędzie formularz jest długi, więc panel przewija i ustawia
   fokus na pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat).
+- Parametry: wiersz „Nazwa” i „Wartość” na parametr, przyciski „Przesuń parametr N w górę”, „Przesuń parametr N w dół”
+  i „Usuń parametr N”, „Dodaj parametr” (wyłączony przy 30). Po dodaniu fokus trafia w nazwę nowego wiersza, po
+  usunięciu w nazwę następnego wiersza, a po usunięciu ostatniego w „Dodaj parametr”. Wiersz zawija się na wąskim
+  ekranie (375 px bez poziomego przewijania strony). Marka, opis i parametry idą do API tak, jak są w szkicu: panel ich
+  nie przycina i nie usuwa z nich znaków (przycina je API, T2); tekst ze znakiem niedozwolonym dostaje 422 przy polu
+  (np. marka z tabulatorem na końcu). Pole opisu jest obszarem tekstu, który zamienia końce wierszy na U+000A, więc
+  U+000D wysyła tylko klient spoza panelu.
 - Zdjęcia: wybór wielu plików; każdy wysyłany osobno, po kolei, ze statusem przy pliku (oczekuje, wysyłanie,
   gotowe, błąd z `detail` 422 albo ogólnym komunikatem i możliwością ponowienia); plik, którego klucz już jest
   w formularzu, nie jest dodawany drugi raz („To zdjęcie już jest w produkcie.”);
@@ -284,8 +376,13 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   oryginału (K7). Po usunięciu zdjęcia fokus trafia na przycisk usuwania następnego zdjęcia, a bez niego na „Dodaj
   zdjęcia”; po ukryciu wyniku wysyłania na następny wynik albo „Dodaj zdjęcia”; błąd wysyłania pliku jest ogłaszany
   (`role="alert"`).
-- Warianty: osie (0–2, dodanie, zmiana nazwy, usunięcie) i tabela wierszy: wartość dla każdej osi, dodanie
-  i usunięcie wiersza. Produkt bez osi pokazuje jeden wiersz „Wariant domyślny” bez pól. Usunięcie wiersza
+- Warianty: osie (0–2, dodanie, zmiana nazwy, usunięcie) i tabela wierszy: wartość dla każdej osi, pola „SKU”
+  (`maxlength` 40, litery ASCII zamieniane na wielkie już przy wpisywaniu, żaden znak nie znika) i „EAN” (`maxlength`
+  14), dodanie i usunięcie wiersza. Każdy wiersz ma oba pola, także jedyny wiersz „Wariant domyślny” produktu bez osi
+  (bez pól wartości). Kody zostają przy wierszu, który zostaje, przy dodaniu, usunięciu i przestawieniu osi, zmianie
+  nazwy osi i wartości, a po usunięciu ostatniej osi zostaje pierwszy wiersz z identyfikatorem i kodami; nowy wiersz
+  ma puste kody. Naruszenia API trafiają do pola kodu wiersza, a 409 `sku-taken` jest komunikatem sekcji „Warianty”.
+  Panel nie sprawdza formatu kodów. Usunięcie wiersza
   istniejącego wariantu (także usunięcie ostatniej osi, które usuwa pozostałe istniejące warianty) pyta w oknie
   potwierdzenia z nazwą wariantu („Usunąć wariant czarny / 42?”, „Cena i stan wariantu przestaną być widoczne
   w panelu.”, czerwony „Usuń wariant czarny / 42”, „Wróć” z fokusem). Po usunięciu wiersza albo osi (z oknem
@@ -312,7 +409,11 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   „Warianty”; 403 i inne błędy 4xx jako komunikat
   bez utraty danych formularza. Brak odpowiedzi przez 10 s, błąd sieci i 5xx zapisu, publikacji albo wycofania to
   nieznany wynik (`docs/features/admin-ux-fixes/spec.md`, „B4: nieznany wynik zapisu”): szkic zostaje, pracownik
-  sprawdza stan („Sprawdź stan”) albo odrzuca zmiany. Na czas tych żądań i odczytu stanu z serwera pola, kategorie,
+  sprawdza stan („Sprawdź stan”) albo odrzuca zmiany. Porównanie „Sprawdź stan” dla marki, opisu i parametrów
+  przepuszcza szkic przez kopię reguły tekstu T1–T3 (API przycina te teksty, więc zapis, który serwer wykonał, ma je bez
+  brzegów; szkic ze znakiem T1 nie jest zgodny z żadnym stanem serwera), nie zmieniając pól, żądania ani wykrywania
+  zmian (`docs/features/admin-ux-fixes/spec.md`, B4); to samo robi z SKU (po T1–T3 litery ASCII wielkie) i EAN (T1–T3)
+  każdego wiersza wariantów, także nowego, bez identyfikatora. Na czas tych żądań i odczytu stanu z serwera pola, kategorie,
   warianty i zdjęcia są zablokowane (karta „Ceny i stany” nie).
 - Panel niczego nie liczy: slug wylicza API, stan `slugLocked` i status pochodzą z odpowiedzi.
 
@@ -329,8 +430,10 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 |---|---|
 | Równoległa edycja (nieaktualna wersja) | 409 `product-modified`, komunikat bez odczytu; szkic zostaje, stan z serwera po „Odrzuć moje zmiany i pokaż stan z serwera” |
 | Slug zajęty przez inny produkt | 409 `slug-taken` przy polu slug |
+| Dodanie produktu w trakcie przebudowy indeksu wyszukiwarki | 409 `search-rebuild-running`, komunikat „Trwa przebudowa indeksu wyszukiwarki. Dodawanie produktów jest wstrzymane do jej końca, spróbuj ponownie później.” nad formularzem; szkic zostaje |
 | Zmiana sluga po pierwszej publikacji | 409 `slug-locked` (panel i tak blokuje pole) |
 | Publikacja szkicu bez zdjęć albo usunięcie ostatniego zdjęcia opublikowanego produktu | 409 `product-not-publishable` |
+| SKU zajęte przez wariant innego produktu | 422 przy `variants[i].sku` („Kod SKU jest już używany przez inny produkt.”); przegrany wyścig dwóch zapisów to 409 `sku-taken` jako komunikat sekcji „Warianty” |
 | Zmiana znaczenia wariantu albo osi po publikacji | 409 `variant-locked` |
 | Usunięcie wariantu ze stanem albo rezerwacją | 409 `variant-in-use` („Wariant ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.”) |
 | Plik za duży, zły typ, za duża rozdzielczość, nieczytelny | 422 przy pliku, pozostałe pliki wysyłane dalej |
@@ -417,8 +520,8 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Wyścig ustawienia ceny ze zmianą klasy: `SetVariantPrice`, który przeczytał starą klasę i zapisał cenę po
   obsłużeniu `ProductChanged`, zostawia cenę w starej klasie do następnej zmiany produktu albo
   `pricing:reconcile-tax --apply`.
-- Nowe pole `status` zmienia `definition_hash` indeksu: na istniejącym stosie `catalog:search-index:setup` kończy
-  się błędem z instrukcją `catalog:reindex` (jak w SEARCH); `make seed` przebudowuje indeks.
+- Nowe pole `status` zmienia `definition_hash` indeksu: na istniejącym stosie `catalog:search-index:setup` ostrzega
+  i podaje instrukcję `catalog:reindex`, kończąc się kodem 0 (jak w SEARCH); `make seed` przebudowuje indeks.
 - Po publikacji literówki w wartości wariantu nie da się poprawić w miejscu (K5): trzeba dodać nowy wariant,
   skorygować stan starego do zera i go usunąć.
 - Jedyna subskrypcja zdarzenia innego contextu (A2): zdarzenie integracyjne w `Catalog_Application`

@@ -1,0 +1,68 @@
+-- adm_ord_count_fragment_common
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('kowal') || '%' LIMIT 10001) b
+
+SET
+SET
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=16867.61..16867.62 rows=1 width=8) (actual time=70.105..70.112 rows=1.00 loops=1)
+   Buffers: shared hit=517 read=7872
+   ->  Limit  (cost=387.66..16742.60 rows=10001 width=4) (actual time=13.097..69.228 rows=10001.00 loops=1)
+         Buffers: shared hit=517 read=7872
+         ->  Bitmap Heap Scan on ordering_order o  (cost=387.66..49946.33 rows=30305 width=4) (actual time=13.096..68.250 rows=10001.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+               Rows Removed by Index Recheck: 2
+               Heap Blocks: exact=8213
+               Buffers: shared hit=517 read=7872
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..380.09 rows=30305 width=0) (actual time=9.626..9.627 rows=23312.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=102 read=44
+ Planning:
+   Buffers: shared hit=283
+ Planning Time: 2.291 ms
+ Execution Time: 70.429 ms
+(17 rows)
+
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=16867.61..16867.62 rows=1 width=8) (actual time=31.962..31.963 rows=1.00 loops=1)
+   Buffers: shared hit=8340 read=20
+   ->  Limit  (cost=387.66..16742.60 rows=10001 width=4) (actual time=12.011..31.345 rows=10001.00 loops=1)
+         Buffers: shared hit=8340 read=20
+         ->  Bitmap Heap Scan on ordering_order o  (cost=387.66..49946.33 rows=30305 width=4) (actual time=12.009..30.535 rows=10001.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+               Rows Removed by Index Recheck: 2
+               Heap Blocks: exact=8213
+               Buffers: shared hit=8340 read=20
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..380.09 rows=30305 width=0) (actual time=8.625..8.626 rows=23312.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=127 read=19
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.189 ms
+ Execution Time: 31.986 ms
+(17 rows)
+
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=16867.61..16867.62 rows=1 width=8) (actual time=29.497..29.498 rows=1.00 loops=1)
+   Buffers: shared hit=8360
+   ->  Limit  (cost=387.66..16742.60 rows=10001 width=4) (actual time=10.662..28.894 rows=10001.00 loops=1)
+         Buffers: shared hit=8360
+         ->  Bitmap Heap Scan on ordering_order o  (cost=387.66..49946.33 rows=30305 width=4) (actual time=10.660..28.079 rows=10001.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+               Rows Removed by Index Recheck: 2
+               Heap Blocks: exact=8213
+               Buffers: shared hit=8360
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..380.09 rows=30305 width=0) (actual time=7.264..7.264 rows=23312.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=146
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.173 ms
+ Execution Time: 29.519 ms
+(17 rows)
+

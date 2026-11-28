@@ -1,0 +1,11 @@
+3780 addresses: {'product': 900, 'leaf': 256, 'phrase': 32, 'leaf_filter': 768, 'phrase_deep': 128, 'department_deep': 772, 'home_deep': 364, 'phrase_filter': 544, 'department': 14, 'home': 2}
+baseline: stopped after 49 of 480 requests: 20 of 20 finished ones failed (more than 20%)
+49 samples, 49 failures, written to open-leaf-8.jsonl
+baseline: ABORTED: stopped after 49 of 480 requests: 20 of 20 finished ones failed (more than 20%)
+run: mode=open planned=480 sent=49 finished=49 failures=49 late_over_100ms=0 wall_s=12.5 target_rate=8.0 achieved_send_rate=8.0 by_status={'503': 24, '500': 25}
+run: ABORTED: stopped after 49 of 480 requests: 20 of 20 finished ones failed (more than 20%)
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-8.0	api	leaf	miss	5	0	None	None	None	None	None	None	0.0	{503: 5}
+open-8.0	api	leaf_filter	miss	19	0	None	None	None	None	None	None	0.0	{503: 19}
+open-8.0	store	leaf	unconfirmed	5	0	None	None	None	None	None	None	0.001	{500: 5}
+open-8.0	store	leaf_filter	unconfirmed	20	0	None	None	None	None	None	None	0.0	{500: 20}

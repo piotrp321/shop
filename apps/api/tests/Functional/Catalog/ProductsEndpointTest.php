@@ -18,6 +18,7 @@ use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductDocumentFactory;
+use App\Tests\Integration\Catalog\Search\RecordingSearchHttpClient;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\SwitchableProductSearch;
@@ -604,6 +605,34 @@ final class ProductsEndpointTest extends WebTestCase
         yield 'relevance without a phrase' => ['sort=relevance', 'sort'];
     }
 
+    /**
+     * The rule of texts (spec api-input-contract, E6): a phrase without a visible character is too short and a
+     * forbidden character is refused, each with one violation of `q`.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function phrasesOutsideTheRule(): iterable
+    {
+        $tooShort = 'Ta wartość jest zbyt krótka. Powinna mieć 2 lub więcej znaków.';
+        yield 'two NBSP' => ['%C2%A0%C2%A0', $tooShort];
+        yield 'three U+200B' => ['%E2%80%8B%E2%80%8B%E2%80%8B', $tooShort];
+        yield 'three U+3164' => ['%E3%85%A4%E3%85%A4%E3%85%A4', $tooShort];
+        yield 'a NUL inside' => ['a%00b', 'Szukana fraza zawiera niedozwolone znaki.'];
+        yield 'U+009F inside' => ['bu%C2%9Fty', 'Szukana fraza zawiera niedozwolone znaki.'];
+        yield 'U+2028 at the end' => ['buty%E2%80%A8', 'Szukana fraza zawiera niedozwolone znaki.'];
+    }
+
+    #[DataProvider('phrasesOutsideTheRule')]
+    public function testAPhraseOutsideTheRuleIsRejected(string $phrase, string $title): void
+    {
+        $this->index($this->document('Buty', self::LEAF, [self::LEAF]));
+
+        $problem = $this->get('/api/v1/products?q='.$phrase);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([['propertyPath' => 'q', 'title' => $title]], $problem['violations']);
+    }
+
     #[DataProvider('invalidQueries')]
     public function testInvalidParametersGiveProblemDetailsWithViolations(string $query, string $property): void
     {
@@ -693,6 +722,41 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(500);
         self::assertArrayNotHasKey('detail', $problem);
         self::assertStringNotContainsString('alias', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * @return iterable<string, array{int, string, int}>
+     */
+    public static function failedPartsOfTheSearch(): iterable
+    {
+        yield 'facets rejected' => [429, 'es_rejected_execution_exception', 503];
+        yield 'facets refused' => [400, 'search_phase_execution_exception', 500];
+    }
+
+    /**
+     * One part of the multi search of the listing fails (the facets of the listing without conditions): the whole
+     * listing fails, never a page with some facets missing.
+     */
+    #[DataProvider('failedPartsOfTheSearch')]
+    public function testAFailedPartOfTheSearchFailsTheWholeListing(int $status, string $type, int $expected): void
+    {
+        $this->index(...$this->shoes());
+        $http = new RecordingSearchHttpClient(self::clientFactory()->httpClient(2.0), ['request' => 1, 'part' => 1, 'status' => $status, 'type' => $type]);
+        $this->searchService()->use(new ElasticsearchProductSearch(self::clientFactory()->createWith($http), $this->alias()));
+
+        $problem = $this->get('/api/v1/products');
+
+        self::assertResponseStatusCodeSame($expected);
+        self::assertArrayNotHasKey('facets', $problem);
+        self::assertArrayNotHasKey('detail', $problem);
+        self::assertStringNotContainsString('injected', (string) $this->client->getResponse()->getContent());
+        if (503 === $expected) {
+            $this->assertNotStored();
+        } else {
+            // A 500 is never public and carries no cache tags (no-store is the rule of 400, 401 and 503 only).
+            self::assertStringNotContainsString('public', (string) $this->client->getResponse()->headers->get('Cache-Control'));
+            self::assertFalse($this->client->getResponse()->headers->has('xkey'));
+        }
     }
 
     public function testWrongMethodReturns405Problem(): void

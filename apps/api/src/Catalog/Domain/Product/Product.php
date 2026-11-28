@@ -20,6 +20,9 @@ final class Product
         private ProductName $name,
         private Slug $slug,
         private ShortDescription $shortDescription,
+        private ProductBrand $brand,
+        private ProductDescription $description,
+        private ProductParameters $parameters,
         private ProductCategories $categories,
         private TaxClassCode $taxClass,
         private ProductImages $images,
@@ -35,6 +38,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -44,7 +50,7 @@ final class Product
     ): self {
         // No image rule here: the demo data publishes products without images (K2).
         $firstPublishedAt = ProductStatus::Published === $status ? $now : null;
-        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, 0);
+        $product = new self($id, $name, $slug, $shortDescription, $brand, $description, $parameters, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, 0);
         $product->events[] = new ProductCreated($id->toString(), $now);
 
         return $product;
@@ -58,6 +64,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -66,7 +75,7 @@ final class Product
         ?\DateTimeImmutable $firstPublishedAt,
         int $version,
     ): self {
-        return new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, $version);
+        return new self($id, $name, $slug, $shortDescription, $brand, $description, $parameters, $categories, $taxClass, $images, $variants, $status, $firstPublishedAt, $version);
     }
 
     /**
@@ -86,6 +95,9 @@ final class Product
         ProductName $name,
         Slug $slug,
         ShortDescription $shortDescription,
+        ProductBrand $brand,
+        ProductDescription $description,
+        ProductParameters $parameters,
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
@@ -107,6 +119,9 @@ final class Product
         $this->name = $name;
         $this->slug = $slug;
         $this->shortDescription = $shortDescription;
+        $this->brand = $brand;
+        $this->description = $description;
+        $this->parameters = $parameters;
         $this->categories = $categories;
         $this->taxClass = $taxClass;
         $this->images = $images;
@@ -179,6 +194,21 @@ final class Product
         return $this->shortDescription;
     }
 
+    public function brand(): ProductBrand
+    {
+        return $this->brand;
+    }
+
+    public function description(): ProductDescription
+    {
+        return $this->description;
+    }
+
+    public function parameters(): ProductParameters
+    {
+        return $this->parameters;
+    }
+
     public function categories(): ProductCategories
     {
         return $this->categories;
@@ -228,8 +258,12 @@ final class Product
     }
 
     /**
-     * The same axes in the same order, each name with the same comparison key; every kept variant with the same
-     * comparison key of its values. New variants are free.
+     * The same axes in the same order, each name with the same identity; every kept variant with the same identity of
+     * its values. The identity is the text trimmed by the rule of texts without regard to case; a stored name or value
+     * the rule refuses keeps only its correction, and one without a visible character has none ({@see IdentityText}).
+     * New variants are free. A stored axis name that repeats the stored name in an earlier place ({@see
+     * IdentityText::same()}: two names the rule before the rule of texts took as different) is free: the product is
+     * saved only once it takes a new name (spec api-input-contract, E7; owner decision of 2026-11-25).
      *
      * @throws VariantIdentityLocked
      */
@@ -237,24 +271,28 @@ final class Product
     {
         $stored = $this->variants->axes()->names();
         $given = $variants->axes()->names();
-        $storedKeys = array_map(mb_strtolower(...), $stored);
-        $givenKeys = array_map(mb_strtolower(...), $given);
         if (\count($stored) !== \count($given)) {
             throw VariantIdentityLocked::axes();
         }
-        foreach ($storedKeys as $position => $key) {
-            if ($key === $givenKeys[$position]) {
+        foreach ($stored as $position => $name) {
+            if (IdentityText::keeps($name, $given[$position])) {
+                continue;
+            }
+            $earlier = \array_slice($stored, 0, $position);
+            if (array_any($earlier, static fn (string $other): bool => IdentityText::same($other, $name))) {
                 continue;
             }
             // A name that is still there, in another place, is a reordering; otherwise the axis was renamed.
-            throw \in_array($givenKeys[$position], $storedKeys, true) ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($stored[$position]);
+            $elsewhere = array_any($stored, static fn (string $other): bool => IdentityText::has($other) && IdentityText::keeps($other, $given[$position]));
+            $repeatedLater = array_any(\array_slice($stored, $position + 1), static fn (string $other): bool => IdentityText::same($name, $other));
+            throw $elsewhere ? VariantIdentityLocked::axes() : VariantIdentityLocked::axisName($name, $repeatedLater);
         }
 
         $storedVariants = $this->variantsById();
         foreach ($variants->toList() as $variant) {
             $kept = $storedVariants[$variant->id()->toString()] ?? null;
-            if (null !== $kept && $kept->values()->comparisonKey() !== $variant->values()->comparisonKey()) {
-                throw VariantIdentityLocked::variant($kept->label());
+            if (null !== $kept && !IdentityText::kept($kept->values()->toList(), $variant->values()->toList())) {
+                throw VariantIdentityLocked::variant($kept->values()->toList(), $variant->values()->toList());
             }
         }
     }
@@ -277,7 +315,7 @@ final class Product
         foreach ($this->variants->toList() as $variant) {
             $id = $variant->id()->toString();
             if (!isset($kept[$id]) && isset($inUse[$id])) {
-                throw new VariantInUse($variant->label());
+                throw new VariantInUse($variant->values()->toList());
             }
         }
     }

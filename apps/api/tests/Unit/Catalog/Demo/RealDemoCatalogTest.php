@@ -6,6 +6,12 @@ namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Domain\Product\Ean;
+use App\Catalog\Domain\Product\ProductBrand;
+use App\Catalog\Domain\Product\ProductDescription;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
@@ -351,6 +357,184 @@ final class RealDemoCatalogTest extends TestCase
             }
             self::assertSame('standard', $product->taxClass, $product->name);
         }
+    }
+
+    public function testEveryProductHasTheBrandOfItsNameAndAFullDescription(): void
+    {
+        $brandOf = [];
+        $shortOf = [];
+        foreach (DemoCatalogDefinition::fromFile(self::FIXTURES.'/catalog.yaml')->templates as $template) {
+            foreach ($template->brands as $brand) {
+                foreach ($template->models as $model) {
+                    $brandOf[$template->productType.' '.$brand.' '.$model['name']] = $brand;
+                    $shortOf[$template->productType.' '.$brand.' '.$model['name']] = $model['description'];
+                }
+            }
+        }
+
+        self::assertCount(191, $brandOf);
+        foreach (self::$catalog->products as $product) {
+            self::assertSame($brandOf[$product->name], $product->brand, $product->name);
+            self::assertSame($brandOf[$product->name], ProductBrand::of($product->brand)->value(), $product->name);
+
+            $description = ProductDescription::of($product->description)->value();
+            self::assertSame($product->description, $description, $product->name);
+            self::assertLessThanOrEqual(ProductDescription::MAX_LENGTH, mb_strlen($description), $product->name);
+            $paragraphs = explode("\n\n", $description);
+            self::assertSame($paragraphs, array_map('trim', $paragraphs), $product->name);
+            self::assertNotContains('', $paragraphs, $product->name);
+            if ($shortOf[$product->name] === $paragraphs[0]) {
+                // The sentence of the model, then 2-3 paragraphs of the type.
+                self::assertGreaterThanOrEqual(3, \count($paragraphs), $product->name);
+                self::assertLessThanOrEqual(4, \count($paragraphs), $product->name);
+            } else {
+                // The own description of the model, in whole.
+                self::assertGreaterThanOrEqual(2, \count($paragraphs), $product->name);
+                self::assertLessThanOrEqual(4, \count($paragraphs), $product->name);
+                self::assertStringNotContainsString($shortOf[$product->name], $description, $product->name);
+            }
+        }
+    }
+
+    public function testEveryProductHasAtLeastThreeParametersThatPassTheWriteRulesAndNoneNamedLikeAnAxis(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            $parameters = ProductParameters::create(array_map(
+                static fn (array $parameter): ProductParameter => ProductParameter::of($parameter['name'], $parameter['value']),
+                $product->parameters,
+            ));
+
+            self::assertGreaterThanOrEqual(3, $parameters->count(), $product->name);
+            self::assertSame($product->parameters, array_map(static fn (ProductParameter $p): array => ['name' => $p->name(), 'value' => $p->value()], $parameters->toList()), $product->name);
+            $axisKeys = array_map(static fn (string $axis): string => mb_strtolower(trim($axis)), $product->variantAxes);
+            foreach ($parameters->toList() as $parameter) {
+                self::assertNotContains($parameter->nameKey(), $axisKeys, $product->name.': '.$parameter->name());
+            }
+        }
+    }
+
+    public function testEveryVariantHasAUniqueSkuStartingWithALetterAndAnEanOfTheRestrictedPrefixTwo(): void
+    {
+        $skus = [];
+        $eans = [];
+        foreach (self::$catalog->products as $product) {
+            foreach ($product->variants as $variant) {
+                $eans[] = $variant['ean'];
+                $sku = Sku::optional($variant['sku']);
+                self::assertNotNull($sku, $product->name);
+                self::assertSame($variant['sku'], $sku->value(), $product->name);
+                self::assertMatchesRegularExpression('/^[A-Z]/', $sku->value(), $product->name);
+                $skus[] = $sku->value();
+
+                $ean = Ean::optional($variant['ean']);
+                self::assertNotNull($ean, $product->name);
+                self::assertMatchesRegularExpression('/^2\d{12}$/D', $ean->value(), $product->name);
+                self::assertSame('', $ean->gtin(), $product->name);
+            }
+        }
+
+        self::assertGreaterThanOrEqual(1000, \count($skus));
+        self::assertSame($skus, array_values(array_unique($skus)));
+        self::assertSame($eans, array_values(array_unique($eans)));
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}> the type, the parameter and the unit after the number of the model
+     */
+    public static function parametersOfModelsWithANumber(): iterable
+    {
+        yield 'tents: people' => ['Namiot turystyczny ', 'Liczba osób', ''];
+        yield 'trekking backpacks: litres' => ['Plecak trekkingowy ', 'Pojemność', ' l'];
+        yield 'day backpacks: litres' => ['Plecak dzienny ', 'Pojemność', ' l'];
+        yield 'running backpacks: litres' => ['Plecak biegowy ', 'Pojemność', ' l'];
+        yield 'thermal bottles: millilitres' => ['Bidon termiczny ', 'Pojemność', ' ml'];
+        yield 'headlamps: lumens' => ['Latarka czołowa ', 'Strumień świetlny', ' lm'];
+        yield 'exercise mats: millimetres' => ['Mata do ćwiczeń ', 'Grubość', ' mm'];
+        yield 'self-inflating mats: centimetres' => ['Mata samopompująca ', 'Grubość', ' cm'];
+        yield 'dumbbells: kilograms' => ['Hantle regulowane ', 'Maksymalne obciążenie jednej hantli', ' kg'];
+        yield 'protein powders: grams' => ['Odżywka białkowa ', 'Masa opakowania', ' g'];
+        yield 'electrolytes: tablets' => ['Elektrolity w tabletkach ', 'Liczba tabletek', ''];
+    }
+
+    #[DataProvider('parametersOfModelsWithANumber')]
+    public function testParameterAgreesWithTheNumberInTheNameOfTheModel(string $typePrefix, string $parameter, string $unit): void
+    {
+        $checked = 0;
+        foreach (self::$catalog->products as $product) {
+            if (!str_starts_with($product->name, $typePrefix)) {
+                continue;
+            }
+            self::assertSame(1, preg_match('/(\d+)$/', $product->name, $matches), $product->name);
+            $values = array_column($product->parameters, 'value', 'name');
+            self::assertArrayHasKey($parameter, $values, $product->name);
+            self::assertSame($matches[1].$unit, $values[$parameter], $product->name);
+            ++$checked;
+        }
+
+        self::assertGreaterThan(0, $checked, $typePrefix);
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string}> the type, a phrase of a description, the parameter and the text its value holds when the phrase is true
+     */
+    public static function claimsOfDescriptionsThatOnlySomeModelsOfATypeCanMake(): iterable
+    {
+        yield 'anti-fog coating of the goggles' => ['Okulary pływackie ', 'przeciwmgiel', 'Powłoka', 'przeciwmgielna'];
+        yield 'hook-and-loop fastening of the bike bags' => ['Torba rowerowa ', 'rzepow', 'Mocowanie', 'rzepow'];
+        yield 'recreational use of the footballs' => ['Piłka nożna ', 'rekreacyjn', 'Przeznaczenie', 'rekreacyjn'];
+        yield 'ski slope of the ski jackets' => ['Kurtka narciarska ', 'stoku', 'Przeznaczenie', 'narciarstwo'];
+        yield 'ski slope of the touring skis' => ['Narty skiturowe ', 'stoku', 'Przeznaczenie', 'narciarstwo'];
+        yield 'quick drying of the shirts' => ['Koszulka biegowa ', 'szybko schnie', 'Materiał', 'poliester'];
+    }
+
+    #[DataProvider('claimsOfDescriptionsThatOnlySomeModelsOfATypeCanMake')]
+    public function testDescriptionOfAProductSaysNothingItsParametersDeny(string $typePrefix, string $phrase, string $parameter, string $needle): void
+    {
+        $checked = 0;
+        foreach (self::$catalog->products as $product) {
+            if (!str_starts_with($product->name, $typePrefix)) {
+                continue;
+            }
+            ++$checked;
+            if (!str_contains(mb_strtolower($product->description), $phrase)) {
+                continue;
+            }
+            $values = array_column($product->parameters, 'value', 'name');
+            self::assertStringContainsString($needle, mb_strtolower($values[$parameter] ?? ''), $product->name.': the description says "'.$phrase.'"');
+        }
+
+        self::assertGreaterThan(0, $checked, $typePrefix);
+    }
+
+    public function testNoDescriptionClaimsWhatTheSetOfTheTouringSkisHolds(): void
+    {
+        // The photos of Stavro Grań 95 show skis with skins, so no text says what is or is not in the set.
+        foreach (self::$catalog->products as $product) {
+            if (str_starts_with($product->name, 'Narty skiturowe ')) {
+                self::assertStringNotContainsString('bez wiązań', $product->description, $product->name);
+                self::assertStringNotContainsString('bez fok', $product->description, $product->name);
+                self::assertNotContains('Wiązania i foki', array_column($product->parameters, 'name'), $product->name);
+            }
+        }
+    }
+
+    public function testNoProductHasAnIsbnParameterBecauseTheCodeOfTheVariantIsItsEan(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            self::assertNotContains('isbn', array_map(mb_strtolower(...), array_column($product->parameters, 'name')), $product->name);
+        }
+    }
+
+    public function testTheTentHalny4HasFourPeople(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            if ('Namiot turystyczny Hallen Halny 4' === $product->name) {
+                self::assertContains(['name' => 'Liczba osób', 'value' => '4'], $product->parameters);
+
+                return;
+            }
+        }
+        self::fail('No product "Namiot turystyczny Hallen Halny 4".');
     }
 
     public function testSomeProductsHaveNoImages(): void

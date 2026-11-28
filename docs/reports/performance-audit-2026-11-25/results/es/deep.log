@@ -1,0 +1,42 @@
+t_orig1 cur p1 facets 548
+t_orig1 p1 hits only tth=true 13
+t_orig1 p1 hits only tth=10000 1
+t_orig1 cur p100 facets 582
+t_orig1 p100 hits only tth=true 41
+t_orig1 p100 hits only tth=10000 36
+t_orig1 cur p400 facets 673
+t_orig1 p400 hits only tth=true 109
+t_orig1 p400 hits only tth=10000 110
+t_orig1 cur p417 facets 670
+t_orig1 p417 hits only tth=true 112
+t_orig1 p417 hits only tth=10000 116
+t_orig1 search_after at 9576, no total 1
+t_orig1 search_after at 9576, total 14
+t_flat1 flat2 p1 facets 140
+t_flat1 p1 hits only tth=true 10
+t_flat1 p1 hits only tth=10000 1
+t_flat1 flat2 p100 facets 171
+t_flat1 p100 hits only tth=true 36
+t_flat1 p100 hits only tth=10000 32
+t_flat1 flat2 p400 facets 241
+t_flat1 p400 hits only tth=true 99
+t_flat1 p400 hits only tth=10000 96
+t_flat1 flat2 p417 facets 240
+t_flat1 p417 hits only tth=true 99
+t_flat1 p417 hits only tth=10000 101
+t_flat1 search_after at 9576, no total 1
+t_flat1 search_after at 9576, total 11
+t_flat4 flat2 p1 facets 38
+t_flat4 p1 hits only tth=true 1
+t_flat4 p1 hits only tth=10000 1
+t_flat4 flat2 p100 facets 70
+t_flat4 p100 hits only tth=true 34
+t_flat4 p100 hits only tth=10000 34
+t_flat4 flat2 p400 facets 143
+t_flat4 p400 hits only tth=true 105
+t_flat4 p400 hits only tth=10000 105
+t_flat4 flat2 p417 facets 146
+t_flat4 p417 hits only tth=true 109
+t_flat4 p417 hits only tth=10000 108
+t_flat4 search_after at 9576, no total 1
+t_flat4 search_after at 9576, total 1

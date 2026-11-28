@@ -20,12 +20,15 @@ interface ProductEditSource
      *     name: string,
      *     slug: string,
      *     shortDescription: string,
+     *     brand: string,
+     *     description: string,
+     *     parameters: list<array{name: string, value: string}>,
      *     mainCategoryId: string,
      *     additionalCategoryIds: list<string>,
      *     taxClass: string,
      *     images: list<array{key: string, alt: string}>,
      *     axes: list<string>,
-     *     variants: list<array{id: string, values: list<string>}>,
+     *     variants: list<array{id: string, values: list<string>, sku: string, ean: string}>,
      *     updatedAt: \DateTimeImmutable
      * }|null null when there is no such product; images and variants in position order, additional categories by id
      */

@@ -1,0 +1,53 @@
+-- adm_prod_term3_common
+SELECT p.id, p.name FROM catalog_product p WHERE p.name ILIKE '%tur%' ORDER BY p.name ASC, p.id ASC LIMIT 50
+
+SET
+SET
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..36.73 rows=50 width=54) (actual time=0.235..3.972 rows=50.00 loops=1)
+   Buffers: shared hit=2626
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74040.09 rows=101978 width=54) (actual time=0.234..3.954 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 3845
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=2626
+ Planning:
+   Buffers: shared hit=271
+ Planning Time: 2.949 ms
+ Execution Time: 4.010 ms
+(12 rows)
+
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..36.73 rows=50 width=54) (actual time=0.187..3.834 rows=50.00 loops=1)
+   Buffers: shared hit=2626
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74040.09 rows=101978 width=54) (actual time=0.186..3.827 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 3845
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=2626
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.223 ms
+ Execution Time: 3.849 ms
+(12 rows)
+
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..36.73 rows=50 width=54) (actual time=0.294..4.014 rows=50.00 loops=1)
+   Buffers: shared hit=2626
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74040.09 rows=101978 width=54) (actual time=0.293..4.007 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 3845
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=2626
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.277 ms
+ Execution Time: 4.029 ms
+(12 rows)
+

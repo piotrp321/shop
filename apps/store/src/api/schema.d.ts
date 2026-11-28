@@ -706,6 +706,15 @@ export interface components {
             /** @example Buty szosowe Tarvik Asfalt 200 */
             name: string;
             shortDescription: string;
+            /**
+             * @description The brand of the product; empty when it has none.
+             * @example Hallen
+             */
+            brand: string;
+            /** @description The description in paragraphs separated by an empty line, plain text (never markup); empty when the product has none. */
+            description: string;
+            /** @description The parameters of the product (name and value) in presentation order; empty when it has none. */
+            parameters: components["schemas"]["ProductParameter"][];
             /** @description The categories from the root to the main category of the product. */
             breadcrumb: components["schemas"]["BreadcrumbItem"][];
             /** @description All the images of the product in position order, the first is the main one (size `product`). */
@@ -722,6 +731,12 @@ export interface components {
             variantAxes: string[];
             /** @description The variants in position order. */
             variants: components["schemas"]["ProductDetailsVariant"][];
+        };
+        ProductParameter: {
+            /** @example Liczba osób */
+            name: string;
+            /** @example 4 */
+            value: string;
         };
         BreadcrumbItem: {
             /** Format: uuid */
@@ -750,6 +765,21 @@ export interface components {
              *     ]
              */
             values: string[];
+            /**
+             * @description The SKU the seller gave the variant (capitals), shown as the product code; empty when it has none.
+             * @example NAMIOT-HALNY-4
+             */
+            sku: string;
+            /**
+             * @description The EAN the seller gave the variant (8, 12, 13 or 14 digits); empty when it has none.
+             * @example 5901234123457
+             */
+            ean: string;
+            /**
+             * @description The EAN when it is a global trade item number, empty when it is a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and the other numbers of section 2.1.11 of the GS1 General Specifications), which identifies an item inside a company or a region only. Structured data of the page takes the GTIN from here.
+             * @example 5901234123457
+             */
+            gtin: string;
         };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {
@@ -1365,27 +1395,27 @@ export interface components {
         /** @description The contact and the address of an order of the cart of the customer, the total and the lines the customer saw, the delivery method chosen and the discount code applied. */
         PlaceCustomerOrderRequest: {
             /**
-             * @description Full name, 1 to 100 characters once trimmed.
+             * @description Full name, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Jan Kowalski
              */
             fullName: string;
             /**
-             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.
+             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped, white space and invisible characters at the ends are trimmed, control characters and line separators are refused. The order keeps +48 and the 9 digits.
              * @example 600 100 200
              */
             phone: string;
             /**
-             * @description Street and number, 1 to 100 characters once trimmed.
+             * @description Street and number, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example ul. Długa 5/3
              */
             street: string;
             /**
-             * @description Polish postal code NN-NNN.
+             * @description Polish postal code NN-NNN, without control characters or line separators; white space and invisible characters at the ends are trimmed.
              * @example 00-950
              */
             postalCode: string;
             /**
-             * @description City, 1 to 60 characters once trimmed. The country is always Poland.
+             * @description City, 1 to 60 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators. The country is always Poland.
              * @example Warszawa
              */
             city: string;
@@ -1431,32 +1461,32 @@ export interface components {
             cartId: string;
             /**
              * Format: email
-             * @description Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).
+             * @description Email address the order is confirmed to, at most 254 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators, one the mailer accepts (no empty part between dots). The order keeps it trimmed, in its letter case.
              * @example anna.nowak@example.com
              */
             email: string;
             /**
-             * @description Full name, 1 to 100 characters once trimmed.
+             * @description Full name, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Anna Nowak
              */
             fullName: string;
             /**
-             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.
+             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped, white space and invisible characters at the ends are trimmed, control characters and line separators are refused. The order keeps +48 and the 9 digits.
              * @example 600 100 200
              */
             phone: string;
             /**
-             * @description Street and number, 1 to 100 characters once trimmed.
+             * @description Street and number, 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example ul. Długa 5/3
              */
             street: string;
             /**
-             * @description Polish postal code NN-NNN.
+             * @description Polish postal code NN-NNN, without control characters or line separators; white space and invisible characters at the ends are trimmed.
              * @example 00-950
              */
             postalCode: string;
             /**
-             * @description City, 1 to 60 characters once trimmed. The country is always Poland.
+             * @description City, 1 to 60 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators. The country is always Poland.
              * @example Warszawa
              */
             city: string;
@@ -2637,7 +2667,7 @@ export interface operations {
             query?: {
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description Search phrase, 2 to 100 characters after trimming. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated. */
+                /** @description Search phrase, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated. */
                 q?: string;
                 /** @description Wanted variant option as `<axis>:<value>`, split on the first colon (axis 1 to 30 characters, value 1 to 40), repeated for more; at most 50 entries of at most 5 different axes. */
                 option?: string[];

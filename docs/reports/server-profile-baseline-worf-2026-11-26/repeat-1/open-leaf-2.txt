@@ -1,0 +1,12 @@
+baseline: skipped, GET http://varnish/api/v1/products?category=d7c098d0-4bae-595e-a1e1-e4a923448956&perPage=48 failed: HTTP Error 503: Service Unavailable
+920 addresses: {'product': 200, 'phrase': 36, 'phrase_deep': 82, 'leaf': 104, 'department_deep': 130, 'home_deep': 108, 'leaf_filter': 130, 'phrase_filter': 114, 'department': 14, 'home': 2}
+baseline: stopped after 24 of 120 requests: 7 of 20 finished ones failed (more than 20%)
+24 samples, 9 failures, written to open-leaf-2.jsonl
+baseline: ABORTED: stopped after 24 of 120 requests: 7 of 20 finished ones failed (more than 20%)
+run: mode=open planned=120 sent=24 finished=24 failures=9 late_over_100ms=0 wall_s=14.5 target_rate=2.0 achieved_send_rate=2.0 by_status={'200': 15, '503': 3, '500': 6}
+run: ABORTED: stopped after 24 of 120 requests: 7 of 20 finished ones failed (more than 20%)
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-2.0	api	leaf	miss	4	2	1.503	2.369	2.369	2.369	1.491	2.365	0.001	{200: 2, 503: 2}
+open-2.0	api	leaf_filter	miss	5	4	1.287	1.518	1.518	1.518	1.284	1.512	0.0	{200: 4, 503: 1}
+open-2.0	store	leaf	unconfirmed	6	2	1.048	1.279	1.279	1.279	1.04	1.262	0.0	{200: 2, 500: 4}
+open-2.0	store	leaf_filter	unconfirmed	9	7	1.662	2.83	2.83	2.83	1.649	2.81	0.0	{200: 7, 500: 2}

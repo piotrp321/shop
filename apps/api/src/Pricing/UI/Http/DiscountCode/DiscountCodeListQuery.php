@@ -6,8 +6,10 @@ namespace App\Pricing\UI\Http\DiscountCode;
 
 use App\Pricing\Application\Query\ListDiscountCodes;
 use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Query string of GET /api/v1/admin/discount-codes. Every parameter is taken as the query gives it (a string, or an
@@ -36,7 +38,9 @@ final readonly class DiscountCodeListQuery
         #[OA\Property(type: 'string', nullable: true)]
         #[Assert\Sequentially([
             new Assert\Type('string', message: self::PREFIX_MESSAGE),
-            new Assert\Length(min: 1, max: DiscountCodeValue::MAX_LENGTH, minMessage: self::PREFIX_MESSAGE, maxMessage: self::PREFIX_MESSAGE, charsetMessage: self::PREFIX_MESSAGE, normalizer: DiscountCodeValue::trimmed(...)),
+            // The rule of texts (Text): the characters of the phrase as it came, then the length of the trimmed phrase.
+            new Assert\Callback([self::class, 'validatePrefixCharacters']),
+            new Assert\Length(min: 1, max: DiscountCodeValue::MAX_LENGTH, minMessage: self::PREFIX_MESSAGE, maxMessage: self::PREFIX_MESSAGE, charsetMessage: self::PREFIX_MESSAGE, normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $q = null,
         #[OA\Property(type: 'string', nullable: true)]
@@ -63,9 +67,25 @@ final readonly class DiscountCodeListQuery
         return \is_string($this->status) ? $this->status : null;
     }
 
+    /**
+     * The beginning of a code the list is filtered by: `q` trimmed by the rule of texts, and by nothing else: a format
+     * character T2 leaves next to a visible one stays, so the phrase is the beginning of no code. What a code is made
+     * of is the alphabet of DiscountCodeValue, which the list applies to it.
+     */
     public function codePrefix(): ?string
     {
-        return \is_string($this->q) ? $this->q : null;
+        return \is_string($this->q) ? Text::normalize($this->q) : null;
+    }
+
+    /**
+     * A phrase with a forbidden character of the rule of texts is refused; one that is not valid UTF-8 is left to the
+     * length check, which names the charset.
+     */
+    public static function validatePrefixCharacters(mixed $prefix, ExecutionContextInterface $context): void
+    {
+        if (\is_string($prefix) && mb_check_encoding($prefix, 'UTF-8') && Text::hasForbiddenCharacters($prefix)) {
+            $context->buildViolation(self::PREFIX_MESSAGE)->addViolation();
+        }
     }
 
     public function cursor(): ?string

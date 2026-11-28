@@ -42,6 +42,9 @@ final readonly class GetProductEditViewHandler
             $row['slug'],
             null !== $row['firstPublishedAt'],
             $row['shortDescription'],
+            $row['brand'],
+            $row['description'],
+            array_map(static fn (array $parameter): ProductParameterView => new ProductParameterView($parameter['name'], $parameter['value']), $row['parameters']),
             $row['mainCategoryId'],
             $row['additionalCategoryIds'],
             $row['taxClass'],
@@ -50,7 +53,7 @@ final readonly class GetProductEditViewHandler
                 $row['images'],
             ),
             $row['axes'],
-            array_map(static fn (array $variant): ProductEditVariant => new ProductEditVariant($variant['id'], $variant['values']), $row['variants']),
+            array_map(static fn (array $variant): ProductEditVariant => new ProductEditVariant($variant['id'], $variant['values'], $variant['sku'], $variant['ean']), $row['variants']),
             $row['updatedAt'],
         );
     }

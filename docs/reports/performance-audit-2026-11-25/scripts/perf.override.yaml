@@ -1,0 +1,29 @@
+# Local override of the 2026-11-25 performance audit (outside the repository): the api and the workers run the
+# production image (APP_ENV=prod), Elasticsearch gets the heap of prod.
+services:
+  api:
+    image: shop-perf25-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+  worker:
+    image: shop-perf25-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
+  worker-commands:
+    image: shop-perf25-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
+  elasticsearch:
+    environment:
+      ES_JAVA_OPTS: -Xms2g -Xmx2g

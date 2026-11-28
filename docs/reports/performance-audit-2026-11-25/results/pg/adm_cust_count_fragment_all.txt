@@ -1,0 +1,50 @@
+-- adm_cust_count_fragment_all
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('example') || '%' OR lower(c.full_name) LIKE '%' || lower('example') || '%') LIMIT 10001) b
+
+SET
+SET
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=689.85..689.86 rows=1 width=8) (actual time=10.006..10.013 rows=1.00 loops=1)
+   Buffers: shared hit=10 read=452
+   ->  Limit  (cost=0.00..564.84 rows=10001 width=4) (actual time=0.508..9.419 rows=10001.00 loops=1)
+         Buffers: shared hit=10 read=452
+         ->  Seq Scan on ordering_customer c  (cost=0.00..5566.36 rows=98558 width=4) (actual time=0.506..8.611 rows=10001.00 loops=1)
+               Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+               Buffers: shared hit=10 read=452
+ Planning:
+   Buffers: shared hit=204
+ Planning Time: 0.956 ms
+ Execution Time: 10.147 ms
+(11 rows)
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=689.85..689.86 rows=1 width=8) (actual time=8.672..8.673 rows=1.00 loops=1)
+   Buffers: shared hit=373
+   ->  Limit  (cost=0.00..564.84 rows=10001 width=4) (actual time=0.016..8.065 rows=10001.00 loops=1)
+         Buffers: shared hit=373
+         ->  Seq Scan on ordering_customer c  (cost=0.00..5566.36 rows=98558 width=4) (actual time=0.015..7.248 rows=10001.00 loops=1)
+               Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+               Buffers: shared hit=373
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.166 ms
+ Execution Time: 8.692 ms
+(11 rows)
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=689.85..689.86 rows=1 width=8) (actual time=8.513..8.514 rows=1.00 loops=1)
+   Buffers: shared hit=373
+   ->  Limit  (cost=0.00..564.84 rows=10001 width=4) (actual time=0.020..7.936 rows=10001.00 loops=1)
+         Buffers: shared hit=373
+         ->  Seq Scan on ordering_customer c  (cost=0.00..5566.36 rows=98558 width=4) (actual time=0.019..7.132 rows=10001.00 loops=1)
+               Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+               Buffers: shared hit=373
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.139 ms
+ Execution Time: 8.528 ms
+(11 rows)
+

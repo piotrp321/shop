@@ -98,6 +98,39 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertSame([[$shoes, 3]], CartFixture::lines($this->connection, $cart), 'the line added after the order stays in the cart');
     }
 
+    /**
+     * The texts between the characters the rule of texts trims (spec api-input-contract, T2) are stored trimmed, and
+     * a repeat of the same request, or of the same request without those characters, is the same request: the
+     * fingerprint is computed from the trimmed values.
+     */
+    public function testARepeatOfTextsBetweenTheEdgesOfTheRuleAnswers200WithTheSameOrder(): void
+    {
+        $shoes = $this->variant(12_300, 10);
+        $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1]]);
+        $plain = $this->body($cart, 12_300, [[$shoes, 1]]);
+        $edges = [
+            ...$plain,
+            'email' => "\u{200B}".self::EMAIL."\u{A0}",
+            'fullName' => "\u{A0}Anna Nowak\u{200B}",
+            'phone' => "\u{FEFF}600 100-200\u{A0}",
+            'street' => "\u{200B}ul. Długa 5/3\u{AD}",
+            'postalCode' => "\u{A0}00-950\u{200B}",
+            'city' => "\u{3000}Warszawa\u{2060}",
+        ];
+
+        $first = $this->place(self::PATH, $edges);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(self::CONTACT, array_intersect_key($first, self::CONTACT));
+        self::assertSame(self::EMAIL, $first['email']);
+
+        self::assertSame($first, $this->place(self::PATH, $edges));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($first, $this->place(self::PATH, $plain));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->orders());
+        self::assertSame(1, $this->reservations());
+    }
+
     public function testARepeatAfterTheCartWasMergedOrExpiredAnswers200(): void
     {
         $shoes = $this->variant(12_300, 10);

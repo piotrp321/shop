@@ -6,6 +6,7 @@ namespace App\Inventory\UI\Http;
 
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockNote;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -38,23 +39,24 @@ final readonly class CorrectStockRequest
             new Assert\Choice(choices: ['inventory_count', 'damage', 'loss', 'other'], message: self::REASON_MESSAGE),
         ])]
         public mixed $reason,
-        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Inwentaryzacja roczna')]
+        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or a text without a visible character for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Inwentaryzacja roczna')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Notatka musi być tekstem.'),
-            new Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: 'trim'),
-            new Assert\Regex(pattern: StockNote::CONTROL_CHARACTERS, match: false, htmlPattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$', message: 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'),
+            new Assert\Callback([StockNoteRules::class, 'validateCharacters']),
+            new Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: [Text::class, 'normalize']),
         ])]
         public mixed $note,
     ) {
     }
 
     /**
-     * Another reason is explained in the note; the domain refuses it too, this puts the message at the field.
+     * Another reason is explained in the note; the domain refuses it too, this puts the message at the field. A text
+     * without a visible character (the rule of texts) is no note; one with a forbidden character has its own violation.
      */
     #[Assert\Callback]
     public function validateNoteOfAnotherReason(ExecutionContextInterface $context): void
     {
-        if ('other' === $this->reason && (null === $this->note || (\is_string($this->note) && '' === trim($this->note)))) {
+        if ('other' === $this->reason && (null === $this->note || StockNoteRules::isBlank($this->note))) {
             $context->buildViolation('Przy powodzie „inne” notatka jest wymagana.')->atPath('note')->addViolation();
         }
     }

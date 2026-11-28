@@ -16,7 +16,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 final readonly class CreateCategoryRequest
 {
     public function __construct(
-        #[OA\Property(type: 'string', description: '1 to 100 characters once trimmed of whitespace, without control characters.', maxLength: CategoryName::MAX_LENGTH, example: 'Namioty')]
+        #[OA\Property(type: 'string', description: '1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.', maxLength: CategoryName::MAX_LENGTH, example: 'Namioty')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: CategoryBodyRules::NAME),
             new Assert\Type('string', message: CategoryBodyRules::NAME_TYPE),

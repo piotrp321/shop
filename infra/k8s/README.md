@@ -186,8 +186,7 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo), poza części�
      wykonawcy AO i jego Docker widzą te katalogi, a kubeconfig daje administratora klastra. Przy każdej operacji pobiera się go
      od nowa.
    - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
-     ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
-     zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
+     ścieżka w wierszu).
    - `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
      działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
      poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż
@@ -336,19 +335,29 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Przebudowa indeksu wyszukiwarki** – **zgoda użytkownika** (nazywa operację i host): `make -C infra/k8s reindex
-  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie `elasticsearch.shards` (istniejący indeks zachowuje swoją
-  liczbę shardów) i gdy indeks rozjechał się z bazą. Cel wypisuje indeks aliasu `products` i liczbę shardów nowego,
+  KUBE_DIR=<katalog z kubeconfigiem>`. Potrzebna po zmianie definicji indeksu, gdy aktywny indeks ma
+  więcej niż jeden shard (np. zbudowany przed modelem z jednym shardem; `setup` w Jobie `migrate` ostrzega o nim) i gdy indeks
+  rozjechał się z bazą. Nowy indeks zawsze ma jeden shard (stała w kodzie API, bez wartości w chartcie). Zmiana `elasticsearch.refreshInterval` przebudowy nie wymaga:
+  stosuje ją `catalog:search-index:setup` w Jobie `migrate` wdrożenia. Cel wypisuje indeks aliasu `products` (z jego shardami) i jeden shard nowego,
   pyta o `tak`, uruchamia Job `reindex-<czas UTC>` z zawieszonego CronJoba `reindex` i sprawdza indeks po nim.
-  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut. Cel trzyma do końca blokadę
+  Sklep działa w trakcie na starym indeksie; milion produktów to na serwerze ok. 17 minut, 10 mln ok. 7,3 h (limit Joba 12 h). Cel trzyma do końca blokadę
   `demo-data-lock`, więc `generate` i `open` w tym czasie odmawiają. **Nie wdrażaj nowej wersji w trakcie przebudowy**:
   Job `migrate` wdrożenia kończy się wtedy błędem (`catalog:search-index:setup` odmawia przy trwającej przebudowie),
   a po jej końcu trzeba go ponowić (`make -C infra/k8s rerun JOB=<migrate-…>`). Odmowa (kod 1, „nothing changed”):
   aktywny Job w przestrzeni nazw (poczekaj na koniec; Joby CronJobów `rate-limit-check`, `queue-check` i `order-expiry` nie
   są powodem odmowy), blokada `demo-data-lock` innego przebiegu albo nieczytelny indeks. Porażka (kod 1, „FAILED”):
   komunikat mówi, na którym indeksie jest alias (nieudany Job zostawia go na starym), log Joba jest w wyjściu celu i w Grafana Cloud; po usunięciu przyczyny uruchom cel ponownie (nie `rerun`). Liczba
-  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba. Zmiana produktu, ceny albo stanu zapisana w trakcie budowy może nie trafić do nowego indeksu
-  do następnej zmiany tego produktu, więc przebudowę uruchamiaj poza godzinami zmian w panelu. Powrót do poprzedniej
-  liczby shardów: zmiana `elasticsearch.shards`, wdrożenie i ponowna przebudowa.
+  dokumentów w wyjściu celu to dokumenty Lucene (razem z zagnieżdżonymi wariantami), więcej niż produktów w logu Joba.
+  Przebudowa pod normalnym ruchem jest dozwolona: zmiana produktu, ceny albo stanu zapisana w trakcie budowy trafia też do
+  nowego indeksu (alias `products-rebuild`, `docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Dodawanie
+  produktów w panelu jest w jej trakcie wstrzymane (409 `search-rebuild-running`, komunikat w formularzu, szkic zostaje),
+  bo nowy produkt wywróciłby weryfikację liczby dokumentów.
+- **Zmiana definicji indeksu wyszukiwarki** (okno serwisowe, **zgoda użytkownika** na każdy krok): wdrożenie wersji z nową
+  definicją (`catalog:search-index:setup` w Jobie `migrate` ostrzega o indeksie starej definicji i wdrożenie przechodzi),
+  potem przebudowa jak wyżej. Do przepięcia aliasu listing nie pokazuje poprawnych wyników ani faset, a zapisy
+  reindeksacji do starego indeksu są odrzucane i trafiają do `failed` (do nowego trafiają przez alias przebudowy); po
+  przebudowie `make -C infra/k8s failed-retry` i `make -C infra/k8s smoke`. Wycofanie: revert zmiany na `main`, wdrożenie
+  i ponowna przebudowa (ta sama procedura w drugą stronę).
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
@@ -749,8 +758,8 @@ czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, kt�
    Job nie jest aktywny poza Jobami CronJobów `rate-limit-check`, `queue-check` i `order-expiry` (co 5 minut, najwyżej
    60, 120 i 600 s; `generate` i `open` je pomijają, bo generator nie zapisuje niczego, co zmieniają).
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
-   26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
-   pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
+   28,75 GB, jest mniejsze), `server` co najmniej 142,5 GB (1,25 × `diskPeakGb` 114 GB; to szacunek, nie pomiar:
+   `docs/features/demo-data/spec.md`, „Rozmiar i czas pól treści produktów”). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
    wolne miejsce spadnie poniżej 32 GB.
 5. **agent** – adresy sondy: `generate` i `open` pytają z komputera operatora o `https://api.worf.pl/` i
    `https://worf.pl/` przez Cloudflare (502, 503 i 504 to „zamknięty”, kod poniżej 500 „otwarty”, każdy inny kod i brak

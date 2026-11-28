@@ -1,0 +1,46 @@
+-- adm_ord_count_wide
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE o.placed_at >= '2024-01-01' LIMIT 10001) b
+
+SET
+SET
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=834.18..834.19 rows=1 width=8) (actual time=3.492..3.499 rows=1.00 loops=1)
+   Buffers: shared hit=16 read=624
+   ->  Limit  (cost=0.00..709.17 rows=10001 width=4) (actual time=0.015..3.101 rows=10001.00 loops=1)
+         Buffers: shared hit=16 read=624
+         ->  Seq Scan on ordering_order o  (cost=0.00..68682.82 rows=968597 width=4) (actual time=0.015..2.403 rows=10001.00 loops=1)
+               Filter: (placed_at >= '2024-01-01 00:00:00+00'::timestamp with time zone)
+               Buffers: shared hit=16 read=624
+ Planning:
+   Buffers: shared hit=267
+ Planning Time: 0.580 ms
+ Execution Time: 3.616 ms
+(11 rows)
+
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=834.18..834.19 rows=1 width=8) (actual time=3.230..3.231 rows=1.00 loops=1)
+   Buffers: shared hit=11 read=639
+   ->  Limit  (cost=0.00..709.17 rows=10001 width=4) (actual time=0.006..2.834 rows=10001.00 loops=1)
+         Buffers: shared hit=11 read=639
+         ->  Seq Scan on ordering_order o  (cost=0.00..68682.82 rows=968597 width=4) (actual time=0.006..2.266 rows=10001.00 loops=1)
+               Filter: (placed_at >= '2024-01-01 00:00:00+00'::timestamp with time zone)
+               Buffers: shared hit=11 read=639
+ Planning Time: 0.091 ms
+ Execution Time: 3.297 ms
+(9 rows)
+
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=834.18..834.19 rows=1 width=8) (actual time=3.150..3.151 rows=1.00 loops=1)
+   Buffers: shared hit=4 read=652
+   ->  Limit  (cost=0.00..709.17 rows=10001 width=4) (actual time=0.004..2.762 rows=10001.00 loops=1)
+         Buffers: shared hit=4 read=652
+         ->  Seq Scan on ordering_order o  (cost=0.00..68682.82 rows=968597 width=4) (actual time=0.004..2.198 rows=10001.00 loops=1)
+               Filter: (placed_at >= '2024-01-01 00:00:00+00'::timestamp with time zone)
+               Buffers: shared hit=4 read=652
+ Planning Time: 0.055 ms
+ Execution Time: 3.205 ms
+(9 rows)
+

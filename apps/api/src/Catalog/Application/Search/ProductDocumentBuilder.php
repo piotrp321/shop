@@ -41,6 +41,8 @@ final readonly class ProductDocumentBuilder
             $snapshot->slug,
             $snapshot->shortDescription,
             $snapshot->mainCategoryId,
+            // The main category's path comes first in the snapshot.
+            implode('/', $snapshot->categoryPaths[0]),
             [$snapshot->mainCategoryId, ...$snapshot->additionalCategoryIds],
             $ancestorIds,
             $snapshot->mainImage,

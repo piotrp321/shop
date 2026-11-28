@@ -1,0 +1,28 @@
+# PERF-2B-8: the api and the two workers of the stack perf2b-8 run the production image (APP_ENV=prod, no debug), as in the
+# override of the performance audit 2026-11-25 (docs/reports/performance-audit-2026-11-25/scripts/perf.override.yaml).
+# The image is built from the revision of the worktree: docker build --target prod -t perf2b-8-api:prod apps/api
+# Added to COMPOSE_FILE after es.override.yaml only for the commands of run.sh that need prod (`prod-up`, `probe prod`).
+services:
+  api:
+    image: perf2b-8-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+  worker:
+    image: perf2b-8-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
+  worker-commands:
+    image: perf2b-8-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache

@@ -1,0 +1,119 @@
+-- adm_prod_count_cat_empty
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'))) LIMIT 10001) b
+
+SET
+SET
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=158811.03..158811.04 rows=1 width=8) (actual time=93.834..93.844 rows=1.00 loops=1)
+   Buffers: shared hit=1056 read=6458
+   ->  Limit  (cost=7.31..158686.02 rows=10001 width=4) (actual time=52.391..93.175 rows=10001.00 loops=1)
+         Buffers: shared hit=1056 read=6458
+         ->  Seq Scan on catalog_product p  (cost=7.31..12013735.38 rows=757186 width=4) (actual time=39.703..79.726 rows=10001.00 loops=1)
+               Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+               Rows Removed by Filter: 65266
+               Buffers: shared hit=1056 read=6458
+               SubPlan 1
+                 ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=24 width=16) (actual time=0.241..0.355 rows=24.00 loops=1)
+                       Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                       Rows Removed by Filter: 156
+                       Buffers: shared hit=2 read=3
+               SubPlan 3
+                 ->  Hash Join  (cost=7.55..4022.35 rows=26692 width=16) (actual time=0.232..30.315 rows=26641.00 loops=1)
+                       Hash Cond: (pc.category_id = c_1.id)
+                       Buffers: shared hit=5 read=1475
+                       ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.102..12.183 rows=200192.00 loops=1)
+                             Buffers: shared read=1475
+                       ->  Hash  (cost=7.25..7.25 rows=24 width=16) (actual time=0.118..0.119 rows=24.00 loops=1)
+                             Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                             Buffers: shared hit=5
+                             ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=24 width=16) (actual time=0.097..0.112 rows=24.00 loops=1)
+                                   Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                                   Rows Removed by Filter: 156
+                                   Buffers: shared hit=5
+ Planning:
+   Buffers: shared hit=460 read=89
+ Planning Time: 1.986 ms
+ JIT:
+   Functions: 44
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.304 ms (Deform 0.530 ms), Inlining 0.000 ms, Optimization 0.735 ms, Emission 14.854 ms, Total 16.893 ms
+ Execution Time: 109.349 ms
+(34 rows)
+
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=158811.03..158811.04 rows=1 width=8) (actual time=93.516..93.521 rows=1.00 loops=1)
+   Buffers: shared hit=2554 read=4914
+   ->  Limit  (cost=7.31..158686.02 rows=10001 width=4) (actual time=47.555..92.834 rows=10001.00 loops=1)
+         Buffers: shared hit=2554 read=4914
+         ->  Seq Scan on catalog_product p  (cost=7.31..12013735.38 rows=757186 width=4) (actual time=36.761..81.247 rows=10001.00 loops=1)
+               Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+               Rows Removed by Filter: 64815
+               Buffers: shared hit=2554 read=4914
+               SubPlan 1
+                 ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=24 width=16) (actual time=0.091..0.110 rows=24.00 loops=1)
+                       Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                       Rows Removed by Filter: 156
+                       Buffers: shared hit=5
+               SubPlan 3
+                 ->  Hash Join  (cost=7.55..4022.35 rows=26692 width=16) (actual time=0.100..28.181 rows=26641.00 loops=1)
+                       Hash Cond: (pc.category_id = c_1.id)
+                       Buffers: shared hit=1480
+                       ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.004..10.303 rows=200192.00 loops=1)
+                             Buffers: shared hit=1475
+                       ->  Hash  (cost=7.25..7.25 rows=24 width=16) (actual time=0.088..0.089 rows=24.00 loops=1)
+                             Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                             Buffers: shared hit=5
+                             ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=24 width=16) (actual time=0.069..0.082 rows=24.00 loops=1)
+                                   Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                                   Rows Removed by Filter: 156
+                                   Buffers: shared hit=5
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.462 ms
+ JIT:
+   Functions: 44
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.014 ms (Deform 0.405 ms), Inlining 0.000 ms, Optimization 0.623 ms, Emission 12.352 ms, Total 13.989 ms
+ Execution Time: 94.722 ms
+(34 rows)
+
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=158811.03..158811.04 rows=1 width=8) (actual time=88.411..88.415 rows=1.00 loops=1)
+   Buffers: shared hit=2563 read=4863
+   ->  Limit  (cost=7.31..158686.02 rows=10001 width=4) (actual time=47.441..87.746 rows=10001.00 loops=1)
+         Buffers: shared hit=2563 read=4863
+         ->  Seq Scan on catalog_product p  (cost=7.31..12013735.38 rows=757186 width=4) (actual time=36.749..76.265 rows=10001.00 loops=1)
+               Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+               Rows Removed by Filter: 64047
+               Buffers: shared hit=2563 read=4863
+               SubPlan 1
+                 ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=24 width=16) (actual time=0.096..0.114 rows=24.00 loops=1)
+                       Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                       Rows Removed by Filter: 156
+                       Buffers: shared hit=5
+               SubPlan 3
+                 ->  Hash Join  (cost=7.55..4022.35 rows=26692 width=16) (actual time=0.098..28.293 rows=26641.00 loops=1)
+                       Hash Cond: (pc.category_id = c_1.id)
+                       Buffers: shared hit=1480
+                       ->  Seq Scan on catalog_product_category pc  (cost=0.00..3476.92 rows=200192 width=32) (actual time=0.005..10.280 rows=200192.00 loops=1)
+                             Buffers: shared hit=1475
+                       ->  Hash  (cost=7.25..7.25 rows=24 width=16) (actual time=0.084..0.086 rows=24.00 loops=1)
+                             Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                             Buffers: shared hit=5
+                             ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=24 width=16) (actual time=0.066..0.079 rows=24.00 loops=1)
+                                   Filter: (path ~~ '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/%'::text)
+                                   Rows Removed by Filter: 156
+                                   Buffers: shared hit=5
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.448 ms
+ JIT:
+   Functions: 44
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.957 ms (Deform 0.400 ms), Inlining 0.000 ms, Optimization 0.606 ms, Emission 12.260 ms, Total 13.823 ms
+ Execution Time: 89.633 ms
+(34 rows)
+

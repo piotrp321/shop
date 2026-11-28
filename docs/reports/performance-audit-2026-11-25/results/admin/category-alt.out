@@ -1,0 +1,160 @@
+=== ALT1 small category, ids resolved in app, IN (UNION ALL)
+                                                                                                                                      QUERY PLAN                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=32182.13..32182.20 rows=26 width=71) (actual time=4.493..4.504 rows=20.00 loops=1)
+   Buffers: shared hit=54 read=60
+   ->  Sort  (cost=32182.13..32214.62 rows=12996 width=71) (actual time=4.492..4.495 rows=20.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: quicksort  Memory: 27kB
+         Buffers: shared hit=54 read=60
+         ->  Nested Loop  (cost=30152.97..31811.72 rows=12996 width=71) (actual time=1.231..4.370 rows=20.00 loops=1)
+               Buffers: shared hit=48 read=60
+               ->  HashAggregate  (cost=30152.54..30154.54 rows=200 width=16) (actual time=1.161..1.172 rows=20.00 loops=1)
+                     Group Key: catalog_product.id
+                     Batches: 1  Memory Usage: 32kB
+                     Buffers: shared hit=8 read=20
+                     ->  Append  (cost=152.69..30120.05 rows=12996 width=16) (actual time=0.229..1.148 rows=20.00 loops=1)
+                           Buffers: shared hit=8 read=20
+                           ->  Bitmap Heap Scan on catalog_product  (cost=152.69..28465.15 rows=9103 width=16) (actual time=0.228..0.294 rows=16.00 loops=1)
+                                 Recheck Cond: (primary_category_id = ANY ('{70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd}'::uuid[]))
+                                 Heap Blocks: exact=2
+                                 Buffers: shared hit=4 read=13
+                                 ->  Bitmap Index Scan on catalog_product_primary_category_id_idx  (cost=0.00..150.41 rows=9103 width=0) (actual time=0.093..0.094 rows=16.00 loops=1)
+                                       Index Cond: (primary_category_id = ANY ('{70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd}'::uuid[]))
+                                       Index Searches: 5
+                                       Buffers: shared hit=4 read=11
+                           ->  Bitmap Heap Scan on catalog_product_category  (cost=51.66..1589.92 rows=3893 width=16) (actual time=0.847..0.848 rows=4.00 loops=1)
+                                 Recheck Cond: (category_id = ANY ('{70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd}'::uuid[]))
+                                 Heap Blocks: exact=1
+                                 Buffers: shared hit=4 read=7
+                                 ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..50.69 rows=3893 width=0) (actual time=0.516..0.516 rows=4.00 loops=1)
+                                       Index Cond: (category_id = ANY ('{70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd}'::uuid[]))
+                                       Index Searches: 5
+                                       Buffers: shared hit=4 read=6
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.159..0.159 rows=1.00 loops=20)
+                     Index Cond: (id = catalog_product.id)
+                     Index Searches: 20
+                     Buffers: shared hit=40 read=40
+ Planning:
+   Buffers: shared hit=316 read=22
+ Planning Time: 5.105 ms
+ Execution Time: 4.601 ms
+(38 rows)
+
+Time: 12.876 ms
+=== ALT2 leaf 21k
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=58295.18..58295.25 rows=26 width=71) (actual time=1124.756..1124.763 rows=26.00 loops=1)
+   Buffers: shared hit=75050 read=40670
+   ->  Sort  (cost=58295.18..58352.12 rows=22776 width=71) (actual time=1124.755..1124.759 rows=26.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: top-N heapsort  Memory: 31kB
+         Buffers: shared hit=75050 read=40670
+         ->  Nested Loop  (cost=56002.07..57646.02 rows=22776 width=71) (actual time=461.156..1110.886 rows=23846.00 loops=1)
+               Buffers: shared hit=75050 read=40670
+               ->  HashAggregate  (cost=56001.64..56003.64 rows=200 width=16) (actual time=461.125..471.719 rows=23846.00 loops=1)
+                     Group Key: catalog_product.id
+                     Batches: 1  Memory Usage: 1321kB
+                     Buffers: shared hit=6142 read=14194
+                     ->  Append  (cost=311.25..55944.70 rows=22776 width=16) (actual time=8.795..443.508 rows=23846.00 loops=1)
+                           Buffers: shared hit=6142 read=14194
+                           ->  Bitmap Heap Scan on catalog_product  (cost=311.25..54233.73 rows=20494 width=16) (actual time=8.793..409.576 rows=21683.00 loops=1)
+                                 Recheck Cond: (primary_category_id = ANY ('{4b68d4ca-f126-562f-a142-65edd596cc0c}'::uuid[]))
+                                 Heap Blocks: exact=19168
+                                 Buffers: shared hit=6140 read=13067
+                                 ->  Bitmap Index Scan on catalog_product_primary_category_id_idx  (cost=0.00..306.13 rows=20494 width=0) (actual time=4.629..4.629 rows=21683.00 loops=1)
+                                       Index Cond: (primary_category_id = ANY ('{4b68d4ca-f126-562f-a142-65edd596cc0c}'::uuid[]))
+                                       Index Searches: 1
+                                       Buffers: shared hit=2 read=37
+                           ->  Bitmap Heap Scan on catalog_product_category  (cost=29.98..1597.09 rows=2282 width=16) (actual time=0.510..31.307 rows=2163.00 loops=1)
+                                 Recheck Cond: (category_id = ANY ('{4b68d4ca-f126-562f-a142-65edd596cc0c}'::uuid[]))
+                                 Heap Blocks: exact=1126
+                                 Buffers: shared hit=2 read=1127
+                                 ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..29.41 rows=2282 width=0) (actual time=0.326..0.326 rows=2163.00 loops=1)
+                                       Index Cond: (category_id = ANY ('{4b68d4ca-f126-562f-a142-65edd596cc0c}'::uuid[]))
+                                       Index Searches: 1
+                                       Buffers: shared hit=1 read=2
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.026..0.026 rows=1.00 loops=23846)
+                     Index Cond: (id = catalog_product.id)
+                     Index Searches: 23846
+                     Buffers: shared hit=68908 read=26476
+ Planning Time: 0.221 ms
+ Execution Time: 1125.014 ms
+(36 rows)
+
+Time: 1129.846 ms (00:01.130)
+=== ALT3 root
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=155368.09..155368.15 rows=26 width=71) (actual time=4618.624..4618.630 rows=26.00 loops=1)
+   Buffers: shared hit=643810 read=310557 written=1, temp read=447 written=798
+   ->  Sort  (cost=155368.09..156092.18 rows=289636 width=71) (actual time=4587.885..4587.889 rows=26.00 loops=1)
+         Sort Key: p.name, p.id
+         Sort Method: top-N heapsort  Memory: 30kB
+         Buffers: shared hit=643810 read=310557 written=1, temp read=447 written=798
+         ->  Nested Loop  (cost=145682.47..147112.82 rows=289636 width=71) (actual time=1769.943..4469.388 rows=206849.00 loops=1)
+               Buffers: shared hit=643810 read=310557 written=1, temp read=447 written=798
+               ->  HashAggregate  (cost=145682.04..145684.04 rows=200 width=16) (actual time=1769.909..1951.004 rows=206849.00 loops=1)
+                     Group Key: catalog_product.id
+                     Batches: 5  Memory Usage: 8273kB  Disk Usage: 3768kB
+                     Buffers: shared hit=8002 read=118969, temp read=447 written=798
+                     ->  Append  (cost=0.09..144957.95 rows=289636 width=16) (actual time=2.282..1615.979 rows=248611.00 loops=1)
+                           Buffers: shared hit=8002 read=118969
+                           ->  Seq Scan on catalog_product  (cost=0.09..140550.80 rows=235219 width=16) (actual time=2.280..1558.857 rows=206841.00 loops=1)
+                                 Filter: (primary_category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,8114f947-c901-5ec4-a342-8680b736d727,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,b1586e7f-5815-587a-9e06-bac239eaeb62,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,fd305193-a5ad-5aac-932f-fc408a98d4c7,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,1a27b41d-f17e-5928-b73d-e9953916221a,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,22cf1459-445c-5f09-9c57-cffac2a03b1b,c46367b5-ebd9-5214-83cf-f336dac3fedb,b046c3bb-67cf-575e-85de-475b0a4231db,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,73706765-ed3e-58bf-86d9-b66cd3fa71c0,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,1eca62e7-3a2e-526f-b689-4d43a343b30d,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,0e811f7e-c801-572b-a28d-ceea69c2c019,a58050fa-627a-5c6f-aa94-3f392baa4385,e77ca681-5575-588c-be72-a87e86dd1f73,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c}'::uuid[]))
+                                 Rows Removed by Filter: 793350
+                                 Buffers: shared hit=7953 read=117454
+                           ->  Bitmap Heap Scan on catalog_product_category  (cost=667.72..2958.97 rows=54417 width=16) (actual time=2.175..31.102 rows=41770.00 loops=1)
+                                 Recheck Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,8114f947-c901-5ec4-a342-8680b736d727,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,b1586e7f-5815-587a-9e06-bac239eaeb62,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,fd305193-a5ad-5aac-932f-fc408a98d4c7,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,1a27b41d-f17e-5928-b73d-e9953916221a,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,22cf1459-445c-5f09-9c57-cffac2a03b1b,c46367b5-ebd9-5214-83cf-f336dac3fedb,b046c3bb-67cf-575e-85de-475b0a4231db,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,73706765-ed3e-58bf-86d9-b66cd3fa71c0,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,1eca62e7-3a2e-526f-b689-4d43a343b30d,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,0e811f7e-c801-572b-a28d-ceea69c2c019,a58050fa-627a-5c6f-aa94-3f392baa4385,e77ca681-5575-588c-be72-a87e86dd1f73,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c}'::uuid[]))
+                                 Heap Blocks: exact=1475
+                                 Buffers: shared hit=49 read=1515
+                                 ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..654.03 rows=54417 width=0) (actual time=1.667..1.667 rows=41770.00 loops=1)
+                                       Index Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,dad8249a-d4d2-5f77-a4ed-c20fad01e574,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,8114f947-c901-5ec4-a342-8680b736d727,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,b1586e7f-5815-587a-9e06-bac239eaeb62,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,fd305193-a5ad-5aac-932f-fc408a98d4c7,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,1a27b41d-f17e-5928-b73d-e9953916221a,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,22cf1459-445c-5f09-9c57-cffac2a03b1b,c46367b5-ebd9-5214-83cf-f336dac3fedb,b046c3bb-67cf-575e-85de-475b0a4231db,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,73706765-ed3e-58bf-86d9-b66cd3fa71c0,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,1eca62e7-3a2e-526f-b689-4d43a343b30d,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,0e811f7e-c801-572b-a28d-ceea69c2c019,a58050fa-627a-5c6f-aa94-3f392baa4385,e77ca681-5575-588c-be72-a87e86dd1f73,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c}'::uuid[]))
+                                       Index Searches: 26
+                                       Buffers: shared hit=49 read=40
+               ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..8.40 rows=1 width=71) (actual time=0.012..0.012 rows=1.00 loops=206849)
+                     Index Cond: (id = catalog_product.id)
+                     Index Searches: 206849
+                     Buffers: shared hit=635808 read=191588 written=1
+ Planning:
+   Buffers: shared hit=2 read=1
+ Planning Time: 0.532 ms
+ JIT:
+   Functions: 24
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.696 ms (Deform 0.290 ms), Inlining 0.000 ms, Optimization 0.685 ms, Emission 32.347 ms, Total 33.727 ms
+ Execution Time: 4639.940 ms
+(38 rows)
+
+Time: 4640.984 ms (00:04.641)
+=== ALT4 hybrid search: GIN matches then sort (termos)
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=27251.56..27251.63 rows=26 width=524) (actual time=117.304..117.310 rows=26.00 loops=1)
+   Buffers: shared hit=1177 read=8281
+   CTE m
+     ->  Limit  (cost=405.81..26766.49 rows=10001 width=71) (actual time=16.744..107.436 rows=10001.00 loops=1)
+           Buffers: shared hit=1177 read=8281
+           ->  Bitmap Heap Scan on catalog_product p  (cost=405.81..54165.69 rows=20396 width=71) (actual time=16.743..106.497 rows=10001.00 loops=1)
+                 Recheck Cond: ((name)::text ~~* '%termos%'::text)
+                 Heap Blocks: exact=9287
+                 Buffers: shared hit=1177 read=8281
+                 ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..400.71 rows=20396 width=0) (actual time=9.616..9.616 rows=12920.00 loops=1)
+                       Index Cond: ((name)::text ~~* '%termos%'::text)
+                       Index Searches: 1
+                       Buffers: shared hit=68 read=85
+   ->  Sort  (cost=485.07..510.07 rows=10001 width=524) (actual time=117.303..117.305 rows=26.00 loops=1)
+         Sort Key: m.name, m.id
+         Sort Method: top-N heapsort  Memory: 30kB
+         Buffers: shared hit=1177 read=8281
+         ->  CTE Scan on m  (cost=0.00..200.02 rows=10001 width=524) (actual time=16.748..111.128 rows=10001.00 loops=1)
+               Storage: Memory  Maximum Storage: 1096kB
+               Buffers: shared hit=1177 read=8281
+ Planning:
+   Buffers: shared hit=3 read=9
+ Planning Time: 0.483 ms
+ Execution Time: 117.376 ms
+(24 rows)
+
+Time: 118.400 ms

@@ -137,14 +137,15 @@ def index(name, shards, documents=1000191):
 def initial_state(**changes):
     state = {
         "namespace": "shop",
-        "cronjob": {"SEARCH_SHARDS": "4"},
+        "cronjob": {},
         "jobs": {
             "migrate-2b": {"state": "Complete"},
             "backfill-6f": {"state": "Complete"},
             "queue-check-29384755": {"state": "Running", "owner": "queue-check"},
         },
         # The answers of Elasticsearch for the index of the alias, one per question; the last one stays.
-        "indices": [index(OLD_INDEX, 1), index(NEW_INDEX, 4, 2401957)],
+        # The index of the alias has several shards (before the rebuild of the model with one), the new one has one.
+        "indices": [index(OLD_INDEX, 4), index(NEW_INDEX, 1, 2401957)],
         "outcome": "Complete",
         "log": REPORT,
         "created": [],
@@ -216,11 +217,11 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertRegex(job, r"^reindex-[0-9]{14}$")
         self.assertEqual(["lock taken", "job created", "lock released"], self.changes())
         self.assertIsNone(self.state()["lock"])
-        self.assertIn(f"the alias products is on the index {OLD_INDEX}: 1 primary shard(s), 1000191 Lucene documents", result.stdout)
-        self.assertIn("a new index with 4 primary shard(s)", result.stdout)
+        self.assertIn(f"the alias products is on the index {OLD_INDEX}: 4 primary shard(s), 1000191 Lucene documents", result.stdout)
+        self.assertIn("a new index with 1 primary shard(s)", result.stdout)
         self.assertIn("[reindex] Search index rebuilt: 1000191 documents.", result.stdout)
-        self.assertIn(f"reindex: done: the alias products is on the index {NEW_INDEX}: 4 primary shard(s), 2401957 Lucene documents", result.stdout)
-        self.assertIn(f"before: {OLD_INDEX}, 1 primary shard(s)", result.stdout)
+        self.assertIn(f"reindex: done: the alias products is on the index {NEW_INDEX}: 1 primary shard(s), 2401957 Lucene documents", result.stdout)
+        self.assertIn(f"before: {OLD_INDEX}, 4 primary shard(s)", result.stdout)
 
     def test_the_job_is_created_only_after_the_checks_and_the_answer(self):
         self.run_script()
@@ -230,11 +231,14 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(["get cronjob", "get configmap", "get jobs", "exec statefulset/elasticsearch", "create -f", "get jobs", "create job", "create -f"],
                          verbs[:8])
 
-    def test_it_says_what_stays_on_the_old_index_during_the_build(self):
+    def test_it_says_what_happens_to_writes_during_the_build(self):
         result = self.run_script()
 
         self.assertIn("the shop stays open", result.stdout)
-        self.assertIn("may be missing from the new index", result.stdout)
+        self.assertIn("written during the build reaches the new index too", result.stdout)
+        self.assertIn("products-rebuild", result.stdout)
+        self.assertIn("the admin panel cannot create products until the build ends", result.stdout)
+        self.assertNotIn("may be missing from the new index", result.stdout)
         self.assertIn("no deployment until the Job ends", result.stdout)
 
     def test_a_job_of_a_short_check_is_no_reason_to_refuse(self):
@@ -281,13 +285,6 @@ class ReindexScriptTest(unittest.TestCase):
         result = self.run_script(initial_state(unreachable=True))
 
         self.assert_refused(result, "cannot read the CronJob reindex")
-
-    def test_a_cronjob_without_a_number_of_shards_is_refused(self):
-        for value in ({}, {"SEARCH_SHARDS": ""}, {"SEARCH_SHARDS": "0"}, {"SEARCH_SHARDS": "four"}, {"SEARCH_SHARDS": "-1"}, {"SEARCH_SHARDS": "1.5"}):
-            with self.subTest(value=value):
-                self.log.write_text("")
-                result = self.run_script(initial_state(cronjob=value))
-                self.assert_refused(result, "no number of shards in SEARCH_SHARDS")
 
     def test_an_active_job_is_refused_by_its_name(self):
         for name, owner in (("demo-data-run", "demo-data"), ("reindex-20261125090000", "reindex"), ("migrate-9z", None),
@@ -382,12 +379,16 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertIn(f"the alias products is still on the index {OLD_INDEX}", result.stderr)
         self.assertNotIn("reindex: done", result.stdout)
 
-    def test_a_new_index_with_other_shards_than_the_cronjob_says_is_a_failure(self):
-        result = self.run_script(initial_state(indices=[index(OLD_INDEX, 1), index(NEW_INDEX, 1)]))
+    def test_a_new_index_with_more_than_one_shard_is_a_failure(self):
+        # The index of the alias is never left on a new index of several shards, whatever the CronJob says.
+        for env in ({}, {"SEARCH_SHARDS": "4"}):
+            with self.subTest(cronjob=env):
+                self.log.write_text("")
+                result = self.run_script(initial_state(cronjob=env, indices=[index(OLD_INDEX, 1), index(NEW_INDEX, 4)]))
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn(f"the new index {NEW_INDEX} has 1 primary shard(s), not the 4 of SEARCH_SHARDS", result.stderr)
-        self.assertNotIn("reindex: done", result.stdout)
+                self.assertEqual(1, result.returncode)
+                self.assertIn(f"the new index {NEW_INDEX} has 4 primary shard(s), not the 1 of the index definition", result.stderr)
+                self.assertNotIn("reindex: done", result.stdout)
 
     def test_an_index_that_cannot_be_read_after_the_job_is_a_failure(self):
         result = self.run_script(initial_state(indices=[index(OLD_INDEX, 1), None]))
@@ -395,8 +396,8 @@ class ReindexScriptTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("completed, but the index of the alias products could not be read", result.stderr)
 
-    def test_a_rebuild_with_the_same_number_of_shards_is_a_success(self):
-        result = self.run_script(initial_state(cronjob={"SEARCH_SHARDS": "1"}, indices=[index(OLD_INDEX, 1), index(NEW_INDEX, 1)]))
+    def test_a_rebuild_of_an_index_of_one_shard_is_a_success(self):
+        result = self.run_script(initial_state(indices=[index(OLD_INDEX, 1), index(NEW_INDEX, 1)]))
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("reindex: done", result.stdout)

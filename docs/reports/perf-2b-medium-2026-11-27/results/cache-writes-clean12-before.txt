@@ -1,0 +1,17 @@
+== 2026-11-27T21:20:35Z writes-clean12-before
+== _nodes/stats/indices/request_cache
+{"_nodes":{"total":1,"successful":1,"failed":0},"cluster_name":"docker-cluster","nodes":{"SZ21YHc-SVmH8Z8zzA1BuA":{"timestamp":1795814435762,"name":"bbeb9d400a4a","transport_address":"172.24.0.5:9300","host":"172.24.0.5","ip":"172.24.0.5:9300","roles":["data","data_cold","data_content","data_frozen","data_hot","data_warm","ingest","master","ml","remote_cluster_client","transform"],"attributes":{"ml.allocated_processors":"16","ml.allocated_processors_double":"16.0","ml.max_jvm_size":"2147483648","ml.config_version":"12.0.0","xpack.installed":"true","transform.config_version":"10.0.0","ml.machine_memory":"33597603840"},"indices":{"request_cache":{"memory_size_in_bytes":0,"evictions":0,"hit_count":0,"miss_count":0}}}}}
+== products/_stats/request_cache,query_cache
+{"_shards":{"total":1,"successful":1,"failed":0},"_all":{"primaries":{"query_cache":{"memory_size_in_bytes":0,"total_count":0,"hit_count":0,"miss_count":0,"cache_size":0,"cache_count":0,"evictions":0},"request_cache":{"memory_size_in_bytes":0,"evictions":0,"hit_count":0,"miss_count":0}},"total":{"query_cache":{"memory_size_in_bytes":0,"total_count":0,"hit_count":0,"miss_count":0,"cache_size":0,"cache_count":0,"evictions":0},"request_cache":{"memory_size_in_bytes":0,"evictions":0,"hit_count":0,"miss_count":0}}},"indices":{"products_20261127205507738_d50761":{"uuid":"8wi3JGK7SnC4LqU9khHPcQ","health":"green","status":"open","primaries":{"query_cache":{"memory_size_in_bytes":0,"total_count":0,"hit_count":0,"miss_count":0,"cache_size":0,"cache_count":0,"evictions":0},"request_cache":{"memory_size_in_bytes":0,"evictions":0,"hit_count":0,"miss_count":0}},"total":{"query_cache":{"memory_size_in_bytes":0,"total_count":0,"hit_count":0,"miss_count":0,"cache_size":0,"cache_count":0,"evictions":0},"request_cache":{"memory_size_in_bytes":0,"evictions":0,"hit_count":0,"miss_count":0}}}}}
+== memory of the Elasticsearch container (cgroup v2: file = page cache, anon = heap and other)
+memory.current 2698661888
+memory.max max
+anon 2674663424
+file 8974336
+file_mapped 2306048
+inactive_file 7413760
+active_file 1560576
+== docker stats
+perf2b-8-api-1 cpu 0.00% mem 186.4MiB / 31.29GiB
+perf2b-8-elasticsearch-1 cpu 0.69% mem 2.498GiB / 31.29GiB
+perf2b-8-postgres-1 cpu 2.19% mem 189.2MiB / 31.29GiB

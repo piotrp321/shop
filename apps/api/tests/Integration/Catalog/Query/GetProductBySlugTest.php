@@ -89,6 +89,9 @@ final class GetProductBySlugTest extends KernelTestCase
             'slug' => 'buty',
             'name' => 'Buty Puls',
             'shortDescription' => 'Lekkie buty.',
+            'brand' => 'Puls',
+            'description' => "Pierwszy akapit.\n\nDrugi akapit.",
+            'parameters' => [['name' => 'Waga', 'value' => '250 g'], ['name' => 'Kolor', 'value' => 'czarny']],
             'mainCategory' => $this->categories['road'],
             'imageAlts' => ['Pierwsze', 'Drugie', 'Trzecie'],
         ]);
@@ -97,6 +100,8 @@ final class GetProductBySlugTest extends KernelTestCase
 
         self::assertSame($product->id()->toString(), $details->id);
         self::assertSame(['buty', 'Buty Puls', 'Lekkie buty.'], [$details->slug, $details->name, $details->shortDescription]);
+        self::assertSame(['Puls', "Pierwszy akapit.\n\nDrugi akapit."], [$details->brand, $details->description]);
+        self::assertSame([['Waga', '250 g'], ['Kolor', 'czarny']], array_map(static fn ($parameter): array => [$parameter->name, $parameter->value], $details->parameters));
         self::assertSame(['Pierwsze', 'Drugie', 'Trzecie'], array_map(static fn ($image): string => $image->alt, $details->images));
         $urls = self::getContainer()->get(ImageUrlGenerator::class);
         self::assertInstanceOf(ImageUrlGenerator::class, $urls);
@@ -170,6 +175,27 @@ final class GetProductBySlugTest extends KernelTestCase
                 [self::BLACK_43, 'czarne, 43', ['czarne', '43']],
             ],
             array_map(static fn ($variant): array => [$variant->variantId, $variant->label, $variant->values], $details->variants),
+        );
+    }
+
+    public function testTheVariantsCarryTheirCodesAndTheGtinOnlyOfAGlobalTradeItemNumber(): void
+    {
+        $this->saveProduct([
+            'slug' => 'buty',
+            'mainCategory' => $this->categories['road'],
+            'variantAxes' => ['Rozmiar'],
+            'variants' => [
+                ['id' => self::BLACK_42, 'values' => ['42'], 'sku' => 'buty-42', 'ean' => '5901234123457'],
+                ['id' => self::WHITE_43, 'values' => ['43'], 'sku' => 'buty-43', 'ean' => '2000000000008'],
+                ['id' => self::BLACK_43, 'values' => ['44']],
+            ],
+        ]);
+
+        $details = $this->details('buty');
+
+        self::assertSame(
+            [['BUTY-42', '5901234123457', '5901234123457'], ['BUTY-43', '2000000000008', ''], ['', '', '']],
+            array_map(static fn ($variant): array => [$variant->sku, $variant->ean, $variant->gtin], $details->variants),
         );
     }
 

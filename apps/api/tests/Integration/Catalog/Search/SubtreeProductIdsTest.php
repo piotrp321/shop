@@ -68,6 +68,6 @@ final class SubtreeProductIdsTest extends TestCase
      */
     private static function document(string $id, string $main, array $additional, array $ancestors, ProductStatus $status = ProductStatus::Published): ProductDocument
     {
-        return new ProductDocument($id, 1, 'Produkt', 'produkt-'.substr($id, -2), 'Opis', $main, [$main, ...$additional], $ancestors, null, ['Kategoria'], [], null, $status);
+        return new ProductDocument($id, 1, 'Produkt', 'produkt-'.substr($id, -2), 'Opis', $main, $main, [$main, ...$additional], $ancestors, null, ['Kategoria'], [], null, $status);
     }
 }

@@ -1,0 +1,12 @@
+after write+refresh: refresh 28 ms, first query 574 ms, global ordinals build +0 ms
+after write+refresh: refresh 10 ms, first query 588 ms, global ordinals build +0 ms
+after write+refresh: refresh 8 ms, first query 569 ms, global ordinals build +0 ms
+after write+refresh: refresh 8 ms, first query 580 ms, global ordinals build +0 ms
+after write+refresh: refresh 8 ms, first query 577 ms, global ordinals build +0 ms
+{"index": "t_orig1", "kind": "cur", "eager": false, "warm_median": 571, "first_after_refresh_median": 577, "refresh_median": 8}
+after write+refresh: refresh 14 ms, first query 142 ms, global ordinals build +0 ms
+after write+refresh: refresh 6 ms, first query 141 ms, global ordinals build +0 ms
+after write+refresh: refresh 6 ms, first query 140 ms, global ordinals build +0 ms
+after write+refresh: refresh 7 ms, first query 140 ms, global ordinals build +0 ms
+after write+refresh: refresh 7 ms, first query 141 ms, global ordinals build +0 ms
+{"index": "t_flat1", "kind": "flat2", "eager": false, "warm_median": 142, "first_after_refresh_median": 141, "refresh_median": 7}

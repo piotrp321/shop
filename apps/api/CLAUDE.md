@@ -18,6 +18,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   nazwie, w osobnych częściach `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
+- Długie polecenia konsoli na dużych danych w dev (np. `catalog:reindex` na `medium`) uruchamiaj z `--no-debug`:
+  kolektory debugowania (`DebugDataHolder` Doctrine, Stopwatch) trzymają każde zapytanie i wiadomość, więc pamięć
+  rośnie z liczbą produktów (pomiar: `docs/reports/perf-2b-medium-2026-11-27.md`, sekcja 8); w `prod` jej nie ma
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
@@ -79,6 +82,18 @@ używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku n
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
+  Wspólna jest tylko higiena tekstu, która nie jest pojęciem żadnego contextu: reguła tekstów wpisywanych przez ludzi
+  (znaki niedozwolone, przycinanie brzegów, tekst pusty, długość) jest wyłącznie w `App\Shared\Domain\Text`. Value
+  objecty i klasy żądań tekstów pod tą regułą wołają `Text` zamiast własnych wzorców, a same value objecty zostają
+  własne dla contextu (limity, komunikaty). Pola z listy „Pola tekstowe poza regułą”
+  (`docs/features/api-input-contract/spec.md`) mają własne reguły w swoich value objectach.
+- Odczyt z bazy nie waliduje tekstów pod regułą `Text`: repozytoria i handlery odczytu odtwarzają je z wiersza
+  nazwanym konstruktorem bez walidacji i bez przycinania (`stored()`), więc wiersz zapisany przed ostrzejszą
+  regułą daje się odczytać i przetworzyć. Regułę stosuje zapis przez domenę (żądanie, seedy). Generator danych demo
+  zapisuje tabele przez COPY, a nie przez agregaty, więc każdy tekst pod regułą, który zapisuje, musi być w postaci,
+  którą reguła zachowuje; pilnują tego testy kontraktu (`GeneratedText`).
+  `reconstitute()` zostaje nazwą odtworzenia agregatu, nie value objectu: po niej `DemoDataBoundaryTest` rozpoznaje
+  agregaty.
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
 ### Pułapki Doctrine (powód wyjątków niżej)
@@ -265,6 +280,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`tests/Functional/Shared/InputContract`, pliki `*Cases.php` według modułu). Strażnik zamkniętej listy
   (`ClosedInputListTest`) przerywa test, gdy parametr zapytania albo `Idempotency-Key` opisany w OpenAPI nie ma wiersza
   albo trasa `/api/v1` nie jest opisana w `openapi.json` ani `openapi-admin.json`.
+- Nowe pole tekstowe treści żądania (właściwość typu `string` bez `enum` i bez formatu `uuid`, `date-time`, `date`,
+  `binary`; `email` też; także pole bez `type` oraz obiekt albo lista bez opisu składowych) albo parametr `q` dostaje
+  wiersz w tabeli testu kontraktu tekstów (`TextRows`, pliki `*TextRows.php` według modułu
+  w `tests/Functional/Shared/InputContract`) albo wpis z powodem na liście wyjątków
+  strażnika (`TextFieldExceptions`; pola o zamkniętym alfabecie albo własnym formacie, treść webhooka weryfikowana
+  podpisem dostawcy). Strażnik zamkniętej listy (`ClosedTextFieldListTest`) przerywa test, gdy opisane w OpenAPI pole
+  tekstowe nie ma wiersza ani wpisu.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
   i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
   `productId`).
@@ -505,6 +527,11 @@ Fakty potrzebne do oceny skutku:
   (`StepsPlannerStatisticsTest`). Testy kont na Keycloaku stosu używają tymczasowych realmów
   (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
   na test (id kont są globalne w Keycloaku).
+- `make test` czyści (`TRUNCATE`, `TEST_TABLES` w Makefile) tabele generatora w `shop_test` przed każdą suitą: wycofane
+  transakcje testów zostawiają w stercie tysiące stron, a `ANALYZE` próbkuje najwyżej 30 000 stron, więc testy, które
+  czytają statystyki albo plany (licznik produktów pulpitu, `*PlanTest`), dostałyby szacunek zamiast dokładnej liczby.
+  Nowa tabela, którą pisze generator, i każda tabela z kluczem obcym do tabel tej listy trafia też do
+  listy (`TRUNCATE` bez `CASCADE`).
 
 ## Czego nie robić
 

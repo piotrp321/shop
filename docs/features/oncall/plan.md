@@ -1,6 +1,6 @@
 # ONCALL – plan zadań
 
-Specyfikacja: `docs/features/oncall/spec.md`. Każde zadanie realizuje `/delivery` jako osobny PR. Plan jest
+Specyfikacja: `docs/features/oncall/spec.md`. Każde zadanie to osobny PR. Plan jest
 dokumentem roboczym: po ukończeniu epiku usuń go.
 
 ## Status

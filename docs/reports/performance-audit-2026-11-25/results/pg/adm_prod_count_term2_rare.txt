@@ -1,0 +1,71 @@
+-- adm_prod_count_term2_rare
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%qx%' LIMIT 10001) b
+
+SET
+SET
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67689.93..67689.94 rows=1 width=8) (actual time=838.261..847.165 rows=1.00 loops=1)
+   Buffers: shared hit=669061
+   ->  Limit  (cost=1000.42..67688.66 rows=101 width=4) (actual time=838.257..847.160 rows=0.00 loops=1)
+         Buffers: shared hit=669061
+         ->  Gather  (cost=1000.42..67688.66 rows=101 width=4) (actual time=838.255..847.158 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=669061
+               ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=4) (actual time=832.392..832.393 rows=0.00 loops=3)
+                     Filter: ((name)::text ~~* '%qx%'::text)
+                     Rows Removed by Filter: 333397
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=669061
+ Planning:
+   Buffers: shared hit=236
+ Planning Time: 1.035 ms
+ Execution Time: 847.208 ms
+(18 rows)
+
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67689.93..67689.94 rows=1 width=8) (actual time=579.458..584.393 rows=1.00 loops=1)
+   Buffers: shared hit=669007
+   ->  Limit  (cost=1000.42..67688.66 rows=101 width=4) (actual time=579.453..584.387 rows=0.00 loops=1)
+         Buffers: shared hit=669007
+         ->  Gather  (cost=1000.42..67688.66 rows=101 width=4) (actual time=579.451..584.385 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=669007
+               ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=4) (actual time=574.006..574.006 rows=0.00 loops=3)
+                     Filter: ((name)::text ~~* '%qx%'::text)
+                     Rows Removed by Filter: 333397
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=669007
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.223 ms
+ Execution Time: 584.422 ms
+(18 rows)
+
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67689.93..67689.94 rows=1 width=8) (actual time=433.050..439.191 rows=1.00 loops=1)
+   Buffers: shared hit=669067
+   ->  Limit  (cost=1000.42..67688.66 rows=101 width=4) (actual time=433.046..439.186 rows=0.00 loops=1)
+         Buffers: shared hit=669067
+         ->  Gather  (cost=1000.42..67688.66 rows=101 width=4) (actual time=433.045..439.184 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=669067
+               ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66678.56 rows=42 width=4) (actual time=430.375..430.375 rows=0.00 loops=3)
+                     Filter: ((name)::text ~~* '%qx%'::text)
+                     Rows Removed by Filter: 333397
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=669067
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.186 ms
+ Execution Time: 439.217 ms
+(18 rows)
+

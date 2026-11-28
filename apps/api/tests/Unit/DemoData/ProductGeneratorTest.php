@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
+use App\Catalog\Domain\Product\Ean;
+use App\Catalog\Domain\Product\ProductBrand;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductParameter;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
+use App\Catalog\Domain\Product\Sku;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
@@ -17,7 +23,10 @@ use App\DemoData\Catalog\CategoryTree;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
+use App\DemoData\Catalog\ProductType;
+use App\DemoData\Catalog\VariantCodes;
 use App\DemoData\Identity\DemoUuid;
+use App\DemoData\Photo\PhotoAssigner;
 use App\DemoData\Profile\Profiles;
 use App\DemoData\Random\Prng;
 use PHPUnit\Framework\TestCase;
@@ -167,7 +176,32 @@ final class ProductGeneratorTest extends TestCase
             self::assertContains($brand, $dictionaries->brands($type->department()));
             self::assertSame(Slug::slugify($spec->name).'-'.($spec->index + 1), $spec->slug);
             new Slug($spec->slug);
-            new ProductName($spec->name);
+            ProductName::of($spec->name);
+        }
+    }
+
+    /**
+     * The generator writes the texts of a product by COPY, past the rule of texts: the name, the description, the axes
+     * and the values of the variants, and the alt texts of the photos built from the name, are in the form the rule
+     * keeps (see GeneratedText).
+     */
+    public function testTheTextsOfTheProductsAreInTheFormOfTheRule(): void
+    {
+        $prng = Prng::forPart(self::profiles()->namespace, 'photos', 0);
+        foreach (self::small() as $spec) {
+            GeneratedText::assertInTheFormOfTheRule($spec->name, 'product name');
+            GeneratedText::assertInTheFormOfTheRule($spec->shortDescription, 'short description of '.$spec->name);
+            foreach ($spec->axes as $axis) {
+                GeneratedText::assertInTheFormOfTheRule($axis, 'axis of '.$spec->name);
+            }
+            foreach ($spec->variants as $variant) {
+                foreach ($variant->values as $value) {
+                    GeneratedText::assertInTheFormOfTheRule($value, 'variant value of '.$spec->name);
+                }
+            }
+            foreach (PhotoAssigner::assign($spec, ['a', 'b', 'c'], $prng) as $image) {
+                GeneratedText::assertInTheFormOfTheRule($image['alt'], 'alt text of '.$spec->name);
+            }
         }
     }
 
@@ -239,7 +273,7 @@ final class ProductGeneratorTest extends TestCase
     public function testTheDescriptionFitsTheCatalogAndIsBuiltFromTheTypeAndTheDepartment(): void
     {
         foreach (self::small() as $spec) {
-            new ShortDescription($spec->shortDescription);
+            ShortDescription::of($spec->shortDescription);
             self::assertStringStartsWith($spec->name.': ', $spec->shortDescription);
             self::assertStringEndsWith('.', $spec->shortDescription);
         }
@@ -306,6 +340,122 @@ final class ProductGeneratorTest extends TestCase
         $used = array_unique(array_map(static fn (ProductSpec $s): string => $s->typeKey, self::small()));
 
         self::assertGreaterThanOrEqual(100, \count($used));
+    }
+
+    /**
+     * @return array<string, ProductType> the types of the dictionary by their keys
+     */
+    private static function typesByKey(): array
+    {
+        $types = [];
+        foreach (self::dictionaries()->types() as $type) {
+            $types[$type->key] = $type;
+        }
+
+        return $types;
+    }
+
+    public function testTheBrandIsTheBrandThatIsAlreadyInTheName(): void
+    {
+        $types = self::typesByKey();
+
+        foreach (self::small() as $spec) {
+            $type = $types[$spec->typeKey];
+
+            self::assertNotSame('', $spec->brand, $spec->name);
+            self::assertStringStartsWith($type->name.' '.$spec->brand.' ', $spec->name);
+            self::assertContains($spec->brand, self::dictionaries()->brands($type->department()), $spec->name);
+            self::assertSame($spec->brand, ProductBrand::of($spec->brand)->value(), $spec->name);
+        }
+    }
+
+    public function testTheDescriptionHasTwoOrThreeParagraphsOfThreeHundredToSixHundredCharactersAndDiffersFromTheShortOne(): void
+    {
+        $paragraphs = [];
+        $descriptions = [];
+        foreach (self::small() as $spec) {
+            $length = mb_strlen($spec->description);
+            self::assertGreaterThanOrEqual(300, $length, $spec->name);
+            self::assertLessThanOrEqual(600, $length, $spec->name);
+            self::assertNotSame($spec->shortDescription, $spec->description, $spec->name);
+            // Paragraphs are separated by an empty line, which the store shows as a paragraph break.
+            $parts = explode("\n\n", $spec->description);
+            self::assertGreaterThanOrEqual(2, \count($parts), $spec->name);
+            self::assertLessThanOrEqual(3, \count($parts), $spec->name);
+            foreach ($parts as $part) {
+                self::assertNotSame('', $part, $spec->name);
+                self::assertStringNotContainsString("\n", $part, $spec->name);
+                GeneratedText::assertInTheFormOfTheRule($part, 'paragraph of '.$spec->name);
+            }
+            // The rule of the description keeps the text as it is: nothing is trimmed, no character is refused.
+            self::assertSame($spec->description, ProductDescription::of($spec->description)->value(), $spec->name);
+            $paragraphs[\count($parts)] = true;
+            $descriptions[$spec->description] = true;
+        }
+
+        ksort($paragraphs);
+        self::assertSame([2, 3], array_keys($paragraphs), 'both lengths of the description appear');
+        self::assertGreaterThan(1_800, \count($descriptions), 'the descriptions repeat too often');
+    }
+
+    public function testTheParametersAreThreeToSixOfTheSetOfTheTypeAndNeverAnAxisOfTheProduct(): void
+    {
+        $types = self::typesByKey();
+
+        foreach (self::small() as $spec) {
+            $type = $types[$spec->typeKey];
+            $set = [];
+            foreach ($type->parameters as $parameter) {
+                $set[$parameter->name] = $parameter->values;
+            }
+            $axes = array_map(static fn (string $axis): string => mb_strtolower($axis), $spec->axes);
+
+            self::assertGreaterThanOrEqual(3, \count($spec->parameters), $spec->name);
+            self::assertLessThanOrEqual(6, \count($spec->parameters), $spec->name);
+            $built = [];
+            foreach ($spec->parameters as $parameter) {
+                self::assertArrayHasKey($parameter['name'], $set, $spec->name);
+                self::assertContains($parameter['value'], $set[$parameter['name']], $spec->name);
+                self::assertNotContains(mb_strtolower($parameter['name']), $axes, $spec->name.': '.$parameter['name']);
+                $built[] = ProductParameter::of($parameter['name'], $parameter['value']);
+                self::assertSame([$parameter['name'], $parameter['value']], [end($built)->name(), end($built)->value()], $spec->name);
+            }
+            // The names differ without regard to case, as the rule of the product wants.
+            self::assertCount(\count($spec->parameters), ProductParameters::create($built)->toList());
+        }
+    }
+
+    public function testEveryVariantHasTheSkuAndTheEanOfItsProductAndPosition(): void
+    {
+        $skus = [];
+        foreach (self::small() as $spec) {
+            foreach ($spec->variants as $variant) {
+                self::assertSame(VariantCodes::sku($spec->index, $variant->position), $variant->sku);
+                self::assertStringStartsWith(\sprintf('%08d', $spec->index + 1), $variant->sku);
+                self::assertSame(VariantCodes::ean($spec->index, $variant->position), $variant->ean);
+                self::assertSame($variant->sku, Sku::optional($variant->sku)?->value());
+                self::assertSame($variant->ean, Ean::optional($variant->ean)?->value());
+                $skus[] = $variant->sku;
+            }
+        }
+
+        self::assertGreaterThan(5_000, \count($skus));
+        self::assertCount(\count($skus), array_unique($skus));
+    }
+
+    public function testTheContentOfAPartIsTheSameWhateverPartsWereGeneratedBeforeIt(): void
+    {
+        $generator = self::generator();
+        iterator_to_array($generator->part(3), false);
+        iterator_to_array($generator->part(0), false);
+        $afterOthers = iterator_to_array($generator->part(1), false);
+        $alone = iterator_to_array(self::generator()->part(1), false);
+
+        foreach ($alone as $i => $spec) {
+            self::assertSame($spec->brand, $afterOthers[$i]->brand);
+            self::assertSame($spec->description, $afterOthers[$i]->description);
+            self::assertSame($spec->parameters, $afterOthers[$i]->parameters);
+        }
     }
 
     public function testAPrngOfAnotherStreamIsNotUsed(): void

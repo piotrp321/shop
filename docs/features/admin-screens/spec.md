@@ -149,8 +149,10 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   <nazwa albo kod>” dla ról z prawem zmiany. Puste stany: „Nie ma jeszcze promocji.”, „Nie ma jeszcze kodów
   rabatowych.”. Priorytety kolumn: poniżej 1024 px Początek i Koniec promocji oraz Minimum i Okres kodu jako linie
   komórki nazwy albo kodu.
-- **Wyszukiwanie kodów** przycina znaki niewidoczne tak jak API (`/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu`), więc sam
-  U+200B, U+00AD albo U+2060 to puste wyszukiwanie: pełna lista, bez żądania z `q` (#336).
+- **Wyszukiwanie kodów** przycina z brzegów białe znaki, znaki kategorii Z i wszystkie znaki formatujące
+  (`/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu`), czyli szerszy zbiór niż API (reguła tekstu, T2:
+  `docs/features/api-input-contract/spec.md`), więc sam U+200B, U+00AD albo U+2060 to puste wyszukiwanie: pełna lista,
+  bez żądania z `q` (#336).
 - **Formularz promocji** (standard formularza; H1 „Nowa promocja” albo nazwa promocji, okruszki kończą się nazwą):
   - kolumna główna: karta „Dane promocji” (nazwa, procent obniżki, początek z przełącznikiem „Od teraz”, koniec;
     `datetime-local` w `Europe/Warsaw`, blokada procentu, początku i wariantów trwającej promocji z notatką „Promocja

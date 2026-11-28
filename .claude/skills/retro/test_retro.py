@@ -3515,7 +3515,7 @@ W1, W2, W3 = 'e1/wait/e1@100', 'e1/wait/t1@200', 'e1/wait/t2@300'
 def fix(n=1, key='k', evidence=(F2, F3), **extra):
     item = {'n': n, 'kind': 'fix', 'key': key, 'title': 'Title',
             'evidence': list(evidence) if isinstance(evidence, tuple) else evidence, 'classes': {},
-            'cause': 'cause', 'files': ['.claude/skills/ao-run/SKILL.md'], 'change': 'change',
+            'cause': 'cause', 'files': ['.claude/skills/retro/SKILL.md'], 'change': 'change',
             'why_prevents': 'why', 'verify': 'verify', 'previously_rejected': None, 'previous_fix': None,
             'updates': None}
     item.update(extra)
@@ -3681,12 +3681,12 @@ class ValidateTest(RegistersCase):
 
     def test_files_only_from_the_allowed_list(self):
         for path in ('CLAUDE.md', 'apps/api/CLAUDE.md', '.claude/skills/retro/SKILL.md', '.claude/agents/retro-analyst.md',
-                     'docs/features/ao-run/spec.md', 'docs/features/prepare-epic/spec.md',
+                     'docs/features/prepare-epic/spec.md',
                      'docs/features/groom/spec.md', 'docs/features/agent-tester-ux/spec.md',
                      'docs/features/retro/spec.md'):
             self.assertValid(proposals_of(fix(files=[path])))
         for path in ('apps/api/src/Kernel.php', 'docs/features/cart/spec.md', 'docs/vision.md',
-                     '.claude/skills/ao-run/ao_events.py', '.claude/skills/retro/retro.py',
+                     'docs/features/ao-run/spec.md', 'tools/ash/ao_events.py', '.claude/skills/retro/retro.py',
                      'apps/api/x/CLAUDE.md', '.claude/agents/sub/x.md', '../CLAUDE.md', '/CLAUDE.md',
                      'docs/features/../../CLAUDE.md', '.claude/skills/../SKILL.md', 'infra/k8s/README.md',
                      'CLAUDE.md\n', 'docs/features/retro/plan.md', 5):
@@ -3825,6 +3825,14 @@ class ValidateTest(RegistersCase):
     def test_previous_fix_must_be_the_pr_of_the_applied_fix(self):
         self.assertError(proposals_of(fix(key='app', previous_fix=8)), 'applied', '7')
         self.assertError(proposals_of(fix(key='app', previous_fix='7')), 'applied', 'previous_fix')
+
+    def test_a_key_fixed_twice_is_checked_against_its_latest_fix(self):
+        self.input['registers']['applied'].append({'key': 'app', 'incidents': ['e2/finding/ccc'], 'pr': 9,
+                                                   'merged_at': 2200})   # e3 started at 2500
+        self.assertValid(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=9)))
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=7)), 'applied', '9')
+        self.input['registers']['applied'][1]['merged_at'] = 2600   # e3 started before the latest fix
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=9)), 'applied', 'started after')
 
     def test_an_incident_of_an_applied_fix_under_another_key_is_an_error(self):
         self.assertError(proposals_of(fix(key='other', evidence=['e1/finding/bbb', F3])), 'applied', 'app')
@@ -4622,9 +4630,7 @@ class RetroProcessDocumentsTest(unittest.TestCase):
 
     def setUp(self):
         self.skill = repo_text('.claude', 'skills', 'retro', 'SKILL.md')
-        self.ao_run = repo_text('.claude', 'skills', 'ao-run', 'SKILL.md')
         self.retro_spec = repo_text('docs', 'features', 'retro', 'spec.md')
-        self.ao_run_spec = repo_text('docs', 'features', 'ao-run', 'spec.md')
 
     # METRICS-7: the closing section of the report with the measured effect
 
@@ -4673,34 +4679,15 @@ class RetroProcessDocumentsTest(unittest.TestCase):
     def test_the_retro_skill_mentions_the_power_source_only_to_deny_checking_it(self):
         self.assertEqual(power_mentions(self.skill), [])
 
-    def test_the_retro_skill_defers_at_95_percent_from_ao_run_and_at_the_default_threshold_by_hand(self):
+    def test_the_retro_skill_defers_at_the_default_threshold_of_room(self):
         deferral = section(self.skill, '**3. Odroczenie:**', '## Przebieg')
-        self.assertIn('--max-percent 95', section(deferral, '# z /ao-run', '# przebieg ręczny'))
-        manual = section(deferral, '# przebieg ręczny', 'USAGE\n  ```')
-        self.assertIn('room --hours 2', manual)
-        self.assertNotIn('--max-percent', manual)
+        self.assertIn('room --hours 2', deferral)
+        self.assertNotIn('--max-percent', deferral)
+        self.assertIn('tools/ash/night_queue.py', section(self.skill, '## Blok startowy', '## Uruchamianie'))
 
-    def test_the_review_queue_of_ao_run_has_no_power_check(self):
-        queue = section(self.ao_run, '- **Warunki tuż przed startem każdego przeglądu**', '- **Przebieg przeglądu.**')
-        self.assertEqual(power_mentions(queue), [])
-        self.assertIn('--max-percent 95', section(queue, '1. Limit', '- **Retro.**'))
-
-    def test_the_retro_item_of_ao_run_has_the_95_percent_limit_and_no_power_check(self):
-        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
-            item = bullet(text, '- **Retro.**')
-            self.assertEqual(power_mentions(item), [], where)
-            self.assertIn('--max-percent 95', item, where)
-
-    def test_the_deferred_retro_item_of_the_ao_run_spec_has_no_power_check(self):
-        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
-            item = bullet(text, '- **Ponowienie odroczonych retro.**')
-            self.assertEqual(power_mentions(item), [], where)
-
-    def test_the_specifications_have_no_power_check_for_a_review_or_retro(self):
+    def test_the_specification_has_no_power_check_for_a_retro(self):
         self.assertNotIn('pmset', self.retro_spec)
-        self.assertNotIn('pmset', self.ao_run_spec)
         self.assertEqual(power_mentions(section(self.retro_spec, '- **Warunki przed startem**', '## ')), [])
-        self.assertIn('--max-percent 95', self.retro_spec)
 
     # F3: a run that has not started is a refusal, not a permanent skip
 
@@ -4812,13 +4799,6 @@ class RetroProcessDocumentsTest(unittest.TestCase):
             self.assertIn('natywn', text, where)
             self.assertIn('docs/adr/agentic-software-house.md', text, where)
         self.assertIn("uruchamia użytkownik po merge'u", self.retro_spec)
-
-    def test_ao_run_does_not_name_a_missing_run_row_as_a_reason_to_skip(self):
-        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
-            item = bullet(text, '- **Retro.**')
-            self.assertNotIn('baza bez wiersza epiku', item, where)
-            self.assertNotRegex(item, r'wiersza epiku[^,;]*(to|jest) `?skip', where)
-            self.assertIn('CLOSED', item, where)
 
 
 if __name__ == '__main__':

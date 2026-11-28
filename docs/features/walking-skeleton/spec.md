@@ -395,9 +395,14 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - Aplikacja czyta i zapisuje przez alias (`products` w dev, `test_products` w testach, z parametru). Alias wskazuje
   dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
   kolidują nazwami.
-- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy pochodzą ze zmiennej `SEARCH_SHARDS`
-  (bez niej 1; `docs/features/search/spec.md`, „Infrastruktura”), repliki z parametru (0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
-  shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
+- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Indeks ma jeden shard (stała w kodzie; `SEARCH_SHARDS` inne niż 1 jest odrzucane;
+  `docs/features/search/spec.md`, M3 i „Infrastruktura”), repliki z parametru (0), `refresh_interval`
+  ze zmiennej `SEARCH_REFRESH_INTERVAL` (bez niej `1s`; liczba z jednostką `ms` albo `s`). Indeks jest posortowany po
+  polu `sort_path` (rosnąco), więc produkty jednej kategorii leżą obok siebie. W `_meta.definition_hash` indeksu
+  zapisany jest hash definicji (mapping, analiza i sortowanie, bez shardów, replik i interwału odświeżania), z którym
+  porównujemy indeks przy `setup` (ostrzeżenie) i przed przepięciem (odmowa). Sortowanie jest ustawieniem statycznym
+  (zmiana wymaga przebudowy), interwał dynamicznym: `setup` ustawia go na indeksie aliasu, gdy jest inny, a przebudowa
+  wypełnia nowy indeks z `refresh_interval` `-1` i ustawia interwał z konfiguracji przed jawnym `refresh`.
 - Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
   `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
   `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
@@ -408,8 +413,12 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   główna pierwsza), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
   powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
   w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean;
-  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `pairs` nested w wariancie, obiekt
-  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `axes` keyword bez indeksu (`index: false`), osie wariantu;
+  wariant domyślny bez osi ma puste `options` i `axes`), pola produktu z tokenami faset
+  (`facets`, `buy_facets`, `pair_any`, `pair_buy`: keyword; składnia i reguły w `docs/features/search/spec.md`, „Dokument”;
+  budowa dokumentu odrzuca produkt łamiący reguły modelu), `purchasable` (boolean), `buy_prices` (long bez `doc_values`: różne ceny wariantów
+  możliwych do kupienia) i `max_gross` (long, najwyższa taka cena; brak bez takiego wariantu), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia), `sort_path` (keyword bez
+  indeksu: identyfikatory ścieżki głównej kategorii od korzenia połączone `/`, klucz sortowania indeksu).
   `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
@@ -421,8 +430,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   odrzucona jako przestarzała, ale odczyt rozpoczęty po znaczniku widzi co najmniej dane zatwierdzone przed nim,
   więc stan końcowy jest aktualny. Ta sama wersja zapisuje się ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
   naprawia następna zmiana produktu albo przebudowa.
-- Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
-  o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.
+- Pojedynczy zapis (`ProductIndexer`) to jeden bulk z dwiema pozycjami z `require_alias=true` (więc nigdy nie utworzy
+  indeksu o nazwie aliasu): najpierw do aliasu przebudowy `<alias>-rebuild`, potem do aliasu
+  (`docs/features/search/spec.md`, „Zapisy w trakcie przebudowy”). Zapis paczki przy przebudowie idzie bulkiem
+  bezpośrednio do wskazanego indeksu fizycznego.
 - Wynik bulka jest sprawdzany pozycja po pozycji: zapisany, przestarzały, błąd przejściowy albo błąd trwały.
 - Zapisy nie wymuszają odświeżenia indeksu.
 
@@ -441,10 +452,15 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   liczenia, pojedynczych zapisów i operacji na aliasach; 30 s dla bulka, tworzenia indeksu i odświeżania.
 
 **`catalog:search-index:setup`**
-- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie robi nic.
+- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie tworzy
+  niczego nowego: na indeksie, na który wskazuje alias, ustawia tylko `refresh_interval` z `SEARCH_REFRESH_INTERVAL`,
+  gdy jest inny.
 - Kończy się błędem (kod 1, komunikat z instrukcją) i niczego nie zmienia, gdy: istnieje zwykły indeks o nazwie
-  aliasu, alias wskazuje inną liczbę indeksów niż jeden albo `definition_hash` indeksu różni się od definicji
-  (instrukcja: `catalog:reindex`).
+  aliasu, alias wskazuje inną liczbę indeksów niż jeden albo trwa przebudowa albo inny `setup` (blokada przebudowy).
+- Gdy `definition_hash` indeksu, na który wskazuje alias, różni się od definicji albo indeks ma więcej niż jeden shard, wypisuje ostrzeżenie z nazwą indeksu
+  i instrukcją `catalog:reindex`, poza `refresh_interval` niczego nie zmienia (interwał ustawia także na takim indeksie)
+  i kończy się kodem 0, żeby wdrożenie nowej definicji nie
+  zatrzymało się na `setup`. Do przebudowy indeks ma starą definicję (`docs/features/search/spec.md`, „Infrastruktura”).
 - Wypisuje ostrzeżenie z listą indeksów `<alias>_*`, na które nie wskazuje alias. Nie usuwa ich.
 - `--recreate` usuwa alias i wszystkie indeksy `<alias>_*`, potem tworzy je od nowa. Przy `APP_ENV=prod` odmawia
   (kod 1). Używa go `init-test`, bo indeks testowy jest jednorazowy.
@@ -457,15 +473,18 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
    przy awarii procesu). Gdy blokada jest zajęta, kończy się kodem 1, nic nie zmieniając. Tej samej blokady
    używa `setup`.
 2. Odczytuje aktualny cel aliasu. Musi to być dokładnie jeden indeks.
-3. Tworzy nowy indeks fizyczny z aktualną definicją.
+3. Zdejmuje alias przebudowy `<alias>-rebuild` z każdego indeksu (zostawia go przebudowa przerwana awarią procesu)
+   i tworzy nowy indeks fizyczny z aktualną definicją razem z tym aliasem, przez który trafiają do niego zapisy
+   pojedyncze w trakcie przebudowy.
 4. Czyta produkty paczkami (`ProductSearchSource::page`, domyślnie po 500, z parametru i opcji
    `--batch-size`), pobiera fakty ofert produktów paczki (`ProductOfferFacts`) i zapisuje każdą paczkę bulkiem.
    Wersja dokumentów paczki to znacznik czasu pobrany przed jej odczytem (jak w `ProductIndexing`). Pierwszy błąd
-   przejściowy, trwały, błąd faktów ofert (`OfferFactsUnavailable`) albo wynik „przestarzały” (w nowym indeksie nie
-   powinien wystąpić) przerywa przebudowę.
+   przejściowy (po wyczerpaniu ponowień), trwały albo błąd faktów ofert (`OfferFactsUnavailable`) przerywa przebudowę.
+   Wynik „przestarzały” jest poprawny: zapis pojedynczy przez alias przebudowy był nowszy.
 5. Weryfikuje: odświeżenie, liczba dokumentów równa liczbie zapisanych, `definition_hash` zgodny, indeks
    istnieje i ma zdrowe shardy. Liczba dokumentów to dodatkowy test, a nie dowód pełnej spójności.
-6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true` i `add` nowego.
+6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true`, `add` nowego i `remove`
+   aliasu przebudowy z nowego indeksu.
    Elasticsearch nie ma porównania i zamiany aliasu, więc poprawność zapewniają razem: blokada przebudowy,
    sprawdzenie dokładnego celu przed żądaniem, atomowość akcji w jednym żądaniu (`remove` nie przejdzie, gdy
    alias nie wskazuje już starego celu) i sprawdzenie po żądaniu, że alias wskazuje dokładnie nowy indeks.
@@ -476,7 +495,7 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 8. Po udanym przepięciu usuwa stary indeks. Nieudane usunięcie to ostrzeżenie, a nie porażka przebudowy:
    stary indeks zostaje na liście osieroconych w `setup`.
 9. Po nieudanej przebudowie, czyli błąd w krokach 3–5 albo przepięcie, które się nie udało, usuwa nowy indeks
-   i kończy się kodem 1. Alias zostaje przy starym indeksie.
+   (razem z aliasem przebudowy) i kończy się kodem 1. Alias zostaje przy starym indeksie.
 10. Przy stanie nieznanym niczego nie usuwa i kończy się kodem 2 z nazwami obu indeksów.
 
 Usunięcie indeksu zawsze najpierw sprawdza, że alias na niego nie wskazuje, i odmawia w przeciwnym razie.
@@ -488,13 +507,12 @@ i usuwa stary, tak jak przebudowa, tylko bez zasilania. Alias nie znika ani na c
 
 To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rzędu 10 mln produktów:
 
-- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct` i reindeksacja po zmianie
-  ceny albo poziomu stanu, `ProductIndexing`) trafiają przez alias do starego indeksu i znikają po przepięciu aliasu.
-  Produkt, którego katalog, cena albo stan zmieniły się po tym, jak przebudowa minęła jego pozycję, ma w nowym
-  indeksie stary stan aż do następnej zmiany produktu. Poprawny wynik wymaga braku równoległych zmian (`make seed`
-  uruchamia przebudowę po wszystkich seedach).
 - Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
-  procesu zostaje i jest wypisywany przez `setup`.
+  procesu zostaje i jest wypisywany przez `setup`; do kolejnej przebudowy ma alias przebudowy, więc zapisy pojedyncze
+  trafiają też do niego (bez szkody).
+- Produktu nie da się utworzyć w trakcie przebudowy (409 `search-rebuild-running`; `docs/features/search/spec.md`,
+  „Zapisy w trakcie przebudowy”): inaczej nowy indeks miałby dokument, którego paczki nie policzyły, a weryfikacja
+  (krok 5) wymaga dokładnej równości. Tworzenie bez odmowy: #979.
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
 
 Port odczytu paczkami (`page(afterId, limit)`), zapis paczki do wskazanego indeksu z wynikiem każdej pozycji

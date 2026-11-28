@@ -20,7 +20,7 @@ type Row = [color: string, size: string, purchasable: boolean];
 function shoes(rows: Row[]) {
   const details = makeDetails(1, {
     variantAxes: ["Kolor", "Rozmiar"],
-    variants: rows.map(([color, size], index) => ({ variantId: variantId(1, index + 1), label: `${color}, ${size}`, values: [color, size] })),
+    variants: rows.map(([color, size], index) => ({ variantId: variantId(1, index + 1), label: `${color}, ${size}`, values: [color, size], sku: "", ean: "", gtin: "" })),
   });
   const offer = makeOffer(1, {
     variantAxes: ["Kolor", "Rozmiar"],

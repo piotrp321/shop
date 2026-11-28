@@ -17,8 +17,9 @@ Issues: #89
 - Sklep: kafelek produktu na liście pokazuje cenę „od” i dostępność produktu liczone z wariantów możliwych do kupienia,
   pozwala wybrać wariant i dodać go do koszyka; koszyk pokazuje wariant linii.
 - Panel: listy cen i stanów mają wiersz na wariant; zmiana ceny, przyjęcie, korekta i historie dotyczą wariantu.
-- Dane demo: produkt = marka × model szablonu, a wartości osi wariantów (kolory, smaki, oprawy, porcje, rozmiary tam,
-  gdzie towar je ma) wyznacza szablon. Ceny i stany demo per wariant.
+- Dane demo: produkt = marka × model szablonu (marka z nazwy jest też polem marki produktu), a wartości osi wariantów
+  (kolory, smaki, oprawy, porcje, rozmiary tam, gdzie towar je ma) wyznacza szablon. Ceny i stany demo per wariant;
+  opis, parametry i kody wariantów: `docs/features/product-data/spec.md`, „Dane demo”.
 - Migracje zachowują istniejące dane: każdy produkt istniejący w bazie ma wariant domyślny o identyfikatorze równym
   identyfikatorowi produktu, więc ceny, historia cen, stany, rezerwacje i koszyki zapisane przed migracjami
   pozostają ważne. Migracje i dane demo to dwie osobne operacje (sekcja „Migracja a dane demo”).
@@ -29,7 +30,7 @@ Poza zakresem:
 - ekrany panelu do dodawania i edycji produktów i wariantów (CATALOG-ADMIN #95, `docs/features/catalog-admin/spec.md`);
 - wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
   osi, cenami i dostępnością (`docs/features/search/spec.md`);
-- zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR.
+- zdjęcia per wariant i galeria, cena „od” w Varnishu i ISR (kody SKU i EAN wariantu: `docs/features/product-data/spec.md`).
 
 ## Decyzje użytkownika
 
@@ -106,15 +107,22 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
   dowolnie. Produkt bez osi, któremu dochodzą osie, zachowuje identyfikator wariantu domyślnego w wierszu, który go
   odeśle.
 - Od pierwszej publikacji (także po wycofaniu) wariant zachowuje tożsamość: osie mają tę samą liczbę i kolejność,
-  a każda nazwa ten sam klucz porównania (`mb_strtolower` po przycięciu); zachowany wariant ma ten sam
-  `VariantValues::comparisonKey()` (zmiana wielkości liter i spacji na brzegach jest dozwolona, np. „czarne” →
-  „Czarne”). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z zapisaną etykietą wariantu
-  albo nazwą osi w `detail`. Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
+  a każda nazwa i każda wartość zachowanego wariantu tę samą tożsamość tekstu (`IdentityText`:
+  `docs/features/catalog-admin/spec.md`, K5; zmiana wielkości liter i znaków przycinanych z brzegów jest dozwolona,
+  np. „czarne” → „Czarne”, a tekst zapisany ze znakiem niedozwolonym przyjmuje swoją poprawkę). Wyjątek
+  (decyzja właściciela z 2026-11-25): druga oś, której zapisana nazwa powtarza zapisaną nazwę pierwszej po zastąpieniu
+  znaków niedozwolonych odstępem i przycięciu T2, bez względu na wielkość liter (zapis sprzed reguły tekstów, np.
+  „Kolor” i „Kolor” U+200B; nie „Kolor” i `Kol` U+009F `or`), może jednorazowo dostać nową nazwę, a pierwsza zostaje
+  chroniona (K5). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail`, który nazywa wariant albo oś
+  zapisanym tekstem bez znaków niedozwolonych i przycinanych z brzegów, z wskazówką poprawki dla tekstu odrzucanego
+  przez regułę (K5 w `docs/features/catalog-admin/spec.md`, „Tożsamość wariantu po publikacji”). Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
   i usunięcie starego.
 - Usunięcie wariantu (wariantu nie ma w nowej liście; także przed publikacją): handler pyta port `VariantStockFacts`
   (`Catalog_Application`, adapter `QueryBusVariantStockFacts` w `Inventory_Infrastructure` nad `GetStockLevels`)
   o usuwane warianty ze stanem fizycznym > 0 albo zarezerwowanym > 0. Usunięcie takiego wariantu to `VariantInUse`
-  (`Conflict`, typ `variant-in-use`) z etykietą pierwszego takiego wariantu. Fakty są czytane bez blokady wierszy
+  (`Conflict`, typ `variant-in-use`) z nazwą pierwszego takiego wariantu
+  (jego zapisane wartości po przecinku, bez znaków niedozwolonych i przycinanych; „Wariant domyślny” bez wartości,
+  „Wariant bez widocznej wartości”, gdy żadna nie ma znaku widocznego; K5 w `catalog-admin`). Fakty są czytane bez blokady wierszy
   Inventory.
 - Usunięty wariant znika z `catalog_product_variant`. Jego cena, stan i historie zostają w Pricing i Inventory
   (niewidoczne w panelu, bo listy idą po wariantach Catalog), a linia koszyka z nim ma stan `unavailable_product`
@@ -192,9 +200,13 @@ w Cart; indeks Elasticsearch ich nie zawiera). Listy panelu stronicują po produ
 
 - Szablon ma `variantAxes` (0–2 nazwy) i listy wartości osi (`axisValues`, w kolejności osi); warianty to iloczyn
   wartości w kolejności pliku (pierwsza oś zmienia się najwolniej). Produkt = marka × model; nazwa i slug bez koloru
-  (np. „Buty szosowe Tarvik Asfalt 200”). Dane demo to 191 produktów i 1012 wariantów, najwyżej 21 wariantów na produkt.
+  (np. „Buty szosowe Tarvik Asfalt 200”); marka z nazwy jest zapisana także w polu marki produktu. Dane demo to 191
+  produktów i 1012 wariantów, najwyżej 21 wariantów na produkt.
 - Identyfikatory: produkt UUID v5 `product:<slug>`, wariant UUID v5 `variant:<key>`. Expander odrzuca powtórzony
   `key` (np. etykiety „1,5” i „1.5”) tak jak powtórzony slug.
+- Opcjonalna treść karty: `description` (akapity typu) i `parameters` szablonu oraz `parameters` modelu (parametr
+  o tej samej nazwie zastępuje parametr typu) i `fullDescription` modelu (własny opis w całości). SKU i EAN wariantów
+  liczy expander z marki, modelu, wartości i klucza wariantu; reguły: `docs/features/product-data/spec.md`, „Dane demo”.
 - Osie demo:
 
 | Typ | Osie | Wartości |

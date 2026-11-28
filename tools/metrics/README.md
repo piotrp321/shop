@@ -81,7 +81,7 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   bazy dla `process.loaded`. Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
   tego katalogu nie ma, rekord powstaje z pliku przebiegu `<state>/runs/<epik>.json` i transkryptów sesji pod
   `--projects` (rekord natywny, `source: native`); bez obu kod `2` z komunikatem, którego źródła brakuje.
-  `--manual-fixes FILE`: lista ręcznych poprawek od sesji `/ao-run` albo sesji prowadzącej epik natywny, jedna na linię (`- PR #12: tekst` albo `- tekst`;
+  `--manual-fixes FILE`: lista ręcznych poprawek od sesji prowadzącej epik, jedna na linię (`- PR #12: tekst` albo `- tekst`;
   pusta linia i nagłówek `Ręczne poprawki: N` są pomijane). `--no-gh` pomija `gh`.
 - `ci-time EPIK [--json]`: czas CI po epiku natywnym względem stanu sprzed epiku (spec: „Czas CI po epiku”), tylko
   odczyt przez `gh`. Czyta z pliku przebiegu numer PR, gałąź i `started_at`. Wypisuje blok Markdown do sekcji „Punkt
@@ -163,11 +163,11 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   i nie bool), identyfikatory (ID zadań, ról, modeli, wersji CLI, narzędzi i epików według `SAFE_NAME`, bez tego, co wygląda
   jak sekret), numery PR, stany PR z dużych liter i stałe słowa z kodu; reszta rekordu (teksty `gaps`, powody bramki
   poza kodami, komunikaty błędów, ścieżki, polecenia) odpada, a braki danych to liczba i nazwy pól. Jedyny tekst swobodny to
-  lista ręcznych poprawek z `--manual-fixes` (pisze ją sesja `/ao-run`, nie dane przebiegu, a użytkownik widzi komentarz przed
+  lista ręcznych poprawek z `--manual-fixes` (pisze ją sesja prowadząca epik, nie dane przebiegu, a użytkownik widzi komentarz przed
   dodaniem): jedna linia, bez znaków sterujących, do 200 znaków, w pozycji bez PR bez dwukropka i z małej litery (parser czyta
   „Wielka litera…: ” jako następną etykietę). Brak rekordu epiku albo zły identyfikator: kod `2`.
 - `waste`: nowe alarmy bezproduktywnego zużycia przebiegu `AO_HOME` (niżej), po jednej linii JSON; kod `0` także bez
-  alarmów. `--max-qa-rounds` (domyślnie 3, tyle co w `/ao-run`) to runda QA, od której alarmuje W3.
+  alarmów. `--max-qa-rounds` (domyślnie 3) to runda QA, od której alarmuje W3.
 - `decide EPIK [--history]`: kandydaci reguł D1–D4 dla zapisanego rekordu epiku (JSON; bezstanowe, nic nie zapisuje, bez
   `gh`; zob. „Decyzje optymalizacyjne”). `--history` dodaje kandydatów każdego zmergowanego epiku (wejście `/retro`).
 - `effect KLUCZ --at CZAS`: miara reguły przed i po merge'u poprawki z zapisanych rekordów (JSON; zob. „Efekt decyzji”).
@@ -202,7 +202,7 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `retries` | `attempts` (`total`, `per_task`, klasy prób), `failed_by_outcome`, `repair` (`count`, `final_pr_conflict`, `ci_red`, `unknown`), `fix` (liczba zadań FIX), `sync_prs` (PR `sync/<epik>-main`: `number`, `state`) |
 | `parallel` | `epics` (epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem), `repairs` (zadania REPAIR z próbą w czasie nakładania), `sync_prs` (numery PR sync utworzonych w czasie nakładania) |
 | `subscription` | `share` i `share_estimated` (niżej), `windows`: surowy przyrost procentu każdego okna limitu w pp (`null` gdy okno odnowione w trakcie albo stan jednego z pomiarów inny niż `ok`, wtedy `{etykieta: null}`; gdy żaden pomiar nie ma stanu `ok`, nie da się ustalić etykiet okien i całe `windows` to `null`, z pozycją w `gaps`; reguły `night_queue._window_deltas`), `overlap`: epiki z nakładającym się przedziałem |
-| `gate_wait` | `wait_s`: od decyzji o starcie (pierwszy wpis `gate --dir <epik>`, czyli `dir_arg` epiku, w `gate.jsonl` przed startem: `/ao-run` po prośbie albo „tak” użytkownika, w nocy `next`) do `started_at`; czekania z przeglądu tablicy (`gate` bez `--dir`) przed decyzją się nie liczą (0 bez wpisu `waiting` epiku między decyzją a startem; `null`, gdy brak pliku, wpisów epiku albo, przy czekaniu, wpisu decyzji), `reasons`: różne powody czekań po decyzji |
+| `gate_wait` | `wait_s`: od decyzji o starcie (pierwszy wpis `gate --dir <epik>`, czyli `dir_arg` epiku, w `gate.jsonl` przed startem: sesja przebiegu AO po prośbie albo „tak” użytkownika, w nocy `next`) do `started_at`; czekania z przeglądu tablicy (`gate` bez `--dir`) przed decyzją się nie liczą (0 bez wpisu `waiting` epiku między decyzją a startem; `null`, gdy brak pliku, wpisów epiku albo, przy czekaniu, wpisu decyzji), `reasons`: różne powody czekań po decyzji |
 | `human` | `interventions` (`human_action`), `waits`, `wait_s` (suma zakończonych czekań, nakładające się liczone raz), `open` (czekania otwarte), `manual_fixes` (`[{pr, text}]` z `--manual-fixes` albo `null`); z `ao_events.summarize` |
 | `in_attempts` | czas poleceń powłoki w próbach z transkryptów: `categories` (`read`, `test`, `e2e`, `check`, `selftest`, `stack`, `ci_watch`, `other`: `count`, `background`, `unfinished`, `seconds`), `repeat_runs` (`count`, `seconds`, `by_category`), `api_retry` (`count`, `delay_ms`), `permission_denials` (`{narzędzie: liczba}`); `null` bez żadnego transkryptu. Gdy część prób nie ma transkryptu: `incomplete: true`, `attempts_without_transcript` i `attempts` (sumy obejmują tylko próby z transkryptem, to dolne granice; pozycja w `gaps`) |
 | `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done`; `incomplete: true` przy zadaniu, którego próba nie ma `wall_s` ani końca (pominięta w sumie: `work` to dolna granica, pozycja w `gaps`) |
@@ -247,7 +247,7 @@ gałęzi; zadanie bez zdarzenia ma przyczynę `unknown` (pozycja w `gaps`).
 Przedział epiku w `measurements.jsonl`: od pierwszego `start` do ostatniego `done` epiku, które leżą w czasie przebiegu.
 Nakładanie jak w `night_queue.measurements`: przedział innego epiku, który przecina ten, albo jego otwarty `start`
 w środku (otwarty `start` sprzed przedziału nie liczy się). Przyrost okien liczy `night_queue._window_deltas`
-(importowane z `.claude/skills/ao-run`, nie kopiowane), czekania `ao_events.waits`.
+(importowane z `tools/ash`, nie kopiowane), czekania `ao_events.waits`.
 
 ### Transkrypty prób: tokeny, wartość, polecenia
 
@@ -672,13 +672,12 @@ zły format), brak zapisanych rekordów zmergowanych epików albo zły `config.j
 
 ### Alarmy bezproduktywnego zużycia (`waste`)
 
-`waste AO_HOME` uruchamia się wielokrotnie w trakcie przebiegu (sesja `/ao-run` przy zdarzeniach AO i przy
-uzbrojeniu Monitora). Stan bieżący to baza `AO_HOME` (tylko do odczytu; epik to wiersz tabeli `epics`, przy katalogu
+`waste AO_HOME` można uruchamiać wielokrotnie w trakcie przebiegu: każdy alarm jest wypisany raz. Stan bieżący to baza `AO_HOME` (tylko do odczytu; epik to wiersz tabeli `epics`, przy katalogu
 `ao-<epik>` ten, który nazywa katalog; próby bez `ended_at` trwają) i transkrypty zakończonych prób. Historia to zapisane
 rekordy `<state>/epics/*.json` poza rekordem bieżącego epiku; pomiar to jedna próba (W1, W2) albo jedno zadanie (W4).
 Próg medianowy wymaga `waste.min_history` (5) pomiarów tego samego `kind`; bez nich reguła nie alarmuje, a wyjście kończy
 linia `{"gaps": [...]}` z pozycją `W1`, `W2` albo `W4` (tylko gdy wielkość przekracza próg bezwzględny, bo inaczej brak
-historii niczego nie zmienia). Linia `gaps` nie ma klucza `push`: sesja `/ao-run` pushuje wyłącznie linie z kluczem `push`.
+historii niczego nie zmienia). Linia `gaps` nie ma klucza `push`: push to wyłącznie linie z kluczem `push`.
 
 | Reguła | Warunek (progi w `config.json`, sekcja `waste`) | Klucz alarmu |
 |---|---|---|

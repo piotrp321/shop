@@ -6,12 +6,15 @@ namespace App\Tests\Unit\Catalog\Domain;
 
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductBrand;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductChanged;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductDescription;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotPublishable;
+use App\Catalog\Domain\Product\ProductParameters;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
@@ -148,9 +151,12 @@ final class ProductPublicationTest extends TestCase
     {
         return Product::create(
             ProductId::fromString(StoredProducts::PRODUCT_ID),
-            new ProductName('Buty biegowe'),
+            ProductName::of('Buty biegowe'),
             new Slug(StoredProducts::SLUG),
-            new ShortDescription(''),
+            ShortDescription::of(''),
+            ProductBrand::of(''),
+            ProductDescription::of(''),
+            ProductParameters::create([]),
             ProductCategories::create(CategoryId::fromString(StoredProducts::CATEGORY_ID)),
             TaxClassCode::Standard,
             StoredProducts::images([]),

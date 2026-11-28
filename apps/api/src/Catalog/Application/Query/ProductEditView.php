@@ -10,12 +10,13 @@ namespace App\Catalog\Application\Query;
 final readonly class ProductEditView
 {
     /**
-     * @param string                   $status                `draft` or `published`
-     * @param bool                     $slugLocked            whether the product was ever published, so its slug cannot change
-     * @param list<string>             $additionalCategoryIds
-     * @param list<ProductEditImage>   $images                in position order, previews in the `thumbnail` size
-     * @param list<string>             $variantAxes
-     * @param list<ProductEditVariant> $variants              in presentation order
+     * @param string                     $status                `draft` or `published`
+     * @param bool                       $slugLocked            whether the product was ever published, so its slug cannot change
+     * @param list<ProductParameterView> $parameters            in presentation order
+     * @param list<string>               $additionalCategoryIds
+     * @param list<ProductEditImage>     $images                in position order, previews in the `thumbnail` size
+     * @param list<string>               $variantAxes
+     * @param list<ProductEditVariant>   $variants              in presentation order
      */
     public function __construct(
         public string $id,
@@ -26,6 +27,9 @@ final readonly class ProductEditView
         public string $slug,
         public bool $slugLocked,
         public string $shortDescription,
+        public string $brand,
+        public string $description,
+        public array $parameters,
         public string $mainCategoryId,
         public array $additionalCategoryIds,
         public string $taxClass,

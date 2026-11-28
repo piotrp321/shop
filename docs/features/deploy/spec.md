@@ -234,8 +234,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   klastra bez sekretów (sprawdzenie ścieżek sklepu po generowaniu danych przez `generate`).
 - CronJob `reindex` (każdy profil): zawieszony, obraz, środowisko i sekrety API, Job uruchamia `catalog:reindex` (limit
   czasu `reindex.activeDeadlineSeconds`). Jego Joby tworzy wyłącznie `make -C infra/k8s reindex` po zgodzie
-  użytkownika. Liczbę shardów nowego indeksu daje `elasticsearch.shards` (`SEARCH_SHARDS` kontenerów z kodem API;
-  `prod` 4, pozostałe profile 1). Opis: `docs/features/search/spec.md`, „Infrastruktura”.
+  użytkownika. Indeks ma zawsze jeden shard (stała w kodzie API; chart nie ma wartości ani zmiennej na shardy, schemat
+  odrzuca `elasticsearch.shards`, a kontener API z `SEARCH_SHARDS` innym niż 1 odmawia zbudowania definicji indeksu), a interwał odświeżania indeksu `elasticsearch.refreshInterval`
+  (`SEARCH_REFRESH_INTERVAL`; `prod` `5s`, pozostałe profile `1s`; zmianę stosuje `setup` w Jobie `migrate`, bez
+  przebudowy). Opis: `docs/features/search/spec.md`, „Infrastruktura”.
 - `rabbitmq-init` (vhost testów) nie istnieje.
 - Profile wartości:
   - `values.yaml` – wspólne; wymagane wartości walidowane schematem (`values.schema.json`), więc brak np. sekretu SMTP
@@ -442,7 +444,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     `generate`, `open` i `reindex`.
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
-    `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
+    `~/.local/state/shop-ops/kube-dirs`.
     `kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`, `generate`, `open` i `reindex` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
     poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
     skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.

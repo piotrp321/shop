@@ -1,0 +1,1 @@
+{"mode": "single", "started": "2026-11-27T20:52:12Z", "planned": 600, "sent": 600, "aborted": null, "rate": null, "duration": null, "finished": 600, "failures": 0, "by_status": {"200": 600}, "late_over_100ms": 0, "wall_seconds": 127.7}

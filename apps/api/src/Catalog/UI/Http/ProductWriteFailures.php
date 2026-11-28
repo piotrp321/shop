@@ -6,6 +6,8 @@ namespace App\Catalog\UI\Http;
 
 use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Product\ImageNotFound;
+use App\Catalog\Domain\Product\SkuRepeated;
+use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
@@ -18,7 +20,7 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 
 /**
  * What a failed product write means for the response. The rules of the domain that name a place in the body (an
- * image without an original, a variant or a category that does not exist, a slug nobody can derive) become a 422 with a
+ * image without an original, a variant or a category that does not exist, a SKU another product has, a slug nobody can derive) become a 422 with a
  * violation at that field, like the violations of the body itself. An outage of the image storage is a 503. Every other
  * failure is left to the problem details subscriber (409 with their type, 404, 422 with a detail).
  */
@@ -40,6 +42,7 @@ final class ProductWriteFailures
         $violation = match (true) {
             $cause instanceof ImageNotFound => ['images['.$cause->index.'].key', $cause->getMessage()],
             $cause instanceof UnknownVariant => ['variants['.$cause->index.'].variantId', $cause->getMessage()],
+            $cause instanceof SkuRepeated, $cause instanceof SkuUsedByAnotherProduct => ['variants['.$cause->index.'].sku', $cause->getMessage()],
             $cause instanceof UnknownCategory => [null === $cause->index ? 'mainCategoryId' : 'additionalCategoryIds['.$cause->index.']', $cause->getMessage()],
             $cause instanceof SlugRequired => ['slug', $cause->getMessage()],
             default => null,

@@ -1,0 +1,10 @@
+460 addresses: {'leaf_filter': 56, 'product': 100, 'phrase_filter': 52, 'home_deep': 56, 'phrase_deep': 48, 'department_deep': 60, 'leaf': 50, 'phrase': 22, 'department': 14, 'home': 2}
+60 samples, 0 failures, written to open-leaf-1.jsonl
+run: mode=open planned=60 sent=60 finished=60 failures=0 late_over_100ms=0 wall_s=60.0 target_rate=1.0 achieved_send_rate=1.0 by_status={'200': 60}
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-1.0	api	leaf	hit	2	2	0.004	0.004	0.004	0.004	0.0	0.001	0.0	{200: 2}
+open-1.0	api	leaf	miss	13	13	1.094	1.171	1.22	1.22	1.089	1.168	0.0	{200: 13}
+open-1.0	api	leaf_filter	hit	4	4	0.003	0.003	0.003	0.003	0.0	0.0	0.0	{200: 4}
+open-1.0	api	leaf_filter	miss	14	14	0.601	1.157	1.197	1.197	0.599	1.153	0.0	{200: 14}
+open-1.0	store	leaf	unconfirmed	11	11	1.082	1.551	1.551	1.551	1.075	1.543	0.0	{200: 11}
+open-1.0	store	leaf_filter	unconfirmed	16	16	0.619	1.311	1.359	1.359	0.613	1.303	0.0	{200: 16}

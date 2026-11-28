@@ -74,7 +74,7 @@ final class EditProductController
             ),
             new OA\Response(
                 response: 409,
-                description: 'The `type` names the cause: product-modified (the version is not the current one), slug-taken, slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations).',
+                description: 'The `type` names the cause: product-modified (the version is not the current one), slug-taken, sku-taken (an SKU was taken by a variant of another product between the check and the write; found before the write it is a 422 at the SKU), slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/ProductConflictProblem')),
             ),
             new OA\Response(
@@ -117,6 +117,9 @@ final class EditProductController
                 $data->name,
                 $data->slug,
                 $data->shortDescription,
+                $data->brand,
+                $data->description,
+                $data->parameters,
                 $data->mainCategoryId,
                 $data->additionalCategoryIds,
                 $data->taxClass,

@@ -1,0 +1,82 @@
+-- adm_ord_day_sort_total
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o WHERE o.placed_at >= '2026-01-10' AND o.placed_at < '2026-01-11' ORDER BY o.total_gross DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1651.36..2076.89 rows=50 width=108) (actual time=1.604..3.875 rows=50.00 loops=1)
+   Buffers: shared hit=165 read=109
+   ->  Result  (cost=1651.36..9200.31 rows=887 width=108) (actual time=1.603..3.864 rows=50.00 loops=1)
+         Buffers: shared hit=165 read=109
+         ->  Sort  (cost=1651.36..1653.58 rows=887 width=100) (actual time=1.414..1.424 rows=50.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=7 read=65
+               ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..1621.89 rows=887 width=100) (actual time=0.227..1.244 rows=883.00 loops=1)
+                     Index Cond: ((placed_at >= '2026-01-10 00:00:00+00'::timestamp with time zone) AND (placed_at < '2026-01-11 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=1 read=65
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.048..0.048 rows=1.00 loops=50)
+                 Buffers: shared hit=158 read=44
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.045..0.047 rows=2.94 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=158 read=44
+ Planning:
+   Buffers: shared hit=429
+ Planning Time: 0.726 ms
+ Execution Time: 3.923 ms
+(23 rows)
+
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1651.36..2076.89 rows=50 width=108) (actual time=0.327..0.433 rows=50.00 loops=1)
+   Buffers: shared hit=268
+   ->  Result  (cost=1651.36..9200.31 rows=887 width=108) (actual time=0.326..0.430 rows=50.00 loops=1)
+         Buffers: shared hit=268
+         ->  Sort  (cost=1651.36..1653.58 rows=887 width=100) (actual time=0.314..0.317 rows=50.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=66
+               ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..1621.89 rows=887 width=100) (actual time=0.010..0.184 rows=883.00 loops=1)
+                     Index Cond: ((placed_at >= '2026-01-10 00:00:00+00'::timestamp with time zone) AND (placed_at < '2026-01-11 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=66
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.002..0.002 rows=1.00 loops=50)
+                 Buffers: shared hit=202
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.002 rows=2.94 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=202
+ Planning Time: 0.111 ms
+ Execution Time: 0.454 ms
+(21 rows)
+
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1651.36..2076.89 rows=50 width=108) (actual time=0.299..0.398 rows=50.00 loops=1)
+   Buffers: shared hit=268
+   ->  Result  (cost=1651.36..9200.31 rows=887 width=108) (actual time=0.299..0.395 rows=50.00 loops=1)
+         Buffers: shared hit=268
+         ->  Sort  (cost=1651.36..1653.58 rows=887 width=100) (actual time=0.294..0.296 rows=50.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: top-N heapsort  Memory: 38kB
+               Buffers: shared hit=66
+               ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..1621.89 rows=887 width=100) (actual time=0.006..0.163 rows=883.00 loops=1)
+                     Index Cond: ((placed_at >= '2026-01-10 00:00:00+00'::timestamp with time zone) AND (placed_at < '2026-01-11 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=66
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (actual time=0.002..0.002 rows=1.00 loops=50)
+                 Buffers: shared hit=202
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (actual time=0.001..0.001 rows=2.94 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=202
+ Planning Time: 0.079 ms
+ Execution Time: 0.409 ms
+(21 rows)
+

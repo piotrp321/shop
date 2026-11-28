@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\UI\Http;
 
+use App\Shared\Domain\Text;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -18,6 +19,7 @@ final class ListProductsQuery
     public const string SORT_PRICE_ASC = 'price_asc';
     public const string SORT_PRICE_DESC = 'price_desc';
     public const string AVAILABLE = 'true';
+    public const string BAD_PHRASE = 'Szukana fraza zawiera niedozwolone znaki.';
     // Strings, not ints: the query-string denormalizer would silently cut "10.5" to 10 (and deprecate doing so).
     private const string GROSZE_PATTERN = '/^\d{1,12}\z/';
     private const string BAD_PRICE = 'Cena musi być liczbą całkowitą groszy, 0 albo więcej.';
@@ -26,7 +28,11 @@ final class ListProductsQuery
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
         public readonly ?string $category = null,
-        #[Assert\Length(min: 2, max: 100, normalizer: 'trim')]
+        // The rule of texts (Text): the characters in the phrase as it came, then the length of the trimmed phrase.
+        #[Assert\Sequentially([
+            new Assert\Callback([self::class, 'validatePhraseCharacters']),
+            new Assert\Length(min: 2, max: 100, normalizer: [Text::class, 'normalize']),
+        ])]
         public readonly ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Regex(pattern: self::GROSZE_PATTERN, message: self::BAD_PRICE)]
@@ -50,11 +56,22 @@ final class ListProductsQuery
     public int $perPage = 24;
 
     /**
-     * The trimmed phrase, null without `q`.
+     * The phrase trimmed by the rule of texts (white space and invisible characters at its ends), null without `q`.
      */
     public function phrase(): ?string
     {
-        return null === $this->q ? null : trim($this->q);
+        return null === $this->q ? null : Text::normalize($this->q);
+    }
+
+    /**
+     * A phrase with a forbidden character of the rule of texts is refused; a phrase that is not valid UTF-8 is left to
+     * the length check, which names the charset.
+     */
+    public static function validatePhraseCharacters(mixed $phrase, ExecutionContextInterface $context): void
+    {
+        if (\is_string($phrase) && mb_check_encoding($phrase, 'UTF-8') && Text::hasForbiddenCharacters($phrase)) {
+            $context->buildViolation(self::BAD_PHRASE)->addViolation();
+        }
     }
 
     public function priceMin(): ?int

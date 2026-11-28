@@ -43,12 +43,15 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
             'Buty biegowe',
             '',
             '',
+            '',
+            '',
+            [],
             self::CATEGORY_ID,
             [],
             'standard',
             [['key' => self::IMAGE, 'alt' => 'front']],
             ['Kolor'],
-            [['id' => self::BLACK, 'values' => ['czarne']], ['id' => self::WHITE, 'values' => ['białe']]],
+            [['id' => self::BLACK, 'values' => ['czarne'], 'sku' => '', 'ean' => ''], ['id' => self::WHITE, 'values' => ['białe'], 'sku' => '', 'ean' => '']],
             ProductStatus::Draft,
             self::ACTOR,
         ));
@@ -101,7 +104,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
         $this->outboxEvents();
 
         try {
-            $this->commandBus()->dispatch($this->edit(1, 'Buty biegowe', [['variantId' => self::BLACK, 'values' => ['czarne']]]));
+            $this->commandBus()->dispatch($this->edit(1, 'Buty biegowe', [['variantId' => self::BLACK, 'values' => ['czarne'], 'sku' => '', 'ean' => '']]));
             self::fail('Expected VariantInUse.');
         } catch (HandlerFailedException $e) {
             self::assertInstanceOf(VariantInUse::class, $e->getPrevious());
@@ -131,7 +134,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
     }
 
     /**
-     * @param list<array{variantId: string|null, values: list<string>}>|null $variants
+     * @param list<array{variantId: string|null, values: list<string>, sku: string, ean: string}>|null $variants
      */
     private function edit(int $version, string $name, ?array $variants = null): EditProduct
     {
@@ -142,12 +145,15 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
             $name,
             '',
             '',
+            '',
+            '',
+            [],
             self::CATEGORY_ID,
             [],
             'standard',
             [['key' => self::IMAGE, 'alt' => 'front']],
             ['Kolor'],
-            $variants ?? [['variantId' => self::BLACK, 'values' => ['czarne']], ['variantId' => self::WHITE, 'values' => ['białe']]],
+            $variants ?? [['variantId' => self::BLACK, 'values' => ['czarne'], 'sku' => '', 'ean' => ''], ['variantId' => self::WHITE, 'values' => ['białe'], 'sku' => '', 'ean' => '']],
         );
     }
 

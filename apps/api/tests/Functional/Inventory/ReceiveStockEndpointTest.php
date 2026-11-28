@@ -14,6 +14,7 @@ use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -78,6 +79,40 @@ final class ReceiveStockEndpointTest extends WebTestCase
         $this->assertPrivateAndNotStored();
         self::assertSame(['physical' => 12, 'reserved' => 4, 'version' => 2], $this->storedStock($variantId));
         self::assertCount(1, $this->movements($variantId));
+    }
+
+    public function testTheSameKeyAndContentAgainIsAnOkWhenTheNoteHasEndsTheRuleTrims(): void
+    {
+        $variantId = $this->variant();
+        $this->receive($variantId, ['quantity' => 12, 'note' => "\u{A0}\u{200B}Dostawa\u{3000}"]);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->receive($variantId, ['quantity' => 12, 'note' => "\u{A0}\u{200B}Dostawa\u{3000}"]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertCount(1, $this->movements($variantId));
+        self::assertSame('Dostawa', $this->movements($variantId)[0]['note']);
+    }
+
+    /**
+     * A receipt stored before the rule of texts kept the ends of its note a trim() left (no-break spaces, zero width
+     * spaces): the same request sent again with its key is still the same receipt, not a reused key.
+     */
+    public function testTheSameKeyAndContentAgainIsAnOkForAReceiptStoredBeforeTheRuleOfTexts(): void
+    {
+        $variantId = $this->variant();
+        $this->connection->executeStatement(
+            "INSERT INTO inventory_stock_movement (id, variant_id, type, physical_delta, reserved_delta, physical_after, reserved_after, note, reference, source, actor_id, actor_name, occurred_at) VALUES (?, ?, 'receipt', 12, 0, 17, 0, ?, ?, 'staff', ?, 'admin', now())",
+            [Uuid::v7()->toRfc4122(), $variantId, "\u{A0}Dostawa\u{200B}", self::KEY, TestTokenFactory::STAFF_ID],
+        );
+
+        foreach ([["\u{A0}Dostawa\u{200B}"], ['Dostawa']] as [$note]) {
+            $this->receive($variantId, ['quantity' => 12, 'note' => $note]);
+
+            self::assertResponseStatusCodeSame(200);
+        }
+        $this->receive($variantId, ['quantity' => 12, 'note' => 'Inna']);
+        $this->assertProblem(409);
     }
 
     /**
@@ -483,6 +518,13 @@ final class ReceiveStockEndpointTest extends WebTestCase
         yield 'NUL at the end' => ["a\0"];
         yield 'escape' => ["a\x1Bb"];
         yield 'delete' => ["a\x7Fb"];
+        yield 'next line (C1)' => ["a\u{85}b"];
+        yield 'C1 control character inside' => ["a\u{9F}b"];
+        yield 'C1 control character at the end' => ["a\u{9F}"];
+        yield 'line separator inside' => ["a\u{2028}b"];
+        yield 'line separator at the end' => ["a\u{2028}"];
+        yield 'paragraph separator inside' => ["a\u{2029}b"];
+        yield 'paragraph separator at the end' => ["a\u{2029}"];
     }
 
     /**

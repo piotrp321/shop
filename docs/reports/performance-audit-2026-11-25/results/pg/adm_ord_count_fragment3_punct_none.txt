@@ -1,0 +1,65 @@
+-- adm_ord_count_fragment3_punct_none
+SELECT count(*) FROM (SELECT 1 FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('#!#') || '%' LIMIT 10001) b
+
+SET
+SET
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67610.60..67610.61 rows=1 width=8) (actual time=396.842..400.349 rows=1.00 loops=1)
+   Buffers: shared hit=10013 read=46169
+   ->  Limit  (cost=1000.00..67609.35 rows=100 width=4) (actual time=396.838..400.345 rows=0.00 loops=1)
+         Buffers: shared hit=10013 read=46169
+         ->  Gather  (cost=1000.00..67609.35 rows=100 width=4) (actual time=396.836..400.343 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=10013 read=46169
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=4) (actual time=394.102..394.103 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=10013 read=46169
+ Planning:
+   Buffers: shared hit=283
+ Planning Time: 1.177 ms
+ Execution Time: 400.390 ms
+(16 rows)
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67610.60..67610.61 rows=1 width=8) (actual time=393.538..398.367 rows=1.00 loops=1)
+   Buffers: shared hit=10295 read=45887
+   ->  Limit  (cost=1000.00..67609.35 rows=100 width=4) (actual time=393.534..398.363 rows=0.00 loops=1)
+         Buffers: shared hit=10295 read=45887
+         ->  Gather  (cost=1000.00..67609.35 rows=100 width=4) (actual time=393.533..398.361 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=10295 read=45887
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=4) (actual time=390.849..390.849 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=10295 read=45887
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.165 ms
+ Execution Time: 398.392 ms
+(16 rows)
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=67610.60..67610.61 rows=1 width=8) (actual time=396.897..401.711 rows=1.00 loops=1)
+   Buffers: shared hit=10577 read=45605
+   ->  Limit  (cost=1000.00..67609.35 rows=100 width=4) (actual time=396.893..401.707 rows=0.00 loops=1)
+         Buffers: shared hit=10577 read=45605
+         ->  Gather  (cost=1000.00..67609.35 rows=100 width=4) (actual time=396.892..401.705 rows=0.00 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=10577 read=45605
+               ->  Parallel Seq Scan on ordering_order o  (cost=0.00..66599.35 rows=42 width=4) (actual time=394.175..394.175 rows=0.00 loops=3)
+                     Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%#!#%'::text)
+                     Rows Removed by Filter: 333333
+                     Buffers: shared hit=10577 read=45605
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.154 ms
+ Execution Time: 401.732 ms
+(16 rows)
+

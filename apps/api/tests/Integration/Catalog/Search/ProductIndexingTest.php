@@ -60,7 +60,7 @@ final class ProductIndexingTest extends KernelTestCase
         self::assertSame('Pierwsza', $source['name']);
         self::assertSame(1_793_966_400_000_002, $source['version']);
         self::assertSame(4_900, $source['from_gross']);
-        self::assertSame([['gross' => 4_900, 'purchasable' => true, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame([['gross' => 4_900, 'purchasable' => true, 'options' => [], 'axes' => []]], $source['variants']);
 
         // A read that started at the same moment or later is written.
         $this->clock->advance('+1 microsecond');

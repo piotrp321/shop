@@ -1090,10 +1090,10 @@ export interface components {
             /** @description Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000. */
             productCount?: components["schemas"]["BoundedCountResponse"];
         };
-        /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
+        /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, a SKU belongs to a variant of another product (found only when two writes race: before the write it is a 422 at the SKU), the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, a removed variant has stock or reservations, or the search index is being rebuilt (a creation waits for its end). */
         ProductConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/product-modified" | "tag:piotrp321.github.io,2026:shop/problems/slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/slug-locked" | "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable" | "tag:piotrp321.github.io,2026:shop/problems/variant-locked" | "tag:piotrp321.github.io,2026:shop/problems/variant-in-use";
+            type: "tag:piotrp321.github.io,2026:shop/problems/product-modified" | "tag:piotrp321.github.io,2026:shop/problems/slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/sku-taken" | "tag:piotrp321.github.io,2026:shop/problems/slug-locked" | "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable" | "tag:piotrp321.github.io,2026:shop/problems/variant-locked" | "tag:piotrp321.github.io,2026:shop/problems/variant-in-use" | "tag:piotrp321.github.io,2026:shop/problems/search-rebuild-running";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -1104,7 +1104,7 @@ export interface components {
         /** @description A new category, placed at the end of its siblings. */
         CreateCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -1140,7 +1140,7 @@ export interface components {
         /** @description The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones. */
         ReviseCategoryRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators.
              * @example Namioty
              */
             name: string;
@@ -1175,6 +1175,33 @@ export interface components {
              */
             shortDescription: string | null;
             /**
+             * @description Brand, up to 60 characters; may be empty.
+             * @default null
+             * @example Hallen
+             */
+            brand: string | null;
+            /**
+             * @description Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.
+             * @default null
+             */
+            description: string | null;
+            /**
+             * @description Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.
+             * @default null
+             */
+            parameters: {
+                /**
+                 * @description Name of the parameter, 1 to 60 characters.
+                 * @example Liczba osób
+                 */
+                name: string;
+                /**
+                 * @description Value of the parameter, 1 to 200 characters.
+                 * @example 4
+                 */
+                value: string;
+            }[] | null;
+            /**
              * Format: uuid
              * @description Id of the main category; an unknown category is a 422 at this field.
              * @default null
@@ -1210,13 +1237,23 @@ export interface components {
              */
             variantAxes: string[] | null;
             /**
-             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.
+             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends, and no two have the same SKU.
              * @default null
              */
             variants: {
                 /** Format: uuid */
                 variantId: string | null;
                 values: string[];
+                /**
+                 * @description The SKU of the variant: letters A-Z (small ones are turned into capitals), digits and the signs - _ . /, from 1 to 40 characters, the first one a letter or a digit; empty: no SKU. Unique among all the variants of all the products, drafts too. It belongs to the variant, not to its values, and may change after the first publication.
+                 * @example NAMIOT-HALNY-4
+                 */
+                sku: string;
+                /**
+                 * @description The EAN of the variant: 8, 12, 13 or 14 digits with the check digit of GS1; empty: no EAN. Not unique. The store gives its `gtin` only for a global trade item number, not for a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and others of section 2.1.11 of the GS1 General Specifications).
+                 * @example 5901234123457
+                 */
+                ean: string;
             }[] | null;
         };
         /** @description The whole data of the product and the version it is based on. */
@@ -1245,6 +1282,33 @@ export interface components {
              */
             shortDescription: string | null;
             /**
+             * @description Brand, up to 60 characters; may be empty.
+             * @default null
+             * @example Hallen
+             */
+            brand: string | null;
+            /**
+             * @description Description of paragraphs separated by an empty line, up to 5000 characters; may be empty. The store shows it as plain text, not as markup.
+             * @default null
+             */
+            description: string | null;
+            /**
+             * @description Up to 30 parameters in presentation order. The names differ without regard to case and spaces at the ends; the values may repeat.
+             * @default null
+             */
+            parameters: {
+                /**
+                 * @description Name of the parameter, 1 to 60 characters.
+                 * @example Liczba osób
+                 */
+                name: string;
+                /**
+                 * @description Value of the parameter, 1 to 200 characters.
+                 * @example 4
+                 */
+                value: string;
+            }[] | null;
+            /**
              * Format: uuid
              * @description Id of the main category; an unknown category is a 422 at this field.
              * @default null
@@ -1280,13 +1344,23 @@ export interface components {
              */
             variantAxes: string[] | null;
             /**
-             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.
+             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends, and no two have the same SKU.
              * @default null
              */
             variants: {
                 /** Format: uuid */
                 variantId: string | null;
                 values: string[];
+                /**
+                 * @description The SKU of the variant: letters A-Z (small ones are turned into capitals), digits and the signs - _ . /, from 1 to 40 characters, the first one a letter or a digit; empty: no SKU. Unique among all the variants of all the products, drafts too. It belongs to the variant, not to its values, and may change after the first publication.
+                 * @example NAMIOT-HALNY-4
+                 */
+                sku: string;
+                /**
+                 * @description The EAN of the variant: 8, 12, 13 or 14 digits with the check digit of GS1; empty: no EAN. Not unique. The store gives its `gtin` only for a global trade item number, not for a number of restricted circulation (the GS1 prefixes 02, 04 and 20-29 and others of section 2.1.11 of the GS1 General Specifications).
+                 * @example 5901234123457
+                 */
+                ean: string;
             }[] | null;
         };
         BackofficeProductsQuery: {
@@ -1326,12 +1400,12 @@ export interface components {
         /** @description A new delivery method. */
         CreateDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
@@ -1364,12 +1438,12 @@ export interface components {
         /** @description A delivery method as it should be. */
         ReviseDeliveryMethodRequest: {
             /**
-             * @description 1 to 100 characters once trimmed of whitespace, one line, unique among all methods without regard to case.
+             * @description 1 to 100 characters once trimmed of white space and invisible characters at the ends, with a visible character, without control characters or line separators, unique among all methods without regard to case.
              * @example Kurier standardowy
              */
             name: string;
             /**
-             * @description The time of the delivery: up to 200 characters once trimmed, one line. Null or white space only: no description.
+             * @description The time of the delivery: up to 200 characters once trimmed, without control characters or line separators. Null or a text without a visible character: no description.
              * @example Dostawa w 2–3 dni robocze
              */
             description: string | null;
@@ -1445,7 +1519,7 @@ export interface components {
              */
             reason: "inventory_count" | "damage" | "loss" | "other";
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or a text without a visible character for none.
              * @example Inwentaryzacja roczna
              */
             note: string | null;
@@ -1458,7 +1532,7 @@ export interface components {
              */
             quantity: number;
             /**
-             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.
+             * @description A note, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters other than tab and line breaks; null or a text without a visible character for none.
              * @example Dostawa od Biegam sp. z o.o.
              */
             note: string | null;
@@ -1531,7 +1605,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; required for `cancel` and `return`, otherwise null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; required for `cancel` and `return`, otherwise null or a text without a visible character for none.
              * @example Kurier DPD
              */
             note: string | null;
@@ -1562,7 +1636,7 @@ export interface components {
              */
             version: number;
             /**
-             * @description One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.
+             * @description One line, at most 500 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators; null or a text without a visible character for none.
              * @example Przelew wysłany
              */
             note: string | null;
@@ -2004,6 +2078,13 @@ export interface components {
             /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
             total: components["schemas"]["BoundedCountResponse"] | null;
         };
+        /** @description A parameter of a product in the edit view: a name and a value. */
+        ProductParameterResponse: {
+            /** @example Liczba osób */
+            name: string;
+            /** @example 4 */
+            value: string;
+        };
         /** @description An image of a product in the edit view. */
         ProductEditImageResponse: {
             /**
@@ -2027,6 +2108,16 @@ export interface components {
              *     ]
              */
             values: string[];
+            /**
+             * @description The SKU of the variant as stored (capitals); empty when it has none.
+             * @example NAMIOT-HALNY-4
+             */
+            sku: string;
+            /**
+             * @description The EAN of the variant; empty when it has none.
+             * @example 5901234123457
+             */
+            ean: string;
         };
         /** @description A product as the edit form needs it, with the `version` a save is based on. */
         ProductEditViewResponse: {
@@ -2049,6 +2140,15 @@ export interface components {
             /** @description The slug cannot change: the product was published at least once. */
             slugLocked: boolean;
             shortDescription: string;
+            /**
+             * @description Brand of the product; empty when it has none.
+             * @example Hallen
+             */
+            brand: string;
+            /** @description Description of paragraphs separated by an empty line; empty when the product has none. */
+            description: string;
+            /** @description In presentation order. */
+            parameters: components["schemas"]["ProductParameterResponse"][];
             /** Format: uuid */
             mainCategoryId: string;
             additionalCategoryIds: string[];
@@ -3349,7 +3449,7 @@ export interface operations {
     listBackofficeProducts: {
         parameters: {
             query?: {
-                /** @description A part of the product name, 2 to 100 characters. */
+                /** @description A part of the product name, 2 to 100 characters once trimmed of white space and invisible characters at the ends, without control characters or line separators. */
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;
@@ -3466,7 +3566,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The slug belongs to another product (`type` slug-taken). */
+            /** @description The slug belongs to another product (`type` slug-taken), an SKU was taken by a variant of another product between the check and the write (`type` sku-taken; the same refusal found before the write is a 422 at the SKU), or the search index is being rebuilt, which pauses the creation of products until it ends (`type` search-rebuild-running). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3615,7 +3715,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The `type` names the cause: product-modified (the version is not the current one), slug-taken, slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations). */
+            /** @description The `type` names the cause: product-modified (the version is not the current one), slug-taken, sku-taken (an SKU was taken by a variant of another product between the check and the write; found before the write it is a 422 at the SKU), slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations). */
             409: {
                 headers: {
                     [name: string]: unknown;

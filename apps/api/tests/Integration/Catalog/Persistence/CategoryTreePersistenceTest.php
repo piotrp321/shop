@@ -57,7 +57,7 @@ final class CategoryTreePersistenceTest extends KernelTestCase
         $root = CategoryFactory::createOne();
         $this->categories->save($root);
         $root->placeAt(3);
-        $root->revise(new CategoryName('Nowa'), new CategorySlug('nowa'));
+        $root->revise(CategoryName::of('Nowa'), new CategorySlug('nowa'));
         $this->categories->saveAll([$root]);
         $this->entityManager->clear();
 

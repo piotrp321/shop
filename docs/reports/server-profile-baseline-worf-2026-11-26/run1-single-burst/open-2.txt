@@ -1,0 +1,16 @@
+440 addresses: {'leaf': 34, 'product': 200, 'phrase': 26, 'phrase_filter': 32, 'department_deep': 36, 'leaf_filter': 36, 'department': 10, 'phrase_deep': 30, 'home_deep': 34, 'home': 2}
+baseline: stopped after 24 of 120 requests: 6 of 20 finished ones failed (more than 20%)
+24 samples, 10 failures, written to open-2.jsonl
+label	target	kind	cache	n	full	p50	p95	p99	max	server_est_p50	server_est_p95	rtt_p50	statuses
+open-2.0	api	department_deep	miss	1	0	None	None	None	None	None	None	0.0	{503: 1}
+open-2.0	api	leaf	miss	1	1	1.243	1.243	1.243	1.243	1.24	1.24	0.0	{200: 1}
+open-2.0	api	leaf_filter	miss	1	1	1.712	1.712	1.712	1.712	1.706	1.706	0.0	{200: 1}
+open-2.0	api	phrase	miss	1	0	None	None	None	None	None	None	0.0	{503: 1}
+open-2.0	api	phrase_filter	miss	2	0	None	None	None	None	None	None	0.0	{503: 2}
+open-2.0	api	product	miss	6	6	0.055	0.095	0.095	0.095	0.051	0.087	0.0	{200: 6}
+open-2.0	store	department	unconfirmed	1	0	None	None	None	None	None	None	0.0	{500: 1}
+open-2.0	store	department_deep	unconfirmed	2	0	None	None	None	None	None	None	0.0	{500: 2}
+open-2.0	store	leaf	unconfirmed	1	1	1.57	1.57	1.57	1.57	1.558	1.558	0.0	{200: 1}
+open-2.0	store	phrase	unconfirmed	2	0	None	None	None	None	None	None	0.0	{500: 2}
+open-2.0	store	phrase_deep	unconfirmed	1	0	None	None	None	None	None	None	0.001	{500: 1}
+open-2.0	store	product	miss	5	5	0.25	0.306	0.306	0.306	0.227	0.298	0.0	{200: 5}

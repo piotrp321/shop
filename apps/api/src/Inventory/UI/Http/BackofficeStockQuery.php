@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Inventory\UI\Http;
 
 use App\Inventory\Application\Query\ListBackofficeStock;
+use App\Shared\Domain\Text;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -30,9 +31,13 @@ final readonly class BackofficeStockQuery
     public const string BAD_CURSOR = 'Kursor stronicowania jest nieprawidłowy.';
 
     public function __construct(
-        #[Assert\Length(min: 2, max: 100)]
-        // PostgreSQL cannot take a NUL in a parameter: the driver would cut the term there and search for something else.
-        #[Assert\Regex(pattern: '/\0/', message: self::BAD_TERM, match: false)]
+        // The rule of texts (Text): the characters in the phrase as it came (also NUL, which PostgreSQL cannot take in a
+        // parameter: the driver would cut the term there and search for something else), then the length of the trimmed
+        // phrase.
+        #[Assert\Sequentially([
+            new Assert\Callback([self::class, 'validateTermCharacters']),
+            new Assert\Length(min: 2, max: 100, normalizer: [Text::class, 'normalize']),
+        ])]
         public ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
@@ -51,6 +56,25 @@ final readonly class BackofficeStockQuery
         #[OA\Property(type: 'string', nullable: true)]
         public mixed $productId = null,
     ) {
+    }
+
+    /**
+     * The phrase the list searches for: `q` trimmed by the rule of texts, null without `q`.
+     */
+    public function term(): ?string
+    {
+        return null === $this->q ? null : Text::normalize($this->q);
+    }
+
+    /**
+     * A phrase with a forbidden character of the rule of texts is refused; a phrase that is not valid UTF-8 is left to
+     * the length check, which names the charset.
+     */
+    public static function validateTermCharacters(mixed $term, ExecutionContextInterface $context): void
+    {
+        if (\is_string($term) && mb_check_encoding($term, 'UTF-8') && Text::hasForbiddenCharacters($term)) {
+            $context->buildViolation(self::BAD_TERM)->addViolation();
+        }
     }
 
     /**

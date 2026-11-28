@@ -24,7 +24,8 @@ use Doctrine\ORM\Query;
 /**
  * Delivery methods through their records (the general rule), without locks (A8): a change is checked by the versioned
  * UPDATE. Every read refreshes a record already in the identity map, so a method is always read as stored, never as an
- * earlier read of the same transaction saw it.
+ * earlier read of the same transaction saw it. The texts are read as stored, without the rule of texts, so a method
+ * stored before a stricter rule is still listed, shown and offered (spec api-input-contract, E7).
  */
 final readonly class DoctrineDeliveryMethodRepository implements DeliveryMethodRepository
 {
@@ -129,8 +130,8 @@ final readonly class DoctrineDeliveryMethodRepository implements DeliveryMethodR
     {
         return DeliveryMethod::reconstitute(
             DeliveryMethodId::fromString($record->id),
-            DeliveryMethodName::of($record->name),
-            DeliveryMethodDescription::of($record->description),
+            DeliveryMethodName::stored($record->name),
+            DeliveryMethodDescription::stored($record->description),
             DeliveryPrice::of($record->priceGross),
             FreeDeliveryThreshold::optional($record->freeFromGross),
             $record->active,

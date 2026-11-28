@@ -1,0 +1,50 @@
+-- adm_prod_term3_common_updated
+SELECT p.id, p.name FROM catalog_product p WHERE p.name ILIKE '%tur%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 50
+
+SET
+SET
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..179.47 rows=50 width=62) (actual time=0.130..7.873 rows=50.00 loops=1)
+   Buffers: shared hit=129 read=301
+   ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..365168.74 rows=101978 width=62) (actual time=0.129..7.858 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 423
+         Index Searches: 1
+         Buffers: shared hit=129 read=301
+ Planning:
+   Buffers: shared hit=274 read=1
+ Planning Time: 1.383 ms
+ Execution Time: 7.902 ms
+(11 rows)
+
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..179.47 rows=50 width=62) (actual time=0.035..0.676 rows=50.00 loops=1)
+   Buffers: shared hit=430
+   ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..365168.74 rows=101978 width=62) (actual time=0.034..0.671 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 423
+         Index Searches: 1
+         Buffers: shared hit=430
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.199 ms
+ Execution Time: 0.688 ms
+(11 rows)
+
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..179.47 rows=50 width=62) (actual time=0.030..0.624 rows=50.00 loops=1)
+   Buffers: shared hit=430
+   ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=0.42..365168.74 rows=101978 width=62) (actual time=0.030..0.619 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%tur%'::text)
+         Rows Removed by Filter: 423
+         Index Searches: 1
+         Buffers: shared hit=430
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 1.358 ms
+ Execution Time: 0.636 ms
+(11 rows)
+

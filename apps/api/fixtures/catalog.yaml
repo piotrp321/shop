@@ -109,16 +109,35 @@ templates:
   - category: "bieganie/buty/szosowe"
     productType: "Buty szosowe"
     taxClass: standard
+    description:
+      - "Buty przeznaczone do biegania po twardych nawierzchniach: asfalcie, kostce i utwardzonych ścieżkach. Amortyzacja w podeszwie ogranicza obciążenie stawów podczas treningu, a przewiewna cholewka odprowadza ciepło ze stopy."
+      - "Sznurowanie obejmuje całą cholewkę i pozwala dopasować but do kształtu stopy. Wkładka jest wyjmowana, więc można ją zastąpić wkładką ortopedyczną. Rozmiary podajemy w skali europejskiej."
+    parameters:
+      - {name: "Przeznaczenie", value: "Bieganie po nawierzchniach twardych"}
+      - {name: "Cholewka", value: "Siatka tekstylna"}
     brands:
       - "Tarvik"
       - "Norvane"
     models:
       - name: "Asfalt 200"
         description: "Lekkie buty na asfalt i ścieżki rowerowe z amortyzującą piankową podeszwą i oddychającą siatką."
+        parameters:
+          - {name: "Amortyzacja", value: "Standardowa, piankowa podeszwa"}
+          - {name: "Waga buta w rozmiarze 42", value: "230 g"}
+          - {name: "Drop", value: "10 mm"}
       - name: "Dystans 400"
         description: "Buty na długie wybiegania z podwyższoną amortyzacją i stabilną piętą."
+        parameters:
+          - {name: "Amortyzacja", value: "Podwyższona"}
+          - {name: "Stabilizacja", value: "Stabilna pięta"}
+          - {name: "Waga buta w rozmiarze 42", value: "290 g"}
+          - {name: "Drop", value: "8 mm"}
       - name: "Tempo 600"
         description: "Dynamiczne buty startowe o niskiej masie i sprężystej podeszwie na szybkie treningi."
+        parameters:
+          - {name: "Amortyzacja", value: "Sprężysta, o niskiej masie"}
+          - {name: "Waga buta w rozmiarze 42", value: "205 g"}
+          - {name: "Drop", value: "6 mm"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarne", "niebieskie"]
@@ -131,16 +150,34 @@ templates:
   - category: "bieganie/buty/trailowe"
     productType: "Buty trailowe"
     taxClass: standard
+    description:
+      - "Buty na szlaki i ścieżki w terenie: kamienie, korzenie, błoto i podbiegi. Bieżnik z klockami trzyma na luźnym podłożu, a konstrukcja buta chroni stopę przed uderzeniami o kamienie i korzenie."
+      - "Cholewka jest odporna na ocieranie. Sznurowanie pozostaje stabilne na zbiegach, a język jest przyszyty do cholewki, żeby do środka nie wpadał piach."
+    parameters:
+      - {name: "Przeznaczenie", value: "Bieganie w terenie i po górskich szlakach"}
+      - {name: "Cholewka", value: "Odporna na ocieranie"}
     brands:
       - "Tarvik"
       - "Norvane"
     models:
       - name: "Grań 300"
         description: "Buty w teren z agresywnym bieżnikiem i wzmocnioną osłoną czubka przed kamieniami."
+        parameters:
+          - {name: "Ochrona czubka", value: "Wzmocniona osłona przed kamieniami"}
+          - {name: "Bieżnik", value: "Agresywny, klocki 5 mm"}
+          - {name: "Waga buta w rozmiarze 42", value: "290 g"}
       - name: "Hala 500"
         description: "Wszechstronne buty na szlaki górskie z membraną odporną na wilgoć i przyczepną podeszwą."
+        parameters:
+          - {name: "Membrana", value: "Odporna na wilgoć"}
+          - {name: "Bieżnik", value: "Przyczepny, klocki 4 mm"}
+          - {name: "Waga buta w rozmiarze 42", value: "320 g"}
       - name: "Przełęcz 700"
         description: "Stabilne buty na długie górskie dystanse z ochroną śródstopia."
+        parameters:
+          - {name: "Ochrona śródstopia", value: "Wkładka stabilizująca"}
+          - {name: "Bieżnik", value: "Głęboki, klocki 6 mm"}
+          - {name: "Waga buta w rozmiarze 42", value: "350 g"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarne", "zielone", "pomarańczowe"]
@@ -155,14 +192,29 @@ templates:
       - "sporty-zimowe/odziez"
     productType: "Kurtka biegowa"
     taxClass: standard
+    description:
+      - "Kurtka na bieganie w chłodne i wietrzne dni. Nie krępuje ruchów podczas biegu, a ściągacze przy rękawach i dole ograniczają przewiewy."
+      - "Zamek na całej długości ułatwia regulację wentylacji w trakcie biegu. Kurtkę można prać w pralce w temperaturze 30 stopni."
+    parameters:
+      - {name: "Przeznaczenie", value: "Bieganie w zmiennej pogodzie"}
+      - {name: "Zamek", value: "Na całej długości"}
+      - {name: "Pranie", value: "W pralce, 30 stopni"}
     brands:
       - "Tarvik"
       - "Norvane"
     models:
       - name: "Wiatr 100"
         description: "Ultralekka wiatrówka składana do kieszeni, chroni przed wiatrem i lekkim deszczem."
+        parameters:
+          - {name: "Materiał", value: "Cienka tkanina wiatroszczelna"}
+          - {name: "Składanie", value: "Do kieszeni kurtki"}
+          - {name: "Ochrona", value: "Wiatr i lekki deszcz"}
       - name: "Mgła 300"
         description: "Kurtka softshell z elastycznymi panelami i odblaskowymi elementami na zimne poranki."
+        parameters:
+          - {name: "Materiał", value: "Softshell z elastycznymi panelami"}
+          - {name: "Odblaski", value: "Elementy odblaskowe z przodu i z tyłu"}
+          - {name: "Ochrona", value: "Chłód i wiatr"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarna", "granatowa", "limonkowa"]
@@ -175,14 +227,28 @@ templates:
   - category: "bieganie/odziez"
     productType: "Koszulka biegowa"
     taxClass: standard
+    description:
+      - "Koszulka do biegania i innych sportów wytrzymałościowych. Materiał odprowadza pot od skóry, dzięki czemu koszulka nie przylega do ciała podczas długiego wysiłku."
+      - "Krój jest sportowy, lekko dopasowany. Koszulkę można prać w pralce w temperaturze 30 stopni."
+    parameters:
+      - {name: "Przeznaczenie", value: "Bieganie i trening wytrzymałościowy"}
+      - {name: "Krój", value: "Sportowy, lekko dopasowany"}
     brands:
       - "Tarvik"
       - "Norvane"
     models:
       - name: "Oddech 100"
         description: "Szybkoschnąca koszulka z siatkowymi wstawkami wentylacyjnymi i płaskimi szwami."
+        parameters:
+          - {name: "Materiał", value: "Poliester z siatkowymi wstawkami"}
+          - {name: "Wentylacja", value: "Siatkowe wstawki"}
+          - {name: "Gramatura", value: "100 g/m2"}
       - name: "Merino 200"
         description: "Koszulka z mieszanki wełny merino, neutralna zapachowo i przyjemna w dotyku."
+        parameters:
+          - {name: "Materiał", value: "Mieszanka wełny merino"}
+          - {name: "Właściwości", value: "Neutralna zapachowo"}
+          - {name: "Gramatura", value: "200 g/m2"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["biała", "szara", "turkusowa"]
@@ -197,14 +263,28 @@ templates:
       - "turystyka/plecaki"
     productType: "Plecak biegowy"
     taxClass: standard
+    description:
+      - "Plecak biegowy przylega do pleców i nie podskakuje podczas biegu. Szerokie szelki w kształcie kamizelki rozkładają ciężar na klatce piersiowej i ramionach, a mostek spina je na przodzie."
+      - "Kieszenie na szelkach pozwalają sięgnąć po żele, telefon lub bidon bez zdejmowania plecaka. Materiał jest lekki i odporny na ocieranie. Plecak należy prać ręcznie."
+    parameters:
+      - {name: "Rodzaj", value: "Plecak-kamizelka na bieganie"}
+      - {name: "Mostek piersiowy", value: "Regulowany"}
     brands:
       - "Tarvik"
       - "Norvane"
     models:
       - name: "Sprint 8"
         description: "Plecak biegowy 8 l z kieszeniami na bidony miękkie i dostępem do telefonu bez zdejmowania."
+        parameters:
+          - {name: "Pojemność", value: "8 l"}
+          - {name: "Bidony", value: "Kieszenie na miękkie bidony"}
+          - {name: "Telefon", value: "Kieszeń dostępna bez zdejmowania plecaka"}
       - name: "Ultra 12"
         description: "Plecak biegowy 12 l na zawody górskie, z uchwytem na kijki i systemem nawadniającym."
+        parameters:
+          - {name: "Pojemność", value: "12 l"}
+          - {name: "Kijki", value: "Uchwyt na kijki"}
+          - {name: "Nawadnianie", value: "Przystosowany do systemu nawadniającego"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarny", "pomarańczowy"]
@@ -218,14 +298,28 @@ templates:
       - "turystyka/biwak"
     productType: "Latarka czołowa"
     taxClass: standard
+    description:
+      - "Latarka czołowa daje wolne ręce podczas biegania, wędrówki i pracy po zmroku. Obudowa jest odporna na zachlapanie, a elastyczna opaska z regulacją mocuje latarkę stabilnie na głowie."
+      - "Przełącznik pozwala wybrać poziom jasności. Latarkę ładuje się przez port USB, więc nie trzeba kupować baterii. Latarka waży niewiele i nie obciąża głowy."
+    parameters:
+      - {name: "Zasilanie", value: "Akumulator ładowany przez USB"}
+      - {name: "Mocowanie", value: "Elastyczna opaska na głowę"}
+      - {name: "Wodoszczelność", value: "Odporna na zachlapanie"}
     brands:
       - "Tarvik"
       - "Hallen"
     models:
       - name: "Świt 250"
         description: "Lekka czołówka 250 lumenów z regulowanym kątem świecenia i ładowaniem przez USB."
+        parameters:
+          - {name: "Strumień świetlny", value: "250 lm"}
+          - {name: "Regulacja", value: "Regulowany kąt świecenia"}
       - name: "Zmierzch 600"
         description: "Czołówka 600 lumenów z trybem czerwonym i akumulatorem na do 40 godzin pracy."
+        parameters:
+          - {name: "Strumień świetlny", value: "600 lm"}
+          - {name: "Tryby", value: "Dodatkowo światło czerwone"}
+          - {name: "Czas pracy", value: "Do 40 godzin"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarna", "szara"]
@@ -235,16 +329,36 @@ templates:
   - category: "rower/rowery/gorskie"
     productType: "Rower górski"
     taxClass: standard
+    description:
+      - "Rower górski do jazdy po leśnych drogach, szlakach i ścieżkach w terenie. Amortyzowany widelec i szerokie opony z agresywnym bieżnikiem poprawiają przyczepność i komfort na nierównym podłożu."
+      - "Hamulce tarczowe zapewniają skuteczne hamowanie także w deszczu i na stromych zjazdach. Szeroka kierownica i krótki mostek dają pewną kontrolę nad rowerem."
+      - "Rower wysyłamy częściowo zmontowany. Przed pierwszą jazdą trzeba sprawdzić ciśnienie w oponach, dokręcić pedały i ustawić siodło na odpowiedniej wysokości."
+    parameters:
+      - {name: "Przeznaczenie", value: "Jazda terenowa"}
+      - {name: "Rama", value: "Aluminiowa"}
+      - {name: "Hamulce", value: "Tarczowe"}
     brands:
       - "Zolvia"
       - "Dravik"
     models:
       - name: "Singiel 29"
         description: "Hardtail z aluminiową ramą, amortyzatorem 120 mm i napędem 1x12."
+        parameters:
+          - {name: "Rozmiar kół", value: "29 cali"}
+          - {name: "Amortyzacja", value: "Hardtail, amortyzator przedni o skoku 120 mm"}
+          - {name: "Napęd", value: "1x12"}
       - name: "Trawers 29"
         description: "Rower trailowy z amortyzowanym tyłem 130 mm i hydraulicznymi hamulcami tarczowymi."
+        parameters:
+          - {name: "Rozmiar kół", value: "29 cali"}
+          - {name: "Amortyzacja", value: "Pełna, skok tylnego amortyzatora 130 mm"}
+          - {name: "Hamulce", value: "Hydrauliczne tarczowe"}
       - name: "Zjazd 27,5"
         description: "Zwrotny rower enduro z amortyzacją 150 mm do agresywnej jazdy po szlakach."
+        parameters:
+          - {name: "Rozmiar kół", value: "27,5 cala"}
+          - {name: "Amortyzacja", value: "Pełna, skok 150 mm"}
+          - {name: "Zastosowanie", value: "Enduro i agresywna jazda po szlakach"}
     variantAxes: ["Kolor", "Rozmiar ramy"]
     axisValues:
       - ["grafitowy", "zielony", "pomarańczowy"]
@@ -259,14 +373,33 @@ templates:
   - category: "rower/rowery/elektryczne"
     productType: "Rower elektryczny"
     taxClass: standard
+    description:
+      - "Rower elektryczny wspomaga pedałowanie silnikiem, gdy jedziesz pod górę lub pod wiatr. Wspomaganie działa, dopóki pedałujesz, i wyłącza się powyżej 25 km/h."
+      - "Akumulator można wypiąć z ramy i naładować w domu. Wyświetlacz pozwala wybrać poziom wspomagania. Zasięg zależy od masy rowerzysty, ukształtowania terenu i wybranego poziomu wspomagania."
+    parameters:
+      - {name: "Silnik", value: "Centralny, w osi korby"}
+      - {name: "Wspomaganie do", value: "25 km/h"}
+      - {name: "Akumulator", value: "Wypinany z ramy"}
     brands:
       - "Zolvia"
       - "Dravik"
     models:
       - name: "Dolina E"
         description: "Rower trekkingowy z silnikiem centralnym 85 Nm i akumulatorem o zasięgu do 110 km."
+        parameters:
+          - {name: "Przeznaczenie", value: "Trekking"}
+          - {name: "Moment obrotowy", value: "85 Nm"}
+          - {name: "Zasięg", value: "Do 110 km"}
+        fullDescription:
+          - "Dolina E to rower trekkingowy z silnikiem centralnym o momencie obrotowym 85 Nm, który ułatwia podjazdy z bagażem i jazdę pod wiatr. Akumulator pozwala przejechać do 110 km na jednym ładowaniu, zależnie od poziomu wspomagania i terenu."
+          - "Rama z niskim przekrokiem daje wygodną pozycję i ułatwia wsiadanie. Rower ma błotniki, bagażnik i oświetlenie zasilane z akumulatora, więc od razu nadaje się do codziennych dojazdów i wycieczek."
+          - "Akumulator wypina się z ramy i można go naładować w mieszkaniu. Wyświetlacz na kierownicy pokazuje prędkość, poziom naładowania i wybrany tryb wspomagania."
       - name: "Szlak E"
         description: "Elektryczny rower górski z silnikiem w osi korby i amortyzowanym przodem."
+        parameters:
+          - {name: "Przeznaczenie", value: "Jazda górska"}
+          - {name: "Amortyzacja", value: "Amortyzowany przedni widelec"}
+          - {name: "Zasięg", value: "Do 80 km"}
     variantAxes: ["Kolor", "Rozmiar ramy"]
     axisValues:
       - ["czarny", "grafitowy", "niebieski"]
@@ -279,14 +412,30 @@ templates:
   - category: "rower/kaski-i-ochraniacze"
     productType: "Kask rowerowy"
     taxClass: standard
+    description:
+      - "Kask chroni głowę podczas upadku. Zewnętrzna skorupa łączy się z pianką, która pochłania energię uderzenia."
+      - "Wewnątrz znajdują się wymienne wkładki, które można prać. Pasek podbródkowy ma szybkie zapięcie. Kask należy wymienić po każdym mocnym uderzeniu, nawet jeśli nie widać uszkodzeń."
+    parameters:
+      - {name: "Konstrukcja", value: "Skorupa z pianką EPS"}
+      - {name: "Pasek", value: "Z szybkim zapięciem"}
+      - {name: "Norma", value: "EN 1078"}
     brands:
       - "Zolvia"
       - "Dravik"
     models:
       - name: "Wiatr"
         description: "Lekki kask szosowy z dużą liczbą otworów wentylacyjnych i regulacją obwodu pokrętłem."
+        parameters:
+          - {name: "Przeznaczenie", value: "Jazda szosowa"}
+          - {name: "Regulacja obwodu", value: "Pokrętłem z tyłu kasku"}
+          - {name: "Wentylacja", value: "Liczne otwory"}
       - name: "Korona"
         description: "Kask MTB z wydłużonym tyłem, daszkiem i siatką przeciw owadom."
+        parameters:
+          - {name: "Przeznaczenie", value: "Jazda w terenie (MTB)"}
+          - {name: "Ochrona tyłu głowy", value: "Wydłużony tył"}
+          - {name: "Daszek", value: "Z daszkiem"}
+          - {name: "Siatka", value: "Przeciw owadom"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarny", "biały", "czerwony"]
@@ -299,14 +448,29 @@ templates:
   - category: "rower/akcesoria"
     productType: "Torba rowerowa"
     taxClass: standard
+    description:
+      - "Torba mocowana do roweru pozwala zabrać narzędzia, prowiant i drobne rzeczy bez plecaka. Materiał jest wytrzymały i łatwo go przetrzeć wilgotną szmatką."
+      - "Mocowanie utrzymuje torbę stabilnie podczas jazdy po nierównym terenie, a torbę można łatwo zdjąć z roweru. Wewnątrz jest główna komora."
+    parameters:
+      - {name: "Materiał", value: "Wytrzymała tkanina poliestrowa"}
     brands:
       - "Zolvia"
       - "Hallen"
     models:
       - name: "Rama 4"
         description: "Wodoodporna torba pod ramę o pojemności 4 l na narzędzia i prowiant."
+        parameters:
+          - {name: "Pojemność", value: "4 l"}
+          - {name: "Miejsce montażu", value: "Pod ramą"}
+          - {name: "Wodoodporność", value: "Wodoodporna"}
+          - {name: "Mocowanie", value: "Paski rzepowe"}
       - name: "Kierownica 10"
         description: "Torba na kierownicę 10 l do bikepackingu, z szybkim systemem mocowania."
+        parameters:
+          - {name: "Pojemność", value: "10 l"}
+          - {name: "Miejsce montażu", value: "Na kierownicy"}
+          - {name: "Przeznaczenie", value: "Bikepacking"}
+          - {name: "Mocowanie", value: "Szybki system mocowania"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarna", "oliwkowa"]
@@ -318,14 +482,27 @@ templates:
   - category: "rower/akcesoria"
     productType: "Bidon termiczny"
     taxClass: standard
+    description:
+      - "Bidon z podwójną ścianką utrzymuje temperaturę napoju: zimny pozostaje chłodny, a ciepły gorący przez kilka godzin. Można go zabrać na rower, w plecak i na siłownię."
+      - "Zamknięcie można rozebrać do mycia. Zalecamy mycie ręczne, bo zmywarka może uszkodzić powłokę zewnętrzną."
+    parameters:
+      - {name: "Konstrukcja", value: "Podwójna ścianka"}
+      - {name: "Mycie", value: "Ręczne"}
     brands:
       - "Zolvia"
       - "Dravik"
     models:
       - name: "Kropla 500"
         description: "Bidon 500 ml z podwójną ścianką, który utrzymuje temperaturę napoju przez kilka godzin."
+        parameters:
+          - {name: "Pojemność", value: "500 ml"}
+          - {name: "Utrzymanie temperatury", value: "Kilka godzin"}
       - name: "Źródło 750"
         description: "Bidon 750 ml z zaworem do picia jedną ręką i szeroką szyjką do mycia."
+        parameters:
+          - {name: "Pojemność", value: "750 ml"}
+          - {name: "Zamknięcie", value: "Zawór do picia jedną ręką"}
+          - {name: "Szyjka", value: "Szeroka, ułatwia mycie"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarny", "srebrny", "niebieski"]
@@ -337,16 +514,35 @@ templates:
   - category: "turystyka/plecaki"
     productType: "Plecak trekkingowy"
     taxClass: standard
+    description:
+      - "Plecak trekkingowy do noszenia sprzętu na wielogodzinnych i wielodniowych wyprawach. System nośny przenosi większość ciężaru na biodra, dzięki czemu ramiona i kręgosłup nie są nadmiernie obciążone."
+      - "Szelki i pas biodrowy są wyprofilowane. Boczne kieszenie mieszczą bidony, a paski kompresyjne pozwalają ściągnąć zawartość, gdy plecak nie jest pełny."
+      - "Plecak należy prać ręcznie w letniej wodzie i suszyć w rozłożonej postaci, z dala od źródeł ciepła."
+    parameters:
+      - {name: "Przeznaczenie", value: "Trekking i wyprawy górskie"}
+      - {name: "Pas biodrowy", value: "Wyprofilowany"}
     brands:
       - "Hallen"
       - "Norvane"
     models:
       - name: "Wierch 45"
         description: "Plecak 45 l na weekendowe wyprawy z regulacją długości pleców i pokrowcem przeciwdeszczowym."
+        parameters:
+          - {name: "Pojemność", value: "45 l"}
+          - {name: "Regulacja pleców", value: "Regulowana długość"}
+          - {name: "Pokrowiec przeciwdeszczowy", value: "W zestawie"}
       - name: "Dolina 55"
         description: "Plecak 55 l z wentylowanymi plecami i dolnym dostępem do śpiwora."
+        parameters:
+          - {name: "Pojemność", value: "55 l"}
+          - {name: "Plecy", value: "Wentylowane"}
+          - {name: "Dostęp do śpiwora", value: "Od dołu plecaka"}
       - name: "Przełęcz 65"
         description: "Plecak 65 l na wielodniowe trekkingi, z usztywnionym pasem biodrowym."
+        parameters:
+          - {name: "Pojemność", value: "65 l"}
+          - {name: "Przeznaczenie", value: "Wielodniowe trekkingi"}
+          - {name: "Pas biodrowy", value: "Usztywniony"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["zielony", "szary"]
@@ -360,14 +556,29 @@ templates:
   - category: "turystyka/plecaki"
     productType: "Plecak dzienny"
     taxClass: standard
+    description:
+      - "Plecak na jednodniowe wycieczki i codzienne dojazdy. Mieści kurtkę, prowiant, wodę i drobny sprzęt. Wyściełane szelki są wygodne także przy dłuższym noszeniu."
+      - "Główna komora zapina się zamkiem, a mniejsze kieszenie pomagają utrzymać porządek. Tkanina jest odporna na ocieranie i zachlapanie."
+    parameters:
+      - {name: "Przeznaczenie", value: "Jednodniowe wycieczki i codzienne użytkowanie"}
+      - {name: "Szelki", value: "Wyściełane"}
     brands:
       - "Hallen"
       - "Norvane"
     models:
       - name: "Spacer 20"
         description: "Plecak 20 l na jednodniowe wycieczki, z kieszenią na bukłak i uchwytami na kijki."
+        parameters:
+          - {name: "Pojemność", value: "20 l"}
+          - {name: "Nawadnianie", value: "Kieszeń na bukłak"}
+          - {name: "Kijki", value: "Uchwyty na kijki"}
       - name: "Szlak 28"
         description: "Plecak 28 l z kieszeniami bocznymi, wentylowanymi plecami i uchwytem na kask."
+        parameters:
+          - {name: "Pojemność", value: "28 l"}
+          - {name: "Plecy", value: "Wentylowane"}
+          - {name: "Kieszenie", value: "Boczne, na bidony"}
+          - {name: "Kask", value: "Uchwyt na kask"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarny", "granatowy", "pomarańczowy"]
@@ -379,16 +590,42 @@ templates:
   - category: "turystyka/biwak/namioty"
     productType: "Namiot turystyczny"
     taxClass: standard
+    description:
+      - "Namiot turystyczny do spania w terenie, na kempingu i na biwaku. Podwójny dach oddziela sypialnię od zewnętrznej tkaniny i ogranicza skraplanie się pary wodnej wewnątrz."
+      - "Stelaż z lekkich rurek rozkłada się w kilka minut. Komplet zawiera śledzie, linki odciągowe i worek transportowy. Przed pierwszym użyciem warto rozstawić namiot w domu i sprawdzić szwy."
+      - "Przed spakowaniem namiot trzeba całkowicie wysuszyć, żeby uniknąć pleśni i nieprzyjemnego zapachu."
+    parameters:
+      - {name: "Budowa", value: "Dwuwarstwowy"}
+      - {name: "Komplet", value: "Śledzie, linki odciągowe i worek transportowy"}
     brands:
       - "Norvane"
       - "Hallen"
     models:
       - name: "Biwak 2"
         description: "Dwuosobowy namiot kopułowy o masie poniżej 2 kg, z podwójnym dachem i dwoma wejściami."
+        parameters:
+          - {name: "Liczba osób", value: "2"}
+          - {name: "Typ", value: "Kopułowy"}
+          - {name: "Waga", value: "Poniżej 2 kg"}
+          - {name: "Wejścia", value: "Dwa"}
       - name: "Dolina 3"
         description: "Trzyosobowy namiot z dużą absydą na bagaż i szczelną podłogą."
+        parameters:
+          - {name: "Liczba osób", value: "3"}
+          - {name: "Typ", value: "Tunelowy"}
+          - {name: "Absyda", value: "Duża, na bagaż"}
+          - {name: "Podłoga", value: "Szczelna"}
       - name: "Halny 4"
         description: "Czteroosobowy namiot na każdą pogodę, ze wzmocnionym stelażem."
+        parameters:
+          - {name: "Liczba osób", value: "4"}
+          - {name: "Typ", value: "Kopułowy"}
+          - {name: "Stelaż", value: "Wzmocniony, z dodatkowymi łukami"}
+          - {name: "Odporność na pogodę", value: "Wiatr i opady"}
+        fullDescription:
+          - "Halny 4 to czteroosobowy namiot kopułowy, który postawisz także przy silnym wietrze i opadach. Wzmocniony stelaż z dodatkowymi łukami usztywnia konstrukcję, a podwójny dach z taśmowanymi szwami nie przepuszcza deszczu."
+          - "Wewnątrz zmieszczą się cztery osoby w śpiworach razem z plecakami. Duża absyda przy wejściu chroni buty i bagaż przed deszczem, a siatkowe kieszenie przy ścianach pomagają utrzymać porządek. Wentylacja w dachu ogranicza skraplanie pary."
+          - "Namiot rozstawia się w kilkanaście minut we dwie osoby. W zestawie są śledzie, linki odciągowe, rurka naprawcza i worek transportowy."
     variantAxes: ["Kolor"]
     axisValues:
       - ["zielony", "pomarańczowy"]
@@ -400,6 +637,12 @@ templates:
   - category: "turystyka/biwak/spanie/spiwory"
     productType: "Śpiwór"
     taxClass: standard
+    description:
+      - "Śpiwór do spania w namiocie i schronisku. Kołnierz przy szyi i zamek z osłoną ograniczają ucieczkę ciepła, a kaptur można ściągnąć sznurkiem."
+      - "Przed schowaniem zawsze wysusz śpiwór całkowicie. Do dłuższego przechowywania najlepiej trzymać go luźno, w dużym worku bawełnianym, a nie ściśniętego."
+    parameters:
+      - {name: "Kształt", value: "Mumia"}
+      - {name: "Kaptur", value: "Z regulacją sznurkiem"}
     brands:
       - "Norvane"
       - "Hallen"
@@ -407,8 +650,16 @@ templates:
     models:
       - name: "Noc -5"
         description: "Śpiwór puchowy o temperaturze komfortu 0 stopni i dolnej granicy minus 5 stopni."
+        parameters:
+          - {name: "Wypełnienie", value: "Puch"}
+          - {name: "Temperatura komfortu", value: "0 stopni"}
+          - {name: "Dolna granica temperatury", value: "-5 stopni"}
       - name: "Letni +10"
         description: "Lekki syntetyczny śpiwór na ciepłe noce, mieści się w niewielkim worku kompresyjnym."
+        parameters:
+          - {name: "Wypełnienie", value: "Włókno syntetyczne"}
+          - {name: "Temperatura komfortu", value: "10 stopni"}
+          - {name: "Pakowanie", value: "Worek kompresyjny"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["niebieski", "oliwkowy"]
@@ -420,14 +671,27 @@ templates:
   - category: "turystyka/biwak/spanie/maty"
     productType: "Mata samopompująca"
     taxClass: standard
+    description:
+      - "Mata samopompująca izoluje od zimnego podłoża i wygładza nierówności pod namiotem. Po otwarciu zaworu pianka rozpręża się i zasysa powietrze, a dopompowanie ustami zajmuje kilka oddechów."
+      - "Po złożeniu mata zajmuje niewiele miejsca. Przed schowaniem należy wypuścić powietrze i zwinąć matę od strony zaworu. W zestawie są worek transportowy i łatka do naprawy."
+    parameters:
+      - {name: "Napełnianie", value: "Samopompująca, z zaworem"}
+      - {name: "Zestaw", value: "Worek transportowy i łatka"}
     brands:
       - "Norvane"
       - "Hallen"
     models:
       - name: "Sen 3"
         description: "Mata o grubości 3 cm, która napełnia się powietrzem po otwarciu zaworu."
+        parameters:
+          - {name: "Grubość", value: "3 cm"}
+          - {name: "Izolacja (R-value)", value: "2,0"}
       - name: "Sen 5"
         description: "Mata o grubości 5 cm z wysoką izolacją, wygodna także na twardym podłożu."
+        parameters:
+          - {name: "Grubość", value: "5 cm"}
+          - {name: "Izolacja (R-value)", value: "4,0"}
+          - {name: "Zastosowanie", value: "Twarde podłoże i chłodne noce"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["pomarańczowa", "zielona"]
@@ -439,18 +703,38 @@ templates:
   - category: "turystyka/nawigacja/przewodniki"
     productType: "Przewodnik"
     taxClass: printed_book
+    description:
+      - "Przewodnik opisuje trasy krok po kroku: punkt startu, przebieg szlaku, czas przejścia i najciekawsze miejsca po drodze. Opisy zawierają wskazówki, jak dojechać do początku szlaku."
+      - "W książce znajdziesz informacje o schroniskach, noclegach i zasadach bezpieczeństwa w górach. Na końcu jest skorowidz miejscowości i szczytów."
+      - "Warunki na szlakach mogą się zmienić, dlatego przed wyjściem sprawdź komunikaty o stanie tras."
+    parameters:
+      - {name: "Rodzaj", value: "Przewodnik turystyczny"}
+      - {name: "Język", value: "Polski"}
     brands:
       - "Tarvik Press"
       - "Norvane Atlas"
     models:
       - name: "Tatry Zachodnie"
         description: "Przewodnik po szlakach Tatr Zachodnich: 60 opisanych tras, profile wysokościowe i uwagi o bezpieczeństwie. ISBN 978-83-99001-01-3."
+        parameters:
+          - {name: "Region", value: "Tatry Zachodnie"}
+          - {name: "Liczba tras", value: "60"}
       - name: "Bieszczady"
         description: "Przewodnik po Bieszczadach z opisem połonin, schronisk i tras jednodniowych. ISBN 978-83-99001-02-0."
+        parameters:
+          - {name: "Region", value: "Bieszczady"}
+          - {name: "Zakres", value: "Połoniny, schroniska i trasy jednodniowe"}
       - name: "Karkonosze"
         description: "Przewodnik po Karkonoszach z trasami pieszymi i rowerowymi oraz opisem atrakcji. ISBN 978-83-99001-03-7."
+        parameters:
+          - {name: "Region", value: "Karkonosze"}
+          - {name: "Zakres", value: "Trasy piesze i rowerowe oraz atrakcje"}
       - name: "Beskid Żywiecki"
         description: "Przewodnik po Beskidzie Żywieckim z 45 trasami i mapkami szlaków. ISBN 978-83-99001-04-4."
+        parameters:
+          - {name: "Region", value: "Beskid Żywiecki"}
+          - {name: "Liczba tras", value: "45"}
+          - {name: "Mapki", value: "Mapki szlaków przy opisach tras"}
     variantAxes: ["Oprawa"]
     axisValues:
       - ["oprawa miękka", "oprawa twarda"]
@@ -462,18 +746,38 @@ templates:
   - category: "turystyka/nawigacja/mapy"
     productType: "Mapa turystyczna"
     taxClass: printed_map
+    description:
+      - "Mapa turystyczna pokazuje sieć szlaków i ukształtowanie terenu. Szlaki są oznaczone kolorami zgodnymi z oznakowaniem w terenie."
+      - "Warstwice i wysokości ułatwiają ocenę trudności trasy przed wyjściem. Mapa zawiera legendę i siatkę współrzędnych. Przed wyprawą sprawdź datę wydania, bo szlaki bywają zmieniane."
+    parameters:
+      - {name: "Rodzaj", value: "Mapa turystyczna"}
+      - {name: "Język", value: "Polski"}
     brands:
       - "Tarvik Press"
       - "Norvane Atlas"
     models:
       - name: "Tatry 1:30 000"
         description: "Mapa turystyczna Tatr w skali 1:30 000 z zaznaczonymi szlakami, schroniskami i punktami widokowymi."
+        parameters:
+          - {name: "Obszar", value: "Tatry"}
+          - {name: "Skala", value: "1:30 000"}
       - name: "Bieszczady 1:50 000"
         description: "Mapa turystyczna Bieszczadów w skali 1:50 000 z kolorowymi szlakami i wysokościami."
+        parameters:
+          - {name: "Obszar", value: "Bieszczady"}
+          - {name: "Skala", value: "1:50 000"}
       - name: "Karkonosze 1:35 000"
         description: "Mapa Karkonoszy w skali 1:35 000 z trasami narciarskimi i rowerowymi."
+        parameters:
+          - {name: "Obszar", value: "Karkonosze"}
+          - {name: "Skala", value: "1:35 000"}
+          - {name: "Zawartość", value: "Trasy narciarskie i rowerowe"}
       - name: "Gorce 1:40 000"
         description: "Mapa Gorców w skali 1:40 000 z siecią szlaków i polan."
+        parameters:
+          - {name: "Obszar", value: "Gorce"}
+          - {name: "Skala", value: "1:40 000"}
+          - {name: "Zawartość", value: "Sieć szlaków i polany"}
     variantAxes: ["Wersja"]
     axisValues:
       - ["składana", "laminowana"]
@@ -485,18 +789,38 @@ templates:
   - category: "turystyka/zywnosc"
     productType: "Danie liofilizowane"
     taxClass: freeze_dried_meal
+    description:
+      - "Danie liofilizowane jest lekkie i nie wymaga lodówki, więc nadaje się na wielodniowe wyprawy. Po zalaniu gorącą wodą odzyskuje strukturę i smak, a opakowanie można wykorzystać jako naczynie."
+      - "Opakowanie ma zamknięcie strunowe, które pozwala odczekać potrzebny czas. Po posiłku puste opakowanie zajmuje niewiele miejsca w plecaku. Produkt należy przechowywać w suchym i chłodnym miejscu."
+    parameters:
+      - {name: "Sposób przygotowania", value: "Zalanie gorącą wodą"}
+      - {name: "Przechowywanie", value: "Suche, chłodne miejsce"}
     brands:
       - "Pyrko"
       - "Hallen"
     models:
       - name: "Gulasz wołowy"
         description: "Liofilizowany gulasz wołowy z warzywami, wystarczy zalać wrzątkiem i odczekać 10 minut."
+        parameters:
+          - {name: "Główny składnik", value: "Wołowina z warzywami"}
+          - {name: "Czas przygotowania", value: "10 minut"}
       - name: "Makaron z warzywami"
         description: "Liofilizowany makaron w sosie pomidorowym z warzywami, danie wegetariańskie."
+        parameters:
+          - {name: "Główny składnik", value: "Makaron w sosie pomidorowym z warzywami"}
+          - {name: "Dieta", value: "Wegetariańska"}
+          - {name: "Czas przygotowania", value: "10 minut"}
       - name: "Kasza z kurczakiem"
         description: "Liofilizowana kasza gryczana z kurczakiem i pieczarkami, lekka i sycąca."
+        parameters:
+          - {name: "Główny składnik", value: "Kasza gryczana z kurczakiem i pieczarkami"}
+          - {name: "Czas przygotowania", value: "10 minut"}
       - name: "Owsianka jagodowa"
         description: "Liofilizowana owsianka z jagodami na szybkie śniadanie na szlaku."
+        parameters:
+          - {name: "Główny składnik", value: "Płatki owsiane z jagodami"}
+          - {name: "Pora posiłku", value: "Śniadanie"}
+          - {name: "Czas przygotowania", value: "5 minut"}
     variantAxes: ["Porcja"]
     axisValues:
       - ["jednoosobowa", "dwuosobowa"]
@@ -510,16 +834,36 @@ templates:
   - category: "sporty-zimowe/narty/zjazdowe"
     productType: "Narty zjazdowe"
     taxClass: standard
+    description:
+      - "Narty zjazdowe do jazdy na stoku. Konstrukcja z rdzeniem drewnianym i warstwami laminatu łączy sztywność potrzebną na zakrętach z amortyzacją nierówności."
+      - "Narty sprzedajemy bez wiązań, które kupuje się osobno i dobiera do butów. Długość wybieraj według wzrostu, wagi i stylu jazdy. Jeśli jeździsz rekreacyjnie, w razie wątpliwości wybierz krótsze narty."
+    parameters:
+      - {name: "Wiązania", value: "Sprzedawane osobno"}
+      - {name: "Rdzeń", value: "Drewniany"}
     brands:
       - "Stavro"
       - "Vilmar"
     models:
       - name: "Stok 80"
         description: "Wszechstronne narty zjazdowe o szerokości 80 mm pod butem, na przygotowane trasy."
+        parameters:
+          - {name: "Szerokość pod butem", value: "80 mm"}
+          - {name: "Przeznaczenie", value: "Przygotowane trasy, jazda wszechstronna"}
       - name: "Carving 72"
         description: "Wąskie narty typu carving do dynamicznych skrętów na twardym śniegu."
+        parameters:
+          - {name: "Szerokość pod butem", value: "72 mm"}
+          - {name: "Przeznaczenie", value: "Dynamiczne skręty na twardym śniegu"}
       - name: "Freeride 100"
         description: "Szerokie narty do jazdy poza trasą, z rockerem w przodzie."
+        parameters:
+          - {name: "Szerokość pod butem", value: "100 mm"}
+          - {name: "Przeznaczenie", value: "Jazda poza trasą"}
+          - {name: "Rocker", value: "W przedniej części narty"}
+        fullDescription:
+          - "Freeride 100 to narty o szerokości 100 mm pod butem, stworzone do jazdy poza trasą, w głębokim śniegu i na nieprzygotowanych stokach. Rocker w przedniej części unosi dziób narty i ułatwia pływanie po puchu."
+          - "Rdzeń z drewna jesionu i topoli oraz warstwy laminatu zapewniają sztywność na zakrętach i tłumią drgania przy większej prędkości. Narty dobrze radzą sobie także na twardszym śniegu, choć najlepiej czują się poza trasami."
+          - "Narty sprzedajemy bez wiązań. Długość dobierz do wzrostu, wagi i stylu jazdy: do głębokiego śniegu zwykle wybiera się narty o długości zbliżonej do wzrostu."
     variantAxes: ["Kolor", "Długość"]
     axisValues:
       - ["grafitowe", "czerwone"]
@@ -532,14 +876,27 @@ templates:
   - category: "sporty-zimowe/narty/skiturowe"
     productType: "Narty skiturowe"
     taxClass: standard
+    description:
+      - "Narty skiturowe pozwalają wejść na szczyt i zjechać po świeżym śniegu poza trasami. Są lżejsze od nart zjazdowych, co ułatwia podejścia, a ich konstrukcja zapewnia dobrą kontrolę na zjeździe."
+      - "Na podejściach używa się fok przyklejanych do ślizgu, a na zjeździe zdejmuje się je i chowa. Wiązania skiturowe dobiera się do butów i techniki jazdy."
+    parameters:
+      - {name: "Przeznaczenie", value: "Skituring"}
+      - {name: "Podejścia", value: "Z użyciem fok przyklejanych do ślizgu"}
     brands:
       - "Stavro"
       - "Vilmar"
     models:
       - name: "Wejście 88"
         description: "Lekkie narty skiturowe z rdzeniem z drewna paulowni, na podejścia i zjazdy."
+        parameters:
+          - {name: "Szerokość pod butem", value: "88 mm"}
+          - {name: "Rdzeń", value: "Drewno paulowni"}
       - name: "Grań 95"
         description: "Narty skiturowe o szerokości 95 mm z rdzeniem kompozytowym do zmiennego śniegu."
+        parameters:
+          - {name: "Szerokość pod butem", value: "95 mm"}
+          - {name: "Rdzeń", value: "Kompozytowy"}
+          - {name: "Warunki", value: "Zmienny śnieg"}
     variantAxes: ["Kolor", "Długość"]
     axisValues:
       - ["niebieskie", "pomarańczowe"]
@@ -564,16 +921,32 @@ templates:
       - "rower/kaski-i-ochraniacze"
     productType: "Kask wielosportowy"
     taxClass: standard
+    description:
+      - "Kask do kilku sportów w jednym: zimą na stoku, a poza sezonem na rowerze. Skorupa i pianka amortyzują uderzenie, a regulacja obwodu pozwala dopasować kask do głowy w czapce lub bez."
+      - "Pasek podbródkowy zapina się jedną ręką, także w rękawicy. Wyściółka jest miękka i można ją wyprać. Po poważnym upadku kask należy wymienić."
+    parameters:
+      - {name: "Przeznaczenie", value: "Narciarstwo i jazda na rowerze"}
+      - {name: "Regulacja obwodu", value: "Pokrętłem"}
     brands:
       - "Stavro"
       - "Dravik"
     models:
       - name: "Zima 1"
         description: "Kask do narciarstwa i jazdy na rowerze z wymienną wyściółką i regulowaną wentylacją."
+        parameters:
+          - {name: "Wyściółka", value: "Wymienna"}
+          - {name: "Wentylacja", value: "Regulowana"}
       - name: "Zima 2"
         description: "Kask z lekką skorupą, certyfikowany do narciarstwa, snowboardu i jazdy na rowerze."
+        parameters:
+          - {name: "Skorupa", value: "Lekka"}
+          - {name: "Przeznaczenie", value: "Narciarstwo, snowboard i jazda na rowerze"}
+          - {name: "Norma", value: "EN 1077 i EN 1078"}
       - name: "Zima 3"
         description: "Kask z mocowaniem na gogle i odpinanymi nausznikami."
+        parameters:
+          - {name: "Gogle", value: "Mocowanie na gogle"}
+          - {name: "Nauszniki", value: "Odpinane"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarny", "biały", "niebieski"]
@@ -586,16 +959,34 @@ templates:
   - category: "sporty-zimowe/odziez"
     productType: "Kurtka narciarska"
     taxClass: standard
+    description:
+      - "Kurtka narciarska chroni przed śniegiem i wiatrem podczas jazdy na nartach. Membrana zatrzymuje wodę z zewnątrz, a jednocześnie wypuszcza parę wodną, więc kurtka nie staje się wilgotna od wewnątrz."
+      - "Ściągacz u dołu i mankiety z regulacją ograniczają przedostawanie się śniegu. Zamek jest osłonięty listwą przeciwwiatrową. Kurtkę wystarczy prać w niskiej temperaturze, bez płynu zmiękczającego."
+    parameters:
+      - {name: "Przeznaczenie", value: "Narciarstwo"}
+      - {name: "Pranie", value: "30 stopni, bez płynu zmiękczającego"}
     brands:
       - "Stavro"
       - "Vilmar"
     models:
       - name: "Śnieg 10"
         description: "Kurtka z membraną 10 000 mm i taśmowanymi szwami, ocieplona syntetycznym puchem."
+        parameters:
+          - {name: "Wodoodporność", value: "10 000 mm"}
+          - {name: "Szwy", value: "Taśmowane"}
+          - {name: "Ocieplenie", value: "Syntetyczny puch"}
       - name: "Lawina 15"
         description: "Kurtka z membraną 15 000 mm, kapturem na kask i kieszenią na karnet."
+        parameters:
+          - {name: "Wodoodporność", value: "15 000 mm"}
+          - {name: "Kaptur", value: "Na kask"}
+          - {name: "Kieszeń", value: "Na karnet"}
       - name: "Szczyt 20"
         description: "Kurtka skiturowa o wysokiej oddychalności z wentylacją pod pachami."
+        parameters:
+          - {name: "Wodoodporność", value: "20 000 mm"}
+          - {name: "Przeznaczenie", value: "Skituring"}
+          - {name: "Wentylacja", value: "Pod pachami"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czerwona", "granatowa", "czarna"]
@@ -608,14 +999,26 @@ templates:
   - category: "fitness/trening"
     productType: "Mata do ćwiczeń"
     taxClass: standard
+    description:
+      - "Mata do ćwiczeń na podłodze: jogi, pilatesu, rozciągania i treningu siłowego. Pianka amortyzuje nacisk na kolana, łokcie i kręgosłup."
+      - "Matę łatwo zwinąć i przenosić. Do czyszczenia wystarczy wilgotna ściereczka z łagodnym detergentem. Po rozwinięciu mata może przez kilka godzin zachowywać zagięcia."
+    parameters:
+      - {name: "Materiał", value: "Pianka"}
+      - {name: "Wymiary", value: "183 x 61 cm"}
     brands:
       - "Lumora"
       - "Dravik"
     models:
       - name: "Podłoże 6"
         description: "Mata o grubości 6 mm z antypoślizgową powierzchnią do jogi i ćwiczeń na podłodze."
+        parameters:
+          - {name: "Grubość", value: "6 mm"}
+          - {name: "Powierzchnia", value: "Antypoślizgowa"}
       - name: "Podłoże 10"
         description: "Gruba mata 10 mm chroniąca kolana i kręgosłup podczas ćwiczeń siłowych."
+        parameters:
+          - {name: "Grubość", value: "10 mm"}
+          - {name: "Przeznaczenie", value: "Ćwiczenia siłowe i ochrona kolan"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["fioletowa", "zielona", "szara"]
@@ -627,14 +1030,26 @@ templates:
   - category: "fitness/trening"
     productType: "Hantle regulowane"
     taxClass: standard
+    description:
+      - "Hantle regulowane zastępują kilka par stałych hantli. Obciążenie zmienia się przez dołożenie lub zdjęcie talerzy, więc ten sam zestaw służy zarówno początkującym, jak i bardziej zaawansowanym."
+      - "Talerze mocuje się na gryfie zaciskami, które trzeba dokręcić przed ćwiczeniem. Gryf jest rowkowany, aby hantle nie wyślizgiwały się z dłoni. Nie należy upuszczać hantli na podłogę."
+    parameters:
+      - {name: "Regulacja", value: "Talerze i zaciski"}
+      - {name: "Gryf", value: "Rowkowany"}
     brands:
       - "Lumora"
       - "Dravik"
     models:
       - name: "Para 10"
         description: "Para hantli z regulacją obciążenia do 10 kg każdy, z wygodnym chwytem."
+        parameters:
+          - {name: "Maksymalne obciążenie jednej hantli", value: "10 kg"}
+          - {name: "Zestaw", value: "Para hantli"}
       - name: "Para 24"
         description: "Para hantli z regulacją obciążenia do 24 kg każdy, w stojaku."
+        parameters:
+          - {name: "Maksymalne obciążenie jednej hantli", value: "24 kg"}
+          - {name: "Zestaw", value: "Para hantli ze stojakiem"}
     images:
       - file: "yoga-park-sunset.jpg"
         alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
@@ -643,16 +1058,33 @@ templates:
   - category: "fitness/odzywki/zywnosc-sportowa"
     productType: "Baton energetyczny"
     taxClass: energy_bar
+    description:
+      - "Baton energetyczny to przekąska na wysiłek: przed treningiem, w trakcie i po nim. Zmieści się w kieszeni koszulki i nie wymaga przechowywania w lodówce."
+      - "Przechowuj baton w suchym miejscu, z dala od słońca. Produkt może zawierać orzechy i ślady innych alergenów; szczegółowy skład jest na opakowaniu."
+    parameters:
+      - {name: "Przeznaczenie", value: "Przekąska sportowa"}
+      - {name: "Przechowywanie", value: "Suche miejsce, bez słońca"}
     brands:
       - "Pyrko"
       - "Lumora"
     models:
       - name: "Owsiany"
         description: "Baton owsiany z orzechami i miodem, szybkie źródło energii przed treningiem."
+        parameters:
+          - {name: "Główne składniki", value: "Płatki owsiane, orzechy i miód"}
+          - {name: "Masa netto", value: "40 g"}
       - name: "Daktylowy"
         description: "Baton z daktyli i migdałów bez dodatku cukru."
+        parameters:
+          - {name: "Główne składniki", value: "Daktyle i migdały"}
+          - {name: "Cukier", value: "Bez dodatku cukru"}
+          - {name: "Masa netto", value: "45 g"}
       - name: "Proteinowy"
         description: "Baton z dużą zawartością białka i niską zawartością cukrów, 50 g."
+        parameters:
+          - {name: "Masa netto", value: "50 g"}
+          - {name: "Białko", value: "Wysoka zawartość"}
+          - {name: "Cukry", value: "Niska zawartość"}
     variantAxes: ["Smak"]
     axisValues:
       - ["czekoladowy", "orzechowy", "owocowy"]
@@ -667,14 +1099,26 @@ templates:
       - "rower/akcesoria"
     productType: "Żel energetyczny"
     taxClass: energy_gel
+    description:
+      - "Żel energetyczny dostarcza węglowodanów w trakcie długiego wysiłku, gdy nie ma czasu na posiłek. Saszetka otwiera się jedną ręką, a żel można połknąć w biegu. Zaleca się popić go wodą."
+      - "Przechowuj saszetki w suchym miejscu. Produkt nie zastępuje zróżnicowanej diety. Osoby wrażliwe na kofeinę powinny sprawdzić skład na opakowaniu."
+    parameters:
+      - {name: "Opakowanie", value: "Saszetka"}
+      - {name: "Przeznaczenie", value: "Odżywianie w trakcie wysiłku"}
     brands:
       - "Pyrko"
       - "Lumora"
     models:
       - name: "Start"
         description: "Żel z węglowodanami o szybkim wchłanianiu, saszetka 40 g, do spożycia w trakcie wysiłku."
+        parameters:
+          - {name: "Masa saszetki", value: "40 g"}
+          - {name: "Główny składnik", value: "Węglowodany o szybkim wchłanianiu"}
       - name: "Dystans"
         description: "Żel z dodatkiem sodu i kofeiny na długie wysiłki, saszetka 60 g."
+        parameters:
+          - {name: "Masa saszetki", value: "60 g"}
+          - {name: "Dodatki", value: "Sód i kofeina"}
     variantAxes: ["Smak"]
     axisValues:
       - ["cytrynowy", "malinowy", "pomarańczowy"]
@@ -686,14 +1130,28 @@ templates:
   - category: "fitness/odzywki/suplementy"
     productType: "Odżywka białkowa"
     taxClass: protein_powder
+    description:
+      - "Odżywka białkowa w proszku uzupełnia dzienne zapotrzebowanie na białko u osób, które trenują. Rozpuszcza się w wodzie lub wybranym napoju po wstrząśnięciu w shakerze."
+      - "Zalecaną porcję i skład podaje etykieta na opakowaniu. Produkt przechowuj w suchym miejscu, szczelnie zamknięty. Odżywka nie zastępuje zróżnicowanej diety."
+    parameters:
+      - {name: "Postać", value: "Proszek"}
+      - {name: "Przechowywanie", value: "Szczelnie zamknięte, w suchym miejscu"}
     brands:
       - "Lumora"
       - "Pyrko"
     models:
       - name: "Serwatka 900"
         description: "Koncentrat białka serwatkowego, opakowanie 900 g, około 30 porcji."
+        parameters:
+          - {name: "Masa opakowania", value: "900 g"}
+          - {name: "Źródło białka", value: "Serwatka"}
+          - {name: "Liczba porcji", value: "Około 30"}
       - name: "Roślinna 750"
         description: "Odżywka białkowa z grochu i ryżu, opakowanie 750 g, bez laktozy."
+        parameters:
+          - {name: "Masa opakowania", value: "750 g"}
+          - {name: "Źródło białka", value: "Groch i ryż"}
+          - {name: "Laktoza", value: "Bez laktozy"}
     variantAxes: ["Smak"]
     axisValues:
       - ["czekoladowa", "waniliowa", "truskawkowa"]
@@ -705,14 +1163,28 @@ templates:
   - category: "fitness/odzywki/suplementy"
     productType: "Elektrolity w tabletkach"
     taxClass: electrolyte_tablet
+    description:
+      - "Tabletki musujące rozpuszcza się w wodzie, co daje napój uzupełniający elektrolity utracone z potem. Sprawdzają się podczas treningów i zawodów oraz w upalne dni."
+      - "Jedną tabletkę rozpuszcza się w około 500 ml wody. Tubę należy szczelnie zamykać, żeby tabletki nie wchłaniały wilgoci. Produkt nie zastępuje zróżnicowanej diety."
+    parameters:
+      - {name: "Postać", value: "Tabletki musujące"}
+      - {name: "Rozpuszczanie", value: "Jedna tabletka w 500 ml wody"}
     brands:
       - "Lumora"
       - "Pyrko"
     models:
       - name: "Nawodnienie 20"
         description: "Tabletki musujące z elektrolitami, 20 sztuk w tubie, uzupełniają sód i magnez."
+        parameters:
+          - {name: "Liczba tabletek", value: "20"}
+          - {name: "Opakowanie", value: "Jedna tuba"}
+          - {name: "Składniki", value: "Sód i magnez"}
       - name: "Nawodnienie 40"
         description: "Tabletki musujące z elektrolitami i witaminą C, 40 sztuk w dwóch tubach."
+        parameters:
+          - {name: "Liczba tabletek", value: "40"}
+          - {name: "Opakowanie", value: "Dwie tuby"}
+          - {name: "Składniki", value: "Sód, magnez i witamina C"}
     variantAxes: ["Smak"]
     axisValues:
       - ["cytrynowe", "pomarańczowe"]
@@ -724,16 +1196,35 @@ templates:
   - category: "sporty-wodne/sup"
     productType: "Deska SUP"
     taxClass: standard
+    description:
+      - "Deska SUP do pływania na stojąco z wiosłem po jeziorach, zalewach i spokojnych rzekach. Konstrukcja pompowana składa się do niewielkich rozmiarów i mieści się w bagażniku samochodu."
+      - "Przed użyciem deskę trzeba napompować do zalecanego ciśnienia. Do pływania potrzebne są wiosło i smycz, a zaleca się też kamizelkę asekuracyjną."
+      - "Po pływaniu deskę należy osuszyć przed zwinięciem i przechowywać w suchym miejscu, z dala od źródeł ciepła."
+    parameters:
+      - {name: "Konstrukcja", value: "Pompowana"}
+      - {name: "Zalecane ciśnienie", value: "15 PSI"}
     brands:
       - "Vilmar"
       - "Dravik"
     models:
       - name: "Jezioro 10"
         description: "Pompowana deska 10 stóp do spokojnych wycieczek, w zestawie pompka i plecak."
+        parameters:
+          - {name: "Długość", value: "10 stóp (około 305 cm)"}
+          - {name: "Zestaw", value: "Pompka i plecak"}
+          - {name: "Przeznaczenie", value: "Spokojne wycieczki"}
       - name: "Jezioro 11"
         description: "Stabilna deska 11 stóp o większej nośności, na dłuższe trasy."
+        parameters:
+          - {name: "Długość", value: "11 stóp (około 335 cm)"}
+          - {name: "Nośność", value: "Do 130 kg"}
+          - {name: "Przeznaczenie", value: "Dłuższe trasy"}
       - name: "Wyścig 12"
         description: "Wąska deska 12 stóp o dobrym ślizgu, na szybkie przepłynięcia."
+        parameters:
+          - {name: "Długość", value: "12 stóp (około 366 cm)"}
+          - {name: "Kształt", value: "Wąska deska o dobrym ślizgu"}
+          - {name: "Przeznaczenie", value: "Szybkie przepłynięcia"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["niebieska", "turkusowa"]
@@ -745,14 +1236,29 @@ templates:
   - category: "sporty-wodne/kajaki"
     productType: "Kajak turystyczny"
     taxClass: standard
+    description:
+      - "Pompowany kajak turystyczny do pływania po jeziorach i spokojnych rzekach. Po opróżnieniu z powietrza składa się do rozmiaru dużego plecaka, więc łatwo go przewieźć i przechować w mieszkaniu."
+      - "W zestawie są pompka i torba transportowa. Dno wzmocniono warstwą odporną na przetarcia. Kajak nie jest przeznaczony do wody o dużej fali."
+      - "Po pływaniu kajak trzeba dokładnie wysuszyć przed złożeniem."
+    parameters:
+      - {name: "Konstrukcja", value: "Pompowana"}
+      - {name: "Zestaw", value: "Pompka i torba transportowa"}
     brands:
       - "Vilmar"
       - "Dravik"
     models:
       - name: "Rzeka 1"
         description: "Jednoosobowy pompowany kajak turystyczny, stabilny i odporny na przetarcia."
+        parameters:
+          - {name: "Liczba osób", value: "1"}
+          - {name: "Stabilność", value: "Wysoka"}
+          - {name: "Dno", value: "Odporne na przetarcia"}
       - name: "Rzeka 2"
         description: "Dwuosobowy kajak pompowany z dwoma siedziskami i bagażnikiem na dziobie."
+        parameters:
+          - {name: "Liczba osób", value: "2"}
+          - {name: "Siedziska", value: "Dwa"}
+          - {name: "Bagażnik", value: "Na dziobie"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["pomarańczowy", "zielony"]
@@ -785,16 +1291,34 @@ templates:
   - category: "sporty-wodne/plywanie/okulary"
     productType: "Okulary pływackie"
     taxClass: standard
+    description:
+      - "Okulary pływackie chronią oczy przed wodą i zapewniają ostry obraz pod wodą. Miękkie uszczelki przylegają do okolicy oczu i nie ocierają skóry nawet podczas dłuższego treningu."
+      - "Silikonowa opaska z regulacją trzyma okulary na głowie także podczas startu ze słupka. Po pływaniu przepłucz okulary czystą wodą i nie dotykaj soczewek palcami, żeby ich nie porysować."
+    parameters:
+      - {name: "Opaska", value: "Silikonowa, regulowana"}
+      - {name: "Uszczelki", value: "Miękkie"}
     brands:
       - "Vilmar"
       - "Lumora"
     models:
       - name: "Basen"
         description: "Okulary treningowe z powłoką przeciwmgielną i regulowanym mostkiem."
+        parameters:
+          - {name: "Przeznaczenie", value: "Trening na basenie"}
+          - {name: "Powłoka", value: "Przeciwmgielna"}
+          - {name: "Mostek nosowy", value: "Regulowany"}
       - name: "Jezioro"
         description: "Okulary do pływania na otwartej wodzie z szerokim polem widzenia i polaryzacją."
+        parameters:
+          - {name: "Przeznaczenie", value: "Pływanie na otwartej wodzie"}
+          - {name: "Pole widzenia", value: "Szerokie"}
+          - {name: "Soczewki", value: "Polaryzacyjne"}
       - name: "Sprint"
         description: "Niskoprofilowe okulary startowe o niskim oporze wody."
+        parameters:
+          - {name: "Przeznaczenie", value: "Starty i zawody"}
+          - {name: "Profil", value: "Niskoprofilowe"}
+          - {name: "Opór wody", value: "Niski"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["czarne", "niebieskie", "przydymione"]
@@ -804,14 +1328,29 @@ templates:
   - category: "sporty-wodne/plywanie/pianki"
     productType: "Pianka pływacka"
     taxClass: standard
+    description:
+      - "Pianka neoprenowa chroni przed utratą ciepła podczas pływania w otwartej wodzie. Neopren izoluje ciało od zimnej wody, a dopasowana pianka ogranicza napływ wody pod spód."
+      - "Zamek na plecach z linką ułatwia zakładanie. Piankę zakłada się na suche ciało i zdejmuje, zaczynając od ramion. Po pływaniu należy ją przepłukać słodką wodą i suszyć w cieniu, na wieszaku."
+    parameters:
+      - {name: "Materiał", value: "Neopren"}
+      - {name: "Zamek", value: "Na plecach"}
+      - {name: "Przeznaczenie", value: "Pływanie na otwartej wodzie"}
     brands:
       - "Vilmar"
       - "Lumora"
     models:
       - name: "Cieplej 3"
         description: "Pianka neoprenowa 3 mm do pływania w chłodnych jeziorach, z elastycznymi ramionami."
+        parameters:
+          - {name: "Grubość neoprenu", value: "3 mm"}
+          - {name: "Ramiona", value: "Elastyczne"}
+          - {name: "Temperatura wody", value: "Chłodna"}
       - name: "Cieplej 5"
         description: "Gruba pianka 5 mm na zimną wodę, z uszczelnionymi mankietami."
+        parameters:
+          - {name: "Grubość neoprenu", value: "5 mm"}
+          - {name: "Mankiety", value: "Uszczelnione"}
+          - {name: "Temperatura wody", value: "Zimna"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarna", "grafitowa"]
@@ -822,6 +1361,11 @@ templates:
   - category: "sporty-druzynowe/pilki/nozna"
     productType: "Piłka nożna"
     taxClass: standard
+    description:
+      - "Piłka nożna o regularnym kształcie i stabilnym odbiciu. Powłoka z syntetycznej skóry jest odporna na uszkodzenia, a zawór dobrze utrzymuje ciśnienie."
+      - "Przed użyciem piłkę należy napompować do ciśnienia wskazanego na zaworze. Po grze wytrzyj ją z błota wilgotną szmatką i przechowuj w temperaturze pokojowej, lekko napompowaną."
+    parameters:
+      - {name: "Powłoka", value: "Syntetyczna skóra"}
     brands:
       - "Dravik"
       - "Stavro"
@@ -829,10 +1373,23 @@ templates:
     models:
       - name: "Trening 5"
         description: "Piłka treningowa rozmiar 5, odporna na przetarcia, do gry na trawie i sztucznej nawierzchni."
+        parameters:
+          - {name: "Rozmiar piłki", value: "5"}
+          - {name: "Nawierzchnia", value: "Trawa i sztuczna nawierzchnia"}
+          - {name: "Odporność", value: "Odporna na przetarcia"}
+          - {name: "Przeznaczenie", value: "Trening"}
       - name: "Mecz 5"
         description: "Piłka meczowa rozmiar 5 ze zgrzewanymi panelami o stałym odbiciu."
+        parameters:
+          - {name: "Rozmiar piłki", value: "5"}
+          - {name: "Panele", value: "Zgrzewane"}
+          - {name: "Przeznaczenie", value: "Mecze"}
       - name: "Junior 4"
         description: "Piłka rozmiar 4 dla młodzieży do 12 lat."
+        parameters:
+          - {name: "Rozmiar piłki", value: "4"}
+          - {name: "Wiek", value: "Młodzież do 12 lat"}
+          - {name: "Przeznaczenie", value: "Gra i trening młodzieży"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["biała", "pomarańczowa"]
@@ -842,16 +1399,32 @@ templates:
   - category: "sporty-druzynowe/pilki/nozna"
     productType: "Buty piłkarskie"
     taxClass: standard
+    description:
+      - "Buty piłkarskie zapewniają przyczepność na nawierzchni, na której gra się w piłkę. Cholewka układa się wokół stopy i pozwala czuć piłkę, a sznurowanie utrzymuje but stabilnie podczas zwrotów."
+      - "Przed pierwszym meczem warto rozchodzić buty na treningu. Po grze zdejmij zabrudzenia szczotką i wysusz buty w temperaturze pokojowej, z dala od kaloryfera."
+    parameters:
+      - {name: "Cholewka", value: "Syntetyczna"}
+      - {name: "Sznurowanie", value: "Tradycyjne"}
     brands:
       - "Dravik"
       - "Stavro"
     models:
       - name: "Murawa"
         description: "Korki na naturalną trawę z lekkim, elastycznym zapiętkiem."
+        parameters:
+          - {name: "Nawierzchnia", value: "Naturalna trawa"}
+          - {name: "Podeszwa", value: "Korki"}
+          - {name: "Zapiętek", value: "Lekki i elastyczny"}
       - name: "Orlik"
         description: "Buty na sztuczną nawierzchnię z gumową podeszwą i licznymi nopami."
+        parameters:
+          - {name: "Nawierzchnia", value: "Sztuczna trawa"}
+          - {name: "Podeszwa", value: "Guma z licznymi nopami"}
       - name: "Hala"
         description: "Buty halowe z płaską podeszwą antypoślizgową."
+        parameters:
+          - {name: "Nawierzchnia", value: "Hala"}
+          - {name: "Podeszwa", value: "Płaska, antypoślizgowa"}
     variantAxes: ["Kolor", "Rozmiar"]
     axisValues:
       - ["czarne", "niebieskie"]
@@ -862,14 +1435,27 @@ templates:
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka siatkowa"
     taxClass: standard
+    description:
+      - "Piłka do siatkówki ma kształt i wagę zgodne z wymaganiami gry w siatkówkę. Miękka powłoka amortyzuje uderzenie dłoni, a regularne panele nadają piłce stabilny tor lotu."
+      - "Piłkę należy napompować do ciśnienia podanego na zaworze. Nie zostawiaj jej w nagrzanym samochodzie ani w pobliżu źródeł ciepła."
+    parameters:
+      - {name: "Rozmiar piłki", value: "5"}
+      - {name: "Masa", value: "Około 270 g"}
     brands:
       - "Dravik"
       - "Stavro"
     models:
       - name: "Trening"
         description: "Piłka do siatkówki na treningi i gry rekreacyjne, odporna na wilgoć, o miękkim chwycie."
+        parameters:
+          - {name: "Przeznaczenie", value: "Treningi i gry rekreacyjne"}
+          - {name: "Odporność", value: "Odporna na wilgoć"}
+          - {name: "Chwyt", value: "Miękki"}
       - name: "Hala"
         description: "Piłka halowa ze zszywanymi panelami, rozmiar 5, do treningów klubowych."
+        parameters:
+          - {name: "Przeznaczenie", value: "Treningi klubowe w hali"}
+          - {name: "Panele", value: "Zszywane"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["biało-niebieska", "żółto-niebieska"]
@@ -879,14 +1465,27 @@ templates:
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka koszykowa"
     taxClass: standard
+    description:
+      - "Piłka do koszykówki z żłobkowaną powierzchnią, która poprawia chwyt i kontrolę przy prowadzeniu i rzucie. Wewnętrzny pęcherz dobrze zatrzymuje powietrze, więc nie trzeba często dopompowywać piłki."
+      - "Przed użyciem napompuj piłkę do ciśnienia wskazanego na zaworze. Po grze na zewnątrz wytrzyj ją z kurzu i wilgoci."
+    parameters:
+      - {name: "Powierzchnia", value: "Żłobkowana"}
     brands:
       - "Dravik"
       - "Stavro"
     models:
       - name: "Boisko 7"
         description: "Piłka rozmiar 7 do gry na zewnątrz, ze wzmocnioną kompozytową powłoką."
+        parameters:
+          - {name: "Rozmiar piłki", value: "7"}
+          - {name: "Powłoka", value: "Wzmocniona, kompozytowa"}
+          - {name: "Przeznaczenie", value: "Gra na zewnątrz"}
       - name: "Hala 6"
         description: "Piłka rozmiar 6 do gry w hali, o dobrej przyczepności."
+        parameters:
+          - {name: "Rozmiar piłki", value: "6"}
+          - {name: "Przeznaczenie", value: "Gra w hali"}
+          - {name: "Przyczepność", value: "Dobra"}
     variantAxes: ["Kolor"]
     axisValues:
       - ["pomarańczowa", "brązowa"]

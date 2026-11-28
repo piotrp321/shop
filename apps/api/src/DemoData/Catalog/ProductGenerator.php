@@ -16,12 +16,19 @@ use App\DemoData\Random\Prng;
  *
  * Everything that is random is drawn in a fixed order from the stream of the part; everything else is a function of the
  * index: the ids (UUID v5 `product:<i>`, `variant:<i>:<k>`), the slug (the Catalog slug of the name and `-<i + 1>`, so
- * it is unique by construction) and whether the product has photos (every 50th has none). Times are counted from the
- * anchor: the products are published over the 1140 days that end 16 days before it, in the order of their indexes.
+ * it is unique by construction), the SKU and the EAN of a variant (VariantCodes) and whether the product has photos
+ * (every 50th has none). Times are counted from the anchor: the products are published over the 1140 days that end 16
+ * days before it, in the order of their indexes.
+ *
+ * The brand, the long description and the parameters (docs/features/product-data/spec.md, "Dane demo") come from a
+ * stream of their own (`catalog-content`, the same part): they never move a draw of the stream of the part, so the
+ * ids, slugs, names, short descriptions, variants and prices of a profile are the ones the generator gave before they
+ * existed. The brand is the one the name already carries.
  */
 final class ProductGenerator
 {
     public const string STREAM = 'catalog';
+    public const string CONTENT_STREAM = 'catalog-content';
     public const int IMAGELESS_EVERY = 50;
     public const float DRAFT_SHARE = 0.02;
     public const float ADDITIONAL_CATEGORY_SHARE = 0.2;
@@ -61,8 +68,9 @@ final class ProductGenerator
         $first = $part * $this->partSize;
         $last = min($first + $this->partSize, $this->total);
         $prng = Prng::forPart($this->namespace, self::STREAM, $part);
+        $content = Prng::forPart($this->namespace, self::CONTENT_STREAM, $part);
         for ($index = $first; $index < $last; ++$index) {
-            yield $this->product($index, $prng);
+            yield $this->product($index, $prng, $content);
         }
     }
 
@@ -81,7 +89,7 @@ final class ProductGenerator
         return min($this->total, intdiv($seconds * $this->total, self::PUBLICATION_SPAN_DAYS * 86_400));
     }
 
-    private function product(int $index, Prng $prng): ProductSpec
+    private function product(int $index, Prng $prng, Prng $content): ProductSpec
     {
         $type = $this->types[$prng->weighted($this->typeWeights)];
         $department = $type->department();
@@ -99,7 +107,7 @@ final class ProductGenerator
             }
         }
 
-        $description = $this->description($name, $type, $department, $prng);
+        $shortDescription = $this->shortDescription($name, $type, $department, $prng);
 
         $jitter = $prng->int(0, 86_399);
         if ($draft) {
@@ -116,7 +124,10 @@ final class ProductGenerator
             DemoUuid::v5($this->namespace, 'product:'.$index),
             $name,
             Slug::slugify($name).'-'.($index + 1),
-            $description,
+            $shortDescription,
+            $brand,
+            $this->description($type, $department, $content),
+            $this->parameters($type, $content),
             CategoryTree::leafId($this->namespace, $type->leaf),
             $additional,
             $type->taxClass->value,
@@ -164,6 +175,8 @@ final class ProductGenerator
                 $position,
                 $values,
                 json_encode(VariantValues::fromList($values)->comparisonKey(), \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR),
+                VariantCodes::sku($index, $position),
+                VariantCodes::ean($index, $position),
             );
         }
 
@@ -195,7 +208,7 @@ final class ProductGenerator
         return $combinations;
     }
 
-    private function description(string $name, ProductType $type, string $department, Prng $prng): string
+    private function shortDescription(string $name, ProductType $type, string $department, Prng $prng): string
     {
         $features = $prng->shuffle($type->features);
         $features = \array_slice($features, 0, $prng->chance(0.5) ? 3 : 2);
@@ -203,5 +216,44 @@ final class ProductGenerator
         $list = [] === $features ? $last : implode(', ', $features).' i '.$last;
 
         return $name.': '.$list.'. '.$prng->pick($this->dictionaries->closings($department));
+    }
+
+    /**
+     * The long description: two paragraphs (three sentences of the department, then the features of the type) or three
+     * (two sentences, the features, two sentences), joined by an empty line. Every sentence of a department is 80 to 115
+     * characters and a type has three features, so the text is 300 to 600 characters whatever is drawn (DictionariesTest).
+     */
+    private function description(ProductType $type, string $department, Prng $content): string
+    {
+        $sentences = $content->shuffle($this->dictionaries->sentences($department));
+        $features = $content->shuffle($type->features);
+        $last = array_pop($features);
+        $featureParagraph = 'Cechy: '.([] === $features ? '' : implode(', ', $features).' i ').$last.'.';
+
+        if ($content->chance(0.5)) {
+            return implode("\n\n", [implode(' ', \array_slice($sentences, 0, 3)), $featureParagraph]);
+        }
+
+        return implode("\n\n", [implode(' ', \array_slice($sentences, 0, 2)), $featureParagraph, implode(' ', \array_slice($sentences, 2, 2))]);
+    }
+
+    /**
+     * Three to six parameters of the set of the type, in the order of the set, each with one of its values.
+     *
+     * @return list<array{name: string, value: string}>
+     */
+    private function parameters(ProductType $type, Prng $content): array
+    {
+        $count = $content->int(3, min(6, \count($type->parameters)));
+        $chosen = \array_slice($content->shuffle(range(0, \count($type->parameters) - 1)), 0, $count);
+        sort($chosen);
+
+        $parameters = [];
+        foreach ($chosen as $position) {
+            $parameter = $type->parameters[$position];
+            $parameters[] = ['name' => $parameter->name, 'value' => $content->pick($parameter->values)];
+        }
+
+        return $parameters;
     }
 }

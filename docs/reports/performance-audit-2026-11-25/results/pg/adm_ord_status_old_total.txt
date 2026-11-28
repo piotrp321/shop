@@ -1,0 +1,76 @@
+-- adm_ord_status_old_total
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count FROM ordering_order o WHERE o.status='shipped' AND o.placed_at < '2024-01-01' ORDER BY o.total_gross DESC, o.id DESC LIMIT 50
+
+SET
+SET
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=404.36..829.89 rows=50 width=108) (actual time=0.245..0.251 rows=0.00 loops=1)
+   Buffers: shared hit=7 read=2
+   ->  Result  (cost=404.36..1697.98 rows=152 width=108) (actual time=0.244..0.246 rows=0.00 loops=1)
+         Buffers: shared hit=7 read=2
+         ->  Sort  (cost=404.36..404.74 rows=152 width=100) (actual time=0.244..0.244 rows=0.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=7 read=2
+               ->  Index Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..399.31 rows=152 width=100) (actual time=0.224..0.225 rows=0.00 loops=1)
+                     Index Cond: (((status)::text = 'shipped'::text) AND (placed_at < '2024-01-01 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=1 read=2
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning:
+   Buffers: shared hit=421
+ Planning Time: 0.715 ms
+ Execution Time: 0.289 ms
+(21 rows)
+
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=404.36..829.89 rows=50 width=108) (actual time=0.009..0.009 rows=0.00 loops=1)
+   Buffers: shared hit=3
+   ->  Result  (cost=404.36..1697.98 rows=152 width=108) (actual time=0.008..0.009 rows=0.00 loops=1)
+         Buffers: shared hit=3
+         ->  Sort  (cost=404.36..404.74 rows=152 width=100) (actual time=0.008..0.008 rows=0.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=3
+               ->  Index Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..399.31 rows=152 width=100) (actual time=0.007..0.007 rows=0.00 loops=1)
+                     Index Cond: (((status)::text = 'shipped'::text) AND (placed_at < '2024-01-01 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=3
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning Time: 0.108 ms
+ Execution Time: 0.027 ms
+(19 rows)
+
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=404.36..829.89 rows=50 width=108) (actual time=0.005..0.006 rows=0.00 loops=1)
+   Buffers: shared hit=3
+   ->  Result  (cost=404.36..1697.98 rows=152 width=108) (actual time=0.005..0.005 rows=0.00 loops=1)
+         Buffers: shared hit=3
+         ->  Sort  (cost=404.36..404.74 rows=152 width=100) (actual time=0.005..0.005 rows=0.00 loops=1)
+               Sort Key: o.total_gross DESC, o.id DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=3
+               ->  Index Scan using ordering_order_status_placed_at_id_idx on ordering_order o  (cost=0.42..399.31 rows=152 width=100) (actual time=0.004..0.004 rows=0.00 loops=1)
+                     Index Cond: (((status)::text = 'shipped'::text) AND (placed_at < '2024-01-01 00:00:00+00'::timestamp with time zone))
+                     Index Searches: 1
+                     Buffers: shared hit=3
+         SubPlan 1
+           ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 0
+ Planning Time: 0.064 ms
+ Execution Time: 0.014 ms
+(19 rows)
+

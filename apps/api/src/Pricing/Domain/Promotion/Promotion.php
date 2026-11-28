@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Pricing\Domain\Promotion;
 
 use App\Pricing\Domain\Price\VariantId;
+use App\Shared\Domain\Text;
 
 /**
  * A planned discount of a percent on a list of variants for a period (decisions Q2, Q3, Q5). The status is not stored,
@@ -246,18 +247,21 @@ final class Promotion
     }
 
     /**
+     * The name of a promotion by the rule of the aggregate, also for the checks that run before a write (the demo
+     * seed): the name as the promotion keeps it.
+     *
      * @throws InvalidPromotion
      */
-    private static function validName(string $name): string
+    public static function validName(string $name): string
     {
-        // The encoding first: a pattern with /u does not match invalid UTF-8 at all (preg_replace returns null).
-        if (!mb_check_encoding($name, 'UTF-8')) {
+        // The rule of texts (Text): a forbidden character anywhere in the name as it came, then the ends trimmed of
+        // Unicode white space and invisible characters; a name without a visible character is empty. The name keeps
+        // the format characters next to a visible one (the joiner of an emoji, the tags of a flag at its end).
+        if (Text::hasForbiddenCharacters($name)) {
             throw InvalidPromotion::name();
         }
-        // Trimmed at the ends only, of every Unicode space and invisible format character (zero width space, BOM);
-        // inside the name a format character stays (the joiner of an emoji), a line or paragraph separator does not.
-        $name = preg_replace('/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/u', '', $name);
-        if (null === $name || '' === $name || mb_strlen($name) > self::MAX_NAME_LENGTH || 1 === preg_match('/[\p{Cc}\p{Zl}\p{Zp}]/u', $name)) {
+        $name = Text::normalize($name);
+        if ('' === $name || mb_strlen($name) > self::MAX_NAME_LENGTH) {
             throw InvalidPromotion::name();
         }
 

@@ -7,6 +7,9 @@ namespace App\Tests\Unit\Catalog\Domain;
 use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductNotPublishable;
+use App\Catalog\Domain\Product\SkuAlreadyTaken;
+use App\Catalog\Domain\Product\SkuRepeated;
+use App\Catalog\Domain\Product\SkuUsedByAnotherProduct;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
@@ -33,6 +36,7 @@ final class ProductProblemsTest extends TestCase
     public static function conflicts(): iterable
     {
         yield 'slug taken' => [static fn (): \Throwable => new SlugAlreadyTaken(), 'slug-taken', 'Ten slug ma już inny produkt. Podaj własny slug.'];
+        yield 'sku taken' => [static fn (): \Throwable => new SkuAlreadyTaken(), 'sku-taken', 'Kod SKU jest już używany przez inny produkt.'];
         yield 'slug locked' => [static fn (): \Throwable => new SlugLocked(), 'slug-locked', 'Slug produktu nie może się zmienić po pierwszej publikacji.'];
         yield 'product modified' => [
             static fn (): \Throwable => new ProductModifiedConcurrently(),
@@ -46,7 +50,7 @@ final class ProductProblemsTest extends TestCase
             'Po pierwszej publikacji nie można dodać, usunąć ani przestawić osi wariantów.',
         ];
         yield 'variant in use' => [
-            static fn (): \Throwable => new VariantInUse('czarne, 42'),
+            static fn (): \Throwable => new VariantInUse(['czarne', '42']),
             'variant-in-use',
             'Wariant „czarne, 42” ma stan magazynowy albo rezerwacje. Najpierw skoryguj stan do zera.',
         ];
@@ -75,6 +79,8 @@ final class ProductProblemsTest extends TestCase
         yield 'unknown variant' => [static fn (): \Throwable => new UnknownVariant(3), 'Wariant nie należy do tego produktu.'];
         yield 'image not found' => [static fn (): \Throwable => new ImageNotFound(1), 'Nie ma takiego zdjęcia. Wyślij plik ponownie.'];
         yield 'unknown category' => [static fn (): \Throwable => new UnknownCategory(null), 'Kategoria nie istnieje.'];
+        yield 'sku repeated' => [static fn (): \Throwable => new SkuRepeated(2), 'Ten kod SKU powtarza się w produkcie.'];
+        yield 'sku used by another product' => [static fn (): \Throwable => new SkuUsedByAnotherProduct(2), 'Kod SKU jest już używany przez inny produkt.'];
         yield 'slug required' => [static fn (): \Throwable => new SlugRequired(), 'Podaj slug.'];
     }
 

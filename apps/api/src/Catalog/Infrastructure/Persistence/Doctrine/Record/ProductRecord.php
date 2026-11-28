@@ -42,6 +42,16 @@ class ProductRecord
     #[ORM\Column(length: 500)]
     public string $shortDescription;
 
+    #[ORM\Column(length: 60, options: ['default' => ''])]
+    public string $brand = '';
+
+    #[ORM\Column(type: Types::TEXT, options: ['default' => ''])]
+    public string $description = '';
+
+    /** @var list<array{name: string, value: string}> in presentation order */
+    #[ORM\Column(type: Types::JSONB, options: ['default' => '[]'])]
+    public array $parameters = [];
+
     #[ORM\ManyToOne(targetEntity: CategoryRecord::class)]
     #[ORM\JoinColumn(name: 'primary_category_id', referencedColumnName: 'id', nullable: false)]
     public CategoryRecord $primaryCategory;
