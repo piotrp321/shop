@@ -158,15 +158,32 @@ spec:
                 drop_counter_reason = "postgres_detail_statement"
               }
 
-              // The main message of a data error of Postgres (SQLSTATE class 22: invalid input syntax for type ..., invalid input value for
-              // enum ..., value "..." is out of range, ...) carries the value of the input in quotes after a colon or after `value`. Everything
-              // after the opening quote up to the end of the line is replaced, not up to the closing quote: the value is not escaped in the
-              // message, so a quote, a backslash or the text of another message inside it would end the match too early. The text before the
-              // quote (the kind of error, the type) stays, and so do the names of constraints, columns, relations and tables, which are
-              // not after a colon or `value` (violates unique constraint "uniq_customer_email").
+              // The main message of an error of Postgres has the value of the input in a literal in quotes, and the formats of the
+              // messages differ (invalid input syntax for type integer: "x", value "x" is out of range, "x" is out of range for type
+              // real, time zone "x" not recognized, ...): of the 2000 formats of the server with a quoted %s the ones with the name of an
+              // object (constraint, column, relation, table, ...) are the ones that must stay, so the rule is the other way round. Every
+              // quote of the message of an error is a value unless the word before it names an object; the first such quote and
+              // everything after it up to the end of the line (in the log of the API: up to the end of the string of JSON, where the quotes
+              // are escaped) are replaced. Up to the end, not up to the closing quote, because the value is not escaped in the message,
+              // so a quote, a backslash or the text of another message inside it would end the match too early. The text before the
+              // quote stays (the kind of error, the type), and so do the names (violates unique constraint "uniq_customer_email").
+              // Three stages: the quote after a name of an object is marked (the space before it becomes U+0001), the first quote
+              // that is not marked and its tail are replaced, and the mark becomes the space again before any other stage.
               stage.replace {
-                expression = `(?:^|\]\s)\s*(?:ERROR|FATAL|PANIC|WARNING):\s+[^\n]*?(?::\s+|\bvalue\s+)"(.*)$`
+                expression = `(?i)\b(?:column|relation|table|index|constraint|type|function|schema|database|role|user|sequence|view|trigger|extension|parameter|cursor|portal|statement|domain|language|collation|policy|rule|savepoint|tablespace|publication|subscription)( )\\?"`
+                replace    = "\u0001"
+              }
+              stage.replace {
+                expression = `(?:^|\]\s)\s*(?:ERROR|FATAL|PANIC|WARNING):\s+(?:[^"\x01]|\x01"[^"]*")*"(.*)$`
                 replace    = "[REDACTED]"
+              }
+              stage.replace {
+                expression = `\bERROR:\s+(?:[^"\\\x01]|\\[^"]|\x01\\"(?:[^"\\]|\\[^"])*\\")*\\"((?:[^"\\]|\\.)*)`
+                replace    = "[REDACTED]"
+              }
+              stage.replace {
+                expression = `(\x01)`
+                replace    = " "
               }
 
               // The continuation lines of a message of Postgres of more lines (a value with a newline in it) start with a tab and have
