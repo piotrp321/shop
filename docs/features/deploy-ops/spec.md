@@ -214,8 +214,11 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   - `prometheus.exporter.elasticsearch` (`elasticsearch.shop`, `all = true`) zbiera zdrowie klastra i statystyki węzłów, bez
     indeksów, shardów, migawek i ustawień;
   - każdy ma `prometheus.scrape` (60 s) i `prometheus.relabel`: lista rodzin metryk (27 Postgresa, 30 Elasticsearcha) i lista
-    nazw etykiet (`labelkeep`; bez etykiet z tekstem zapytania ani adresu poda; bazy `template0` i `template1` odpadają). Razem
-    ok. 117 serii przy trzech bazach i jednym węźle (test je liczy z list);
+    nazw etykiet (`labelkeep`; bez etykiet z tekstem zapytania ani adresu poda; bazy `template0` i `template1` odpadają).
+    `pg_stat_activity_count` ma pięć etykiet grup sesji (rola, aplikacja, rodzaj backendu, stan, oczekiwanie), bo z mniejszej
+    liczby wiersze różnych grup mają te same etykiety i sesje giną; wiersze zerowe bez sesji są odrzucane. Razem ok. 140 serii
+    przy trzech bazach, jednym węźle i szacunku 40 grup sesji (test liczy je z list, a prawdziwy Postgres w `exporters.sh` sprawdza,
+    że suma serii to liczba sesji);
   - niedostępna baza nie zatrzymuje Alloy: eksporter podaje `pg_up` albo `elasticsearch_node_stats_up` równe 0, a pozostałe
     metryki idą dalej. Brak sekretu `shop-exporter` albo klucza w nim zatrzymuje Alloy przy starcie, tak jak brak `grafana-cloud`.
   `check`: lista nie jest pusta i ma metryki alertów, pamięci i PSI; listy dozwolonych serii i etykiet eksporterów, lista
@@ -280,7 +283,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   `WorkloadNotReady` odpala przy niedostępnej replice i przy zniknięciu workloadu, milczy przy niedostępności krótszej niż
   10 min, przy workloadzie zeskalowanym do zera i przy ciszy całego klastra.
   Sklep zamknięty na czas generowania danych (`make -C infra/k8s generate`, NetworkPolicy `shop-closed`) nie odpala
-  `WorkloadNotReady`: pody działają i są gotowe, a reguła odcina tylko ruch z Traefika (hosty odpowiadają 502). Strażnik
+  `WorkloadNotReady`: pody działają i są gotowe, a reguła odcina tylko ruch z Traefika (hosty odpowiadają 502); przepuszcza też Alloy z `monitoring` na TCP 5432 i 9200
+  (eksportery baz mierzą okno generatora i reindeksu). Strażnik
   Joba generatora zatrzymuje generator przy 32 GB wolnego, tuż przed progiem `NodeDiskFull` (85% zajętego miejsca), więc
   generowanie normalnie go nie wywołuje; ewentualne wyciszenie alertów na czas przebiegu robi ręcznie użytkownik.
 - **O7. Logi bez sekretów i danych klientów.** Alloy przetwarza każdą linię przed wysłaniem: te same etapy
@@ -294,6 +298,9 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     osobowa; adresy podów też giną, to akceptowalny koszt); parametry zapytań SQL w komunikatach Doctrine (`with params
     […]`), bo zawierają dane zamówień i adresy;
   - linie Postgresa `DETAIL:` i `STATEMENT:` są odrzucane (wartości kluczy i treść zapytań z danymi klientów);
+  - w głównym komunikacie błędu Postgresa (log Postgresa i komunikat Doctrine w logu API) każdy literał w cudzysłowie poza tym po
+    nazwie obiektu (`constraint`, `column`, `relation`, `table`, `index`, `type`, ...) jest zastępowany do końca linii (napisu
+    JSON), a linie kontynuacji wartości wielowierszowej w kontenerze `postgres` w całości; nazwy ograniczeń i kolumn zostają;
   - wyłączone źródła (nie da się zagwarantować maskowania): Mailpit (adresaci i tematy wiadomości); lista wyłączonych
     jest w regułach odkrywania i w teście;
   - nowe źródło bez osobnej reguły dostaje maskowanie ogólne; wyłączenie kolejnego źródła to dopisanie go do listy.

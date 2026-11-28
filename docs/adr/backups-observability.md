@@ -71,8 +71,10 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   (bez odczytu tabel sklepu), z jawną listą kolektorów bez `stat_statements`, więc tekst zapytań nie wychodzi z klastra;
   `prometheus.exporter.elasticsearch` zbiera tylko zdrowie klastra i statystyki węzłów (bez indeksów, shardów, migawek i ustawień).
   Z kilkudziesięciu rodzin metryk każdego eksportera przechodzi ok. trzydzieści (odsetek trafień bufora, checkpointy, WAL, sesje,
-  pamięć JVM, cache, pule wątków), a etykiety tylko z listy (`labelkeep`: nazwy baz, stany sesji, nazwa węzła), bez adresów
-  podów. Razem ok. 120 aktywnych serii z 10 tys. planu; test liczy je z list. Niedostępna baza daje `pg_up` i
+  pamięć JVM, cache, pule wątków), a etykiety tylko z listy (`labelkeep`: nazwy baz, nazwa węzła, a dla liczby sesji
+  `pg_stat_activity_count` pięć etykiet jej grup: rola, aplikacja, rodzaj backendu, stan i oczekiwanie; z mniejszej liczby
+  etykiet wiersze różnych grup się zlewają i sesje giną), bez adresów podów i tekstu zapytań. Razem ok. 140 aktywnych serii
+  z 10 tys. planu (zmierzone na prawdziwym Postgresie i szacunek 40 grup sesji); test liczy je z list. Niedostępna baza daje `pg_up` i
   `elasticsearch_node_stats_up` równe 0, a Alloy i pozostałe metryki działają dalej (test uruchamia prawdziwy Alloy bez baz).
 - **Alloy czyta z klastra dwa sekrety w przestrzeni `shop`: `grafana-cloud` i `shop-exporter`** (SealedSecrety; `grafana-cloud`
   z `seal-secrets WHAT=grafana`: klucze `GRAFANA_CLOUD_TOKEN` dla metryk i logów oraz `GRAFANA_ALERTING_TOKEN` dla reguł alertów,
@@ -140,9 +142,13 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
   klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
   `STATEMENT` Postgresa są odrzucane, a w głównym komunikacie błędu Postgresa (np. `invalid input syntax for type uuid: "…"`,
-  `value "…" is out of range`) literał po dwukropku i po `value` jest zastępowany do końca linii (wartość nie jest tam
-  escapowana, więc cudzysłów, ukośnik wsteczny albo tekst innego komunikatu w niej nie kończą dopasowania), razem z liniami
-  kontynuacji wartości wielowierszowej w kontenerze `postgres`; nazwy ograniczeń, kolumn, relacji i tabel zostają. Źródła, których nie da się zagwarantować zamaskować, nie są zbierane (Mailpit:
+  `"…" is out of range for type real`, `time zone "…" not recognized`; także w komunikacie Doctrine w logu API, gdzie cudzysłowy są
+  escapowane) każdy literał w cudzysłowie poza tym, który stoi po nazwie obiektu (`constraint`, `column`, `relation`, `table`,
+  `index`, `type`, `function`, `schema`, `database`, `role`, `user` i podobne), jest zastępowany do końca linii (w logu API do końca
+  napisu JSON). Reguła jest odwrócona, bo formatów z wartością w cudzysłowie jest w serwerze ponad dwa tysiące, a nazw obiektów
+  garstka: nieznany format maskuje się, nie przepuszcza. Wartość nie jest escapowana w komunikacie, więc cudzysłów, ukośnik
+  wsteczny albo tekst innego komunikatu w niej nie kończą dopasowania. Linie kontynuacji wartości wielowierszowej w kontenerze
+  `postgres` są zastępowane w całości; nazwy ograniczeń, kolumn, relacji i tabel zostają. Źródła, których nie da się zagwarantować zamaskować, nie są zbierane (Mailpit:
   `extraDiscoveryRules`). Wzorce nie znają każdego formatu, więc po wdrożeniu przegląd próbki logów (runbook) jest częścią
   decyzji: znalezisko to nowa reguła albo wyłączenie źródła. Test w `check` uruchamia prawdziwy Alloy (przypięty tagiem i
   digestem) na korpusie próbek logów każdego źródła z podłożonymi sekretami i danymi klientów.
@@ -215,7 +221,8 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
 - Klaster nie ma stałej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Jedyna reguła to
   tymczasowa `shop-closed` w przestrzeni `shop`, którą zakłada `make -C infra/k8s generate`, a usuwa `make -C infra/k8s open`, żeby
-  zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni; poza chartem, bez
+  zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni i z Alloy z `monitoring` na
+  portach 5432 i 9200, dla eksporterów baz; poza chartem, bez
   śledzenia Argo CD; `docs/features/demo-scale/spec.md`); istnieje tylko przy zamkniętym sklepie i nie jest
   zabezpieczeniem sieci. Redis działa bez
   hasła i trzyma sesje sklepu z tokenami OIDC klientów, a Elasticsearch działa bez security (`xpack.security.enabled: false`).
