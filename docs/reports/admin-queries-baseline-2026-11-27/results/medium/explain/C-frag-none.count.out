@@ -1,0 +1,25 @@
+-- customers, fragment none 'qqzzxx', count
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM ordering_customer c WHERE (lower(c.email) LIKE '%' || lower('qqzzxx') || '%' OR lower(c.full_name) LIKE '%' || lower('qqzzxx') || '%') LIMIT 10001) bounded;
+
+Aggregate  (cost=171.03..171.04 rows=1 width=8) (actual time=0.043..0.046 rows=1.00 loops=1)
+  Buffers: shared hit=22
+  ->  Limit  (cost=94.86..170.78 rows=20 width=4) (actual time=0.039..0.039 rows=0.00 loops=1)
+        Buffers: shared hit=22
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=94.86..170.78 rows=20 width=4) (actual time=0.038..0.038 rows=0.00 loops=1)
+              Recheck Cond: ((lower((email)::text) ~~ '%qqzzxx%'::text) OR (lower((full_name)::text) ~~ '%qqzzxx%'::text))
+              Buffers: shared hit=22
+              ->  BitmapOr  (cost=94.86..94.86 rows=20 width=0) (actual time=0.036..0.036 rows=0.00 loops=1)
+                    Buffers: shared hit=22
+                    ->  Bitmap Index Scan on ordering_customer_email_trgm_idx  (cost=0.00..55.92 rows=10 width=0) (actual time=0.027..0.027 rows=0.00 loops=1)
+                          Index Cond: (lower((email)::text) ~~ '%qqzzxx%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=13
+                    ->  Bitmap Index Scan on ordering_customer_name_trgm_idx  (cost=0.00..38.92 rows=10 width=0) (actual time=0.008..0.008 rows=0.00 loops=1)
+                          Index Cond: (lower((full_name)::text) ~~ '%qqzzxx%'::text)
+                          Index Searches: 1
+                          Buffers: shared hit=9
+Planning:
+  Buffers: shared hit=204
+Planning Time: 0.726 ms
+Execution Time: 0.100 ms

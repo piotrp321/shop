@@ -1,0 +1,79 @@
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%pro%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded
+
+Aggregate  (cost=246465.54..246465.55 rows=1 width=8) (actual time=99.092..99.093 rows=1.00 loops=1)
+  Buffers: shared hit=3833 read=6209 written=4225
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2615.30..246140.50 rows=121141 width=4) (actual time=47.245..94.921 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%pro%'::text)
+          Rows Removed by Index Recheck: 14569
+          Heap Blocks: exact=4606 lossy=4887
+          Buffers: shared hit=3833 read=6209 written=4225
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2585.01 rows=121141 width=0) (actual time=42.403..42.403 rows=126795.00 loops=1)
+                Index Cond: ((name)::text ~~* '%pro%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1 read=512 written=217
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=48.983..98.573 rows=10001.00 loops=1)
+        Buffers: shared hit=3833 read=6209 written=4225
+        ->  CTE Scan on m  (cost=0.00..2422.82 rows=121141 width=4) (actual time=47.249..96.299 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=3833 read=6209 written=4225
+Planning:
+  Buffers: shared hit=452
+Planning Time: 0.722 ms
+JIT:
+  Functions: 7
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.125 ms (Deform 0.026 ms), Inlining 0.000 ms, Optimization 0.113 ms, Emission 1.651 ms, Total 1.889 ms
+Execution Time: 107.970 ms
+=====
+Aggregate  (cost=246465.54..246465.55 rows=1 width=8) (actual time=52.476..52.477 rows=1.00 loops=1)
+  Buffers: shared hit=5539 read=4468 written=183
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2615.30..246140.50 rows=121141 width=4) (actual time=16.969..48.544 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%pro%'::text)
+          Rows Removed by Index Recheck: 14569
+          Heap Blocks: exact=4606 lossy=4887
+          Buffers: shared hit=5539 read=4468 written=183
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2585.01 rows=121141 width=0) (actual time=11.786..11.787 rows=126795.00 loops=1)
+                Index Cond: ((name)::text ~~* '%pro%'::text)
+                Index Searches: 1
+                Buffers: shared hit=1 read=512 written=30
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=18.691..51.989 rows=10001.00 loops=1)
+        Buffers: shared hit=5539 read=4468 written=183
+        ->  CTE Scan on m  (cost=0.00..2422.82 rows=121141 width=4) (actual time=16.972..49.801 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=5539 read=4468 written=183
+Planning:
+  Buffers: shared hit=452
+Planning Time: 0.832 ms
+JIT:
+  Functions: 7
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.109 ms (Deform 0.024 ms), Inlining 0.000 ms, Optimization 0.105 ms, Emission 1.640 ms, Total 1.855 ms
+Execution Time: 60.635 ms
+=====
+Aggregate  (cost=246465.54..246465.55 rows=1 width=8) (actual time=36.290..36.290 rows=1.00 loops=1)
+  Buffers: shared hit=10007
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=2615.30..246140.50 rows=121141 width=4) (actual time=15.704..33.044 rows=10001.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%pro%'::text)
+          Rows Removed by Index Recheck: 14569
+          Heap Blocks: exact=4606 lossy=4887
+          Buffers: shared hit=10007
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..2585.01 rows=121141 width=0) (actual time=10.639..10.639 rows=126795.00 loops=1)
+                Index Cond: ((name)::text ~~* '%pro%'::text)
+                Index Searches: 1
+                Buffers: shared hit=513
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=17.414..35.961 rows=10001.00 loops=1)
+        Buffers: shared hit=10007
+        ->  CTE Scan on m  (cost=0.00..2422.82 rows=121141 width=4) (actual time=15.707..33.910 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=10007
+Planning:
+  Buffers: shared hit=452
+Planning Time: 0.872 ms
+JIT:
+  Functions: 7
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.117 ms (Deform 0.025 ms), Inlining 0.000 ms, Optimization 0.106 ms, Emission 1.612 ms, Total 1.836 ms
+Execution Time: 44.317 ms

@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type StockList = WithOptionalTotal<components["schemas"]["StockListResponse"]>;
 type StockListItem = components["schemas"]["StockListItemResponse"];
@@ -112,7 +112,7 @@ describe("useStockList", () => {
   it("asks for 10 products on the first page", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } } });
+    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((row) => row.name)).toEqual(["Bidon"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(false);
@@ -949,5 +949,33 @@ describe("useStockList: receipts and corrections", () => {
       expect(result).toMatchObject({ status: "failed" });
       expect((result as { message: string }).message).toContain("Nie masz uprawnień");
     });
+  });
+});
+
+describe("useStockList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, STOCK);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

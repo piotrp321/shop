@@ -52,7 +52,7 @@ function failureMessage(status: number): string {
  * products. The page size is always sent: the default of the API is 25, the lists of the panel start at 10. It is the
  * page source of `useCursorPager` for the price list and for the choice of variants of a promotion.
  */
-export async function fetchPricePage({ query, after }: PageRequest<PriceQuery>): Promise<PageResult<PriceListItem>> {
+export async function fetchPricePage({ query, after, signal }: PageRequest<PriceQuery>): Promise<PageResult<PriceListItem>> {
   const apiQuery: { q?: string; category?: string; sort?: ProductSort; after?: string; perPage: number } = { perPage: query.perPage };
   if (query.q !== null) {
     apiQuery.q = query.q;
@@ -67,7 +67,7 @@ export async function fetchPricePage({ query, after }: PageRequest<PriceQuery>):
     apiQuery.after = after;
   }
   try {
-    const result = await getApiClient().GET("/api/v1/admin/prices", { params: { query: apiQuery } });
+    const result = await getApiClient().GET("/api/v1/admin/prices", { params: { query: apiQuery }, signal });
     if (result.data) {
       return { items: result.data.items, next: result.data.next, total: result.data.total };
     }

@@ -100,7 +100,7 @@ export function useProductList(categories?: CategoryLookup) {
 
   const name = useNameSearch({ initial: url.address.value.q, apply: (term) => url.set({ q: term }) });
 
-  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<ProductListItem>> {
+  async function fetchPage({ query, after, signal }: PageRequest<typeof url.query.value>): Promise<PageResult<ProductListItem>> {
     const apiQuery: ProductQuery = {};
     if (query.q !== null) {
       apiQuery.q = query.q;
@@ -124,7 +124,7 @@ export function useProductList(categories?: CategoryLookup) {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/products", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/products", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.next, total: result.data.total };
       }

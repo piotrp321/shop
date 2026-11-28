@@ -78,7 +78,7 @@ final class ProductsWithoutImagesPlanTest extends KernelTestCase
             }
             self::assertFalse($count->capped, $label);
             foreach (['page' => $pagePlan, 'count' => $countPlan] as $kind => $plan) {
-                self::assertStringContainsString($index, $plan, $label.' '.$kind."\n".$plan);
+                self::assertMatchesRegularExpression($index, $plan, $label.' '.$kind."\n".$plan);
                 self::assertDoesNotMatchRegularExpression('/Seq Scan on catalog_product(?![_a-z])/', $plan, $label.' '.$kind."\n".$plan);
             }
         }
@@ -96,18 +96,19 @@ final class ProductsWithoutImagesPlanTest extends KernelTestCase
 
         self::assertSame([50, true], [$capped->value, $capped->capped]);
         self::assertSame([100, false], [$all->value, $all->capped]);
-        self::assertStringContainsString($index, $plan, $plan);
+        self::assertMatchesRegularExpression($index, $plan, $plan);
         self::assertDoesNotMatchRegularExpression('/Seq Scan on catalog_product(?![_a-z])/', $plan, $plan);
     }
 
     /**
-     * The name of the partial index of the temporary copy.
+     * A pattern of the names of the partial indexes of the temporary copy that hold the products without images: the one by id and the
+     * ones by category and sort key (PERF-7-3), any of which reads only those products.
      */
     private function partialIndex(): string
     {
-        $name = $this->connection->fetchOne("SELECT indexname FROM pg_indexes WHERE tablename = 'catalog_product' AND schemaname LIKE 'pg_temp%' AND indexdef LIKE '%images%'");
-        self::assertIsString($name);
+        $names = $this->connection->fetchFirstColumn("SELECT indexname FROM pg_indexes WHERE tablename = 'catalog_product' AND schemaname LIKE 'pg_temp%' AND indexdef LIKE '%WHERE (images%'");
+        self::assertNotSame([], $names);
 
-        return $name;
+        return '/\b('.implode('|', array_map(static fn (mixed $name): string => preg_quote(\is_string($name) ? $name : '', '/'), $names)).')\b/';
     }
 }

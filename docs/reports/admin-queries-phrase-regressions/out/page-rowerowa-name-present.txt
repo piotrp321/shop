@@ -1,0 +1,39 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%rowerowa%' ORDER BY p.name ASC, p.id ASC LIMIT 26
+
+Limit  (cost=0.42..579.41 rows=26 width=71) (actual time=901.108..901.161 rows=26.00 loops=1)
+  Buffers: shared hit=16682 read=215681 written=12
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=60571 width=71) (actual time=901.106..901.153 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%rowerowa%'::text)
+        Rows Removed by Filter: 229126
+        Index Searches: 1
+        Buffers: shared hit=16682 read=215681 written=12
+Planning:
+  Buffers: shared hit=475 read=9 dirtied=3
+Planning Time: 0.892 ms
+Execution Time: 901.176 ms
+
+=====
+Limit  (cost=0.42..579.41 rows=26 width=71) (actual time=450.001..450.054 rows=26.00 loops=1)
+  Buffers: shared hit=16840 read=215523
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=60571 width=71) (actual time=450.000..450.043 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%rowerowa%'::text)
+        Rows Removed by Filter: 229126
+        Index Searches: 1
+        Buffers: shared hit=16840 read=215523
+Planning:
+  Buffers: shared hit=379 read=103
+Planning Time: 3.140 ms
+Execution Time: 450.071 ms
+
+=====
+Limit  (cost=0.42..579.41 rows=26 width=71) (actual time=445.432..445.483 rows=26.00 loops=1)
+  Buffers: shared hit=16840 read=215523
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=60571 width=71) (actual time=445.431..445.475 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%rowerowa%'::text)
+        Rows Removed by Filter: 229126
+        Index Searches: 1
+        Buffers: shared hit=16840 read=215523
+Planning:
+  Buffers: shared hit=379 read=103
+Planning Time: 1.161 ms
+Execution Time: 445.499 ms

@@ -19,7 +19,7 @@ final readonly class ListSitemapProductsHandler
      */
     public function __invoke(ListSitemapProducts $query): SitemapProductList
     {
-        $products = $this->source->publishedInRange(SitemapChunkKey::decode($query->chunk));
+        $products = $this->source->publishedInRange(SitemapChunkKey::decode($query->chunk))->products;
 
         return new SitemapProductList(array_map(
             static fn (array $product): SitemapProduct => new SitemapProduct(

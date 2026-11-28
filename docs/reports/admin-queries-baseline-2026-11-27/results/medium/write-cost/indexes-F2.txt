@@ -1,0 +1,1 @@
+proto_f2_name_bigrams: built in 37.0 s, size 64 MB|66666496

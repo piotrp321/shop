@@ -1,0 +1,3 @@
+NOTICE:  M1: 101 statements, 100 boundaries, total 111.2 ms, slowest statement 2.43 ms, equal to M0: t
+NOTICE:  M1: 101 statements, 100 boundaries, total 92.8 ms, slowest statement 1.98 ms, equal to M0: t
+NOTICE:  M1: 101 statements, 100 boundaries, total 88.8 ms, slowest statement 1.78 ms, equal to M0: t

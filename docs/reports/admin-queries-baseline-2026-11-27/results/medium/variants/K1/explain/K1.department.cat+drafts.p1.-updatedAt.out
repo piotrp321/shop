@@ -1,0 +1,349 @@
+-- category department + drafts, page 1, sort -updatedAt
+-- products in the subtree = 206849
+WITH additional AS MATERIALIZED (SELECT DISTINCT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product_category pc JOIN catalog_product p ON p.id = pc.product_id WHERE pc.category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]) AND NOT (p.primary_category_id = ANY('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[])) AND p.status = 'draft') SELECT id, name, tax_class, updated_at FROM ((SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7' AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26) UNION ALL (SELECT id, name, tax_class, updated_at FROM additional ORDER BY updated_at DESC, id DESC LIMIT 26)) u ORDER BY updated_at DESC, id DESC LIMIT 26;
+
+Limit  (cost=45544.41..75563.49 rows=26 width=88) (actual time=1288.054..1289.114 rows=26.00 loops=1)
+  Buffers: shared hit=54858 read=295521 written=2
+  I/O Timings: shared read=1076.617 write=0.086
+  CTE additional
+    ->  Unique  (cost=45476.70..45488.38 rows=935 width=71) (actual time=47.555..47.559 rows=0.00 loops=1)
+          Buffers: shared hit=17118 read=4707
+          I/O Timings: shared read=12.963
+          ->  Sort  (cost=45476.70..45479.03 rows=935 width=71) (actual time=47.554..47.557 rows=0.00 loops=1)
+                Sort Key: p_34.id, p_34.name, p_34.tax_class, p_34.updated_at
+                Sort Method: quicksort  Memory: 25kB
+                Buffers: shared hit=17118 read=4707
+                I/O Timings: shared read=12.963
+                ->  Hash Join  (cost=42883.53..45430.56 rows=935 width=71) (actual time=47.483..47.486 rows=0.00 loops=1)
+                      Hash Cond: (pc.product_id = p_34.id)
+                      Buffers: shared hit=17118 read=4704
+                      I/O Timings: shared read=12.947
+                      ->  Bitmap Heap Scan on catalog_product_category pc  (cost=718.04..3105.26 rows=60881 width=16) (actual time=1.469..6.097 rows=41772.00 loops=1)
+                            Recheck Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                            Heap Blocks: exact=1474
+                            Buffers: shared hit=25 read=1537
+                            I/O Timings: shared read=0.481
+                            ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..702.73 rows=60881 width=0) (actual time=1.204..1.204 rows=41772.00 loops=1)
+                                  Index Cond: (category_id = ANY ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                                  Index Searches: 26
+                                  Buffers: shared hit=25 read=63
+                                  I/O Timings: shared read=0.192
+                      ->  Hash  (cost=41973.40..41973.40 rows=15367 width=71) (actual time=35.940..35.942 rows=15992.00 loops=1)
+                            Buckets: 16384  Batches: 1  Memory Usage: 1795kB
+                            Buffers: shared hit=17093 read=3167
+                            I/O Timings: shared read=12.466
+                            ->  Index Scan using catalog_product_draft_updated_at_id_idx on catalog_product p_34  (cost=0.37..41973.40 rows=15367 width=71) (actual time=0.009..33.215 rows=15992.00 loops=1)
+                                  Filter: (primary_category_id <> ALL ('{d7c098d0-4bae-595e-a1e1-e4a923448956,1a27b41d-f17e-5928-b73d-e9953916221a,22cf1459-445c-5f09-9c57-cffac2a03b1b,c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839,c46367b5-ebd9-5214-83cf-f336dac3fedb,1eca62e7-3a2e-526f-b689-4d43a343b30d,0e811f7e-c801-572b-a28d-ceea69c2c019,2e961065-6d3a-50e2-abaf-a6936a768cc6,8732b1af-0cf9-5c92-8388-043c6a2a6a95,c57c017b-d6f7-5990-82bf-635533003629,266c5e49-3e83-5a60-98d2-e2e142d46edb,70134891-dc80-5215-9109-23f8f80ad40a,50cd3ab9-6263-5441-9d77-cef1c8794964,d2a8f52e-6be4-54e2-afa2-b6537de3abe3,830597e3-c1d9-53b5-ac6c-9d8b19076ffd,dad8249a-d4d2-5f77-a4ed-c20fad01e574,8114f947-c901-5ec4-a342-8680b736d727,b1586e7f-5815-587a-9e06-bac239eaeb62,c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca,a58050fa-627a-5c6f-aa94-3f392baa4385,22652b43-0274-5fd4-b1b8-76cd4469ead0,ab5e7d61-6ce9-5e20-9732-15b515592c9c,e77ca681-5575-588c-be72-a87e86dd1f73,b046c3bb-67cf-575e-85de-475b0a4231db,4b68d4ca-f126-562f-a142-65edd596cc0c,4c351e8e-ff75-5a37-81ef-cae675c8eea8,73706765-ed3e-58bf-86d9-b66cd3fa71c0,93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd,eb2174f3-d536-50f3-8832-51736f2da26d,f6f867f6-b41b-5131-9b4d-8a30fbea6c2b,3a031e2a-97e1-5099-b9f5-b34bf28d36e0,4744a6a8-69df-52c4-8142-b3d5c2024a00,dc12d069-67b5-5cfc-9734-cfbb916735d3,fd305193-a5ad-5aac-932f-fc408a98d4c7}'::uuid[]))
+                                  Rows Removed by Filter: 4116
+                                  Index Searches: 1
+                                  Buffers: shared hit=17093 read=3167
+                                  I/O Timings: shared read=12.466
+  ->  Merge Append  (cost=56.02..815189.69 rows=706 width=88) (actual time=1288.052..1289.098 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Buffers: shared hit=54858 read=295521 written=2
+        I/O Timings: shared read=1076.617 write=0.086
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=83.151..83.151 rows=0.00 loops=1)
+              Buffers: shared hit=4959 read=15301 written=1
+              I/O Timings: shared read=67.056 write=0.037
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p  (cost=0.29..41924.39 rows=14 width=71) (actual time=83.149..83.149 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'd7c098d0-4bae-595e-a1e1-e4a923448956'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=4959 read=15301 written=1
+                    I/O Timings: shared read=67.056 write=0.037
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=73.771..73.771 rows=0.00 loops=1)
+              Buffers: shared hit=4708 read=15552 written=1
+              I/O Timings: shared read=58.482 write=0.049
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_1  (cost=0.29..41924.39 rows=14 width=71) (actual time=73.769..73.769 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '1a27b41d-f17e-5928-b73d-e9953916221a'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=4708 read=15552 written=1
+                    I/O Timings: shared read=58.482 write=0.049
+        ->  Limit  (cost=0.29..6527.39 rows=26 width=71) (actual time=0.098..0.360 rows=3.00 loops=1)
+              Buffers: shared hit=462 read=3
+              I/O Timings: shared read=0.010
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_2  (cost=0.29..41924.39 rows=167 width=71) (actual time=0.097..0.359 rows=3.00 loops=1)
+                    Filter: (primary_category_id = '22cf1459-445c-5f09-9c57-cffac2a03b1b'::uuid)
+                    Rows Removed by Filter: 456
+                    Index Searches: 1
+                    Buffers: shared hit=462 read=3
+                    I/O Timings: shared read=0.010
+        ->  Limit  (cost=0.29..3263.84 rows=26 width=71) (actual time=0.056..0.106 rows=2.00 loops=1)
+              Buffers: shared hit=299 read=1
+              I/O Timings: shared read=0.004
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_3  (cost=0.29..41924.39 rows=334 width=71) (actual time=0.055..0.105 rows=2.00 loops=1)
+                    Filter: (primary_category_id = 'c3c75c5a-25e3-5e6c-b56f-c8bc3a5ab839'::uuid)
+                    Rows Removed by Filter: 293
+                    Index Searches: 1
+                    Buffers: shared hit=299 read=1
+                    I/O Timings: shared read=0.004
+        ->  Limit  (cost=0.29..4360.39 rows=26 width=71) (actual time=0.110..0.117 rows=2.00 loops=1)
+              Buffers: shared hit=171 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_4  (cost=0.29..41924.39 rows=250 width=71) (actual time=0.110..0.116 rows=2.00 loops=1)
+                    Filter: (primary_category_id = 'c46367b5-ebd9-5214-83cf-f336dac3fedb'::uuid)
+                    Rows Removed by Filter: 167
+                    Index Searches: 1
+                    Buffers: shared hit=171 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=68.078..68.079 rows=0.00 loops=1)
+              Buffers: shared hit=1986 read=18274
+              I/O Timings: shared read=57.655
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_5  (cost=0.29..41924.39 rows=14 width=71) (actual time=68.076..68.076 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '1eca62e7-3a2e-526f-b689-4d43a343b30d'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1986 read=18274
+                    I/O Timings: shared read=57.655
+        ->  Limit  (cost=0.29..12976.79 rows=26 width=71) (actual time=0.185..0.245 rows=2.00 loops=1)
+              Buffers: shared hit=371
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_6  (cost=0.29..41924.39 rows=84 width=71) (actual time=0.182..0.242 rows=2.00 loops=1)
+                    Filter: (primary_category_id = '0e811f7e-c801-572b-a28d-ceea69c2c019'::uuid)
+                    Rows Removed by Filter: 364
+                    Index Searches: 1
+                    Buffers: shared hit=371
+        ->  Limit  (cost=0.29..4241.64 rows=26 width=71) (actual time=0.073..0.074 rows=1.00 loops=1)
+              Buffers: shared hit=153 read=1
+              I/O Timings: shared read=0.005
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_7  (cost=0.29..41924.39 rows=257 width=71) (actual time=0.072..0.073 rows=1.00 loops=1)
+                    Filter: (primary_category_id = '2e961065-6d3a-50e2-abaf-a6936a768cc6'::uuid)
+                    Rows Removed by Filter: 150
+                    Index Searches: 1
+                    Buffers: shared hit=153 read=1
+                    I/O Timings: shared read=0.005
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=0.031..0.065 rows=2.00 loops=1)
+              Buffers: shared hit=167
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_8  (cost=0.29..41924.39 rows=14 width=71) (actual time=0.030..0.064 rows=2.00 loops=1)
+                    Filter: (primary_category_id = '8732b1af-0cf9-5c92-8388-043c6a2a6a95'::uuid)
+                    Rows Removed by Filter: 161
+                    Index Searches: 1
+                    Buffers: shared hit=167
+        ->  Limit  (cost=0.29..12976.79 rows=26 width=71) (actual time=0.093..0.094 rows=1.00 loops=1)
+              Buffers: shared hit=190 read=2
+              I/O Timings: shared read=0.007
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_9  (cost=0.29..41924.39 rows=84 width=71) (actual time=0.092..0.092 rows=1.00 loops=1)
+                    Filter: (primary_category_id = 'c57c017b-d6f7-5990-82bf-635533003629'::uuid)
+                    Rows Removed by Filter: 187
+                    Index Searches: 1
+                    Buffers: shared hit=190 read=2
+                    I/O Timings: shared read=0.007
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.384..79.385 rows=0.00 loops=1)
+              Buffers: shared hit=1881 read=18379
+              I/O Timings: shared read=69.670
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_10  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.383..79.383 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '266c5e49-3e83-5a60-98d2-e2e142d46edb'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1881 read=18379
+                    I/O Timings: shared read=69.670
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.587..78.588 rows=0.00 loops=1)
+              Buffers: shared hit=1741 read=18519
+              I/O Timings: shared read=68.983
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_11  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.585..78.585 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '70134891-dc80-5215-9109-23f8f80ad40a'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1741 read=18519
+                    I/O Timings: shared read=68.983
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=81.455..81.455 rows=0.00 loops=1)
+              Buffers: shared hit=1731 read=18529
+              I/O Timings: shared read=70.794
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_12  (cost=0.29..41924.39 rows=14 width=71) (actual time=81.452..81.452 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '50cd3ab9-6263-5441-9d77-cef1c8794964'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1731 read=18529
+                    I/O Timings: shared read=70.794
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.832..79.833 rows=0.00 loops=1)
+              Buffers: shared hit=1552 read=18708
+              I/O Timings: shared read=70.274
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_13  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.829..79.830 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'd2a8f52e-6be4-54e2-afa2-b6537de3abe3'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1552 read=18708
+                    I/O Timings: shared read=70.274
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.276..78.276 rows=0.00 loops=1)
+              Buffers: shared hit=1554 read=18706
+              I/O Timings: shared read=68.863
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_14  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.273..78.273 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '830597e3-c1d9-53b5-ac6c-9d8b19076ffd'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1554 read=18706
+                    I/O Timings: shared read=68.863
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=77.495..77.495 rows=0.00 loops=1)
+              Buffers: shared hit=1674 read=18586
+              I/O Timings: shared read=68.112
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_15  (cost=0.29..41924.39 rows=14 width=71) (actual time=77.493..77.493 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'dad8249a-d4d2-5f77-a4ed-c20fad01e574'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1674 read=18586
+                    I/O Timings: shared read=68.112
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=76.477..76.478 rows=0.00 loops=1)
+              Buffers: shared hit=1542 read=18718
+              I/O Timings: shared read=65.293
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_16  (cost=0.29..41924.39 rows=14 width=71) (actual time=76.476..76.476 rows=0.00 loops=1)
+                    Filter: (primary_category_id = '8114f947-c901-5ec4-a342-8680b736d727'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1542 read=18718
+                    I/O Timings: shared read=65.293
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.010..79.011 rows=0.00 loops=1)
+              Buffers: shared hit=1546 read=18714
+              I/O Timings: shared read=68.747
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_17  (cost=0.29..41924.39 rows=14 width=71) (actual time=79.007..79.007 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'b1586e7f-5815-587a-9e06-bac239eaeb62'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1546 read=18714
+                    I/O Timings: shared read=68.747
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.802..78.802 rows=0.00 loops=1)
+              Buffers: shared hit=1599 read=18661
+              I/O Timings: shared read=69.314
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_18  (cost=0.29..41924.39 rows=14 width=71) (actual time=78.799..78.799 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'c9d687d2-7cd9-5039-8c7b-8cfc9adb03ca'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1599 read=18661
+                    I/O Timings: shared read=69.314
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=84.640..84.641 rows=0.00 loops=1)
+              Buffers: shared hit=1525 read=18735
+              I/O Timings: shared read=73.120
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_19  (cost=0.29..41924.39 rows=14 width=71) (actual time=84.637..84.638 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'a58050fa-627a-5c6f-aa94-3f392baa4385'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1525 read=18735
+                    I/O Timings: shared read=73.120
+        ->  Limit  (cost=0.29..4325.79 rows=26 width=71) (actual time=0.043..0.182 rows=4.00 loops=1)
+              Buffers: shared hit=198 read=3
+              I/O Timings: shared read=0.013
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_20  (cost=0.29..41924.39 rows=252 width=71) (actual time=0.042..0.180 rows=4.00 loops=1)
+                    Filter: (primary_category_id = '22652b43-0274-5fd4-b1b8-76cd4469ead0'::uuid)
+                    Rows Removed by Filter: 193
+                    Index Searches: 1
+                    Buffers: shared hit=198 read=3
+                    I/O Timings: shared read=0.013
+        ->  Limit  (cost=0.29..4291.73 rows=26 width=71) (actual time=0.592..0.599 rows=2.00 loops=1)
+              Buffers: shared hit=43 read=121
+              I/O Timings: shared read=0.482
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_21  (cost=0.29..41924.39 rows=254 width=71) (actual time=0.592..0.598 rows=2.00 loops=1)
+                    Filter: (primary_category_id = 'ab5e7d61-6ce9-5e20-9732-15b515592c9c'::uuid)
+                    Rows Removed by Filter: 158
+                    Index Searches: 1
+                    Buffers: shared hit=43 read=121
+                    I/O Timings: shared read=0.482
+        ->  Limit  (cost=0.29..6606.51 rows=26 width=71) (actual time=0.585..0.586 rows=1.00 loops=1)
+              Buffers: shared hit=156 read=120
+              I/O Timings: shared read=0.459
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_22  (cost=0.29..41924.39 rows=165 width=71) (actual time=0.585..0.585 rows=1.00 loops=1)
+                    Filter: (primary_category_id = 'e77ca681-5575-588c-be72-a87e86dd1f73'::uuid)
+                    Rows Removed by Filter: 271
+                    Index Searches: 1
+                    Buffers: shared hit=156 read=120
+                    I/O Timings: shared read=0.459
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=82.842..82.843 rows=0.00 loops=1)
+              Buffers: shared hit=1738 read=18522
+              I/O Timings: shared read=72.320
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_23  (cost=0.29..41924.39 rows=14 width=71) (actual time=82.841..82.842 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'b046c3bb-67cf-575e-85de-475b0a4231db'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1738 read=18522
+                    I/O Timings: shared read=72.320
+        ->  Limit  (cost=0.29..2553.04 rows=26 width=71) (actual time=0.025..0.073 rows=5.00 loops=1)
+              Buffers: shared hit=187
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_24  (cost=0.29..41924.39 rows=427 width=71) (actual time=0.024..0.071 rows=5.00 loops=1)
+                    Filter: (primary_category_id = '4b68d4ca-f126-562f-a142-65edd596cc0c'::uuid)
+                    Rows Removed by Filter: 178
+                    Index Searches: 1
+                    Buffers: shared hit=187
+        ->  Limit  (cost=0.29..12824.13 rows=26 width=71) (actual time=0.192..0.193 rows=1.00 loops=1)
+              Buffers: shared hit=179
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_25  (cost=0.29..41924.39 rows=85 width=71) (actual time=0.192..0.192 rows=1.00 loops=1)
+                    Filter: (primary_category_id = '4c351e8e-ff75-5a37-81ef-cae675c8eea8'::uuid)
+                    Rows Removed by Filter: 174
+                    Index Searches: 1
+                    Buffers: shared hit=179
+        ->  Limit  (cost=0.29..6646.79 rows=26 width=71) (actual time=0.927..0.927 rows=1.00 loops=1)
+              Buffers: shared hit=300 read=214
+              I/O Timings: shared read=0.643
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_26  (cost=0.29..41924.39 rows=164 width=71) (actual time=0.926..0.926 rows=1.00 loops=1)
+                    Filter: (primary_category_id = '73706765-ed3e-58bf-86d9-b66cd3fa71c0'::uuid)
+                    Rows Removed by Filter: 507
+                    Index Searches: 1
+                    Buffers: shared hit=300 read=214
+                    I/O Timings: shared read=0.643
+        ->  Limit  (cost=0.29..6374.71 rows=26 width=71) (actual time=0.011..0.062 rows=3.00 loops=1)
+              Buffers: shared hit=227
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_27  (cost=0.29..41924.39 rows=171 width=71) (actual time=0.011..0.061 rows=3.00 loops=1)
+                    Filter: (primary_category_id = '93a6a9ca-80ea-5ee0-a28d-d9f4c1d29acd'::uuid)
+                    Rows Removed by Filter: 220
+                    Index Searches: 1
+                    Buffers: shared hit=227
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=61.325..61.326 rows=0.00 loops=1)
+              Buffers: shared hit=2096 read=18164
+              I/O Timings: shared read=51.201
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_28  (cost=0.29..41924.39 rows=14 width=71) (actual time=61.323..61.324 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'eb2174f3-d536-50f3-8832-51736f2da26d'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=2096 read=18164
+                    I/O Timings: shared read=51.201
+        ->  Limit  (cost=0.29..41924.39 rows=14 width=71) (actual time=74.194..74.194 rows=0.00 loops=1)
+              Buffers: shared hit=1981 read=18279
+              I/O Timings: shared read=62.139
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_29  (cost=0.29..41924.39 rows=14 width=71) (actual time=74.191..74.191 rows=0.00 loops=1)
+                    Filter: (primary_category_id = 'f6f867f6-b41b-5131-9b4d-8a30fbea6c2b'::uuid)
+                    Rows Removed by Filter: 20108
+                    Index Searches: 1
+                    Buffers: shared hit=1981 read=18279
+                    I/O Timings: shared read=62.139
+        ->  Limit  (cost=0.29..4431.29 rows=26 width=71) (actual time=0.024..0.154 rows=3.00 loops=1)
+              Buffers: shared hit=186
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_30  (cost=0.29..41924.39 rows=246 width=71) (actual time=0.023..0.152 rows=3.00 loops=1)
+                    Filter: (primary_category_id = '3a031e2a-97e1-5099-b9f5-b34bf28d36e0'::uuid)
+                    Rows Removed by Filter: 179
+                    Index Searches: 1
+                    Buffers: shared hit=186
+        ->  Limit  (cost=0.29..2577.18 rows=26 width=71) (actual time=0.029..0.081 rows=4.00 loops=1)
+              Buffers: shared hit=158
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_31  (cost=0.29..41924.39 rows=423 width=71) (actual time=0.029..0.080 rows=4.00 loops=1)
+                    Filter: (primary_category_id = '4744a6a8-69df-52c4-8142-b3d5c2024a00'::uuid)
+                    Rows Removed by Filter: 151
+                    Index Searches: 1
+                    Buffers: shared hit=158
+        ->  Limit  (cost=0.29..4241.64 rows=26 width=71) (actual time=0.022..0.090 rows=3.00 loops=1)
+              Buffers: shared hit=228
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_32  (cost=0.29..41924.39 rows=257 width=71) (actual time=0.022..0.089 rows=3.00 loops=1)
+                    Filter: (primary_category_id = 'dc12d069-67b5-5cfc-9734-cfbb916735d3'::uuid)
+                    Rows Removed by Filter: 221
+                    Index Searches: 1
+                    Buffers: shared hit=228
+        ->  Limit  (cost=0.29..3187.50 rows=26 width=71) (actual time=0.006..0.113 rows=3.00 loops=1)
+              Buffers: shared hit=252
+              ->  Index Scan Backward using catalog_product_draft_updated_at_id_idx on catalog_product p_33  (cost=0.29..41924.39 rows=342 width=71) (actual time=0.006..0.112 rows=3.00 loops=1)
+                    Filter: (primary_category_id = 'fd305193-a5ad-5aac-932f-fc408a98d4c7'::uuid)
+                    Rows Removed by Filter: 245
+                    Index Searches: 1
+                    Buffers: shared hit=252
+        ->  Limit  (cost=45.35..45.41 rows=26 width=524) (actual time=47.576..47.577 rows=0.00 loops=1)
+              Buffers: shared hit=17118 read=4707
+              I/O Timings: shared read=12.963
+              ->  Sort  (cost=45.35..47.69 rows=935 width=524) (actual time=47.575..47.576 rows=0.00 loops=1)
+                    Sort Key: additional.updated_at DESC, additional.id DESC
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=17118 read=4707
+                    I/O Timings: shared read=12.963
+                    ->  CTE Scan on additional  (cost=0.00..18.70 rows=935 width=524) (actual time=47.558..47.558 rows=0.00 loops=1)
+                          Storage: Memory  Maximum Storage: 17kB
+                          Buffers: shared hit=17118 read=4707
+                          I/O Timings: shared read=12.963
+Planning:
+  Buffers: shared hit=457 read=114
+  I/O Timings: shared read=0.639
+Planning Time: 3.600 ms
+Execution Time: 1289.559 ms

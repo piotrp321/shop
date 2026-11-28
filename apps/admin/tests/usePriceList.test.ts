@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { CONFLICT_MESSAGE, SEARCH_DEBOUNCE_MS, usePriceList } from "@/prices/usePriceList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type PriceList = WithOptionalTotal<components["schemas"]["PriceListResponse"]>;
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
@@ -95,7 +95,7 @@ describe("usePriceList", () => {
   it("asks for 10 products on the first page and shows a row per variant under its product", async () => {
     const list = await start({ "": { items: [item("Buty", [variant("v-40", "40"), variant("v-41", "41", null)]), item("Hantle")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } } });
+    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((product) => product.name)).toEqual(["Buty", "Hantle"]);
     expect(list.rows.value.map((row) => [row.name, row.variantId, row.first])).toEqual([
       ["Buty", "v-40", true],
@@ -415,5 +415,33 @@ describe("usePriceList", () => {
 
       expect(await list.changePrice("v-A", 5990, 1)).toEqual({ status: "failed", message: "Nie udało się zapisać ceny. Sprawdź połączenie z API." });
     });
+  });
+});
+
+describe("usePriceList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, PRICES);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

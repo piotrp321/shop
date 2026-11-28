@@ -1,0 +1,69 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name FROM catalog_product w0 ORDER BY w0.name ASC, w0.id ASC LIMIT 200000) w JOIN catalog_product p ON p.id = w.id WHERE w.name ILIKE '%pływacki%' ORDER BY w.name ASC, w.id ASC LIMIT 26
+
+Limit  (cost=0.85..268.60 rows=26 width=125) (actual time=118.705..118.710 rows=0.00 loops=1)
+  Buffers: shared hit=170941 read=6006
+  ->  Nested Loop  (cost=0.85..83220.75 rows=8081 width=125) (actual time=118.704..118.705 rows=0.00 loops=1)
+        Buffers: shared hit=170941 read=6006
+        ->  Subquery Scan on w  (cost=0.42..26920.90 rows=8081 width=54) (actual time=118.703..118.704 rows=0.00 loops=1)
+              Filter: ((w.name)::text ~~* '%pływacki%'::text)
+              Rows Removed by Filter: 200000
+              Buffers: shared hit=170941 read=6006
+              ->  Limit  (cost=0.42..24420.90 rows=200000 width=54) (actual time=0.011..43.892 rows=200000.00 loops=1)
+                    Buffers: shared hit=170941 read=6006
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.011..36.234 rows=200000.00 loops=1)
+                          Heap Fetches: 6331
+                          Index Searches: 1
+                          Buffers: shared hit=170941 read=6006
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.97 rows=1 width=71) (never executed)
+              Index Cond: (id = w.id)
+              Index Searches: 0
+Planning:
+  Buffers: shared hit=507
+Planning Time: 0.708 ms
+Execution Time: 118.734 ms
+
+=====
+Limit  (cost=0.85..268.60 rows=26 width=125) (actual time=119.689..119.694 rows=0.00 loops=1)
+  Buffers: shared hit=173086 read=3861
+  ->  Nested Loop  (cost=0.85..83220.75 rows=8081 width=125) (actual time=119.688..119.689 rows=0.00 loops=1)
+        Buffers: shared hit=173086 read=3861
+        ->  Subquery Scan on w  (cost=0.42..26920.90 rows=8081 width=54) (actual time=119.687..119.688 rows=0.00 loops=1)
+              Filter: ((w.name)::text ~~* '%pływacki%'::text)
+              Rows Removed by Filter: 200000
+              Buffers: shared hit=173086 read=3861
+              ->  Limit  (cost=0.42..24420.90 rows=200000 width=54) (actual time=0.006..42.868 rows=200000.00 loops=1)
+                    Buffers: shared hit=173086 read=3861
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.006..35.117 rows=200000.00 loops=1)
+                          Heap Fetches: 6331
+                          Index Searches: 1
+                          Buffers: shared hit=173086 read=3861
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.97 rows=1 width=71) (never executed)
+              Index Cond: (id = w.id)
+              Index Searches: 0
+Planning:
+  Buffers: shared hit=507
+Planning Time: 0.703 ms
+Execution Time: 119.717 ms
+
+=====
+Limit  (cost=0.85..268.60 rows=26 width=125) (actual time=112.118..112.123 rows=0.00 loops=1)
+  Buffers: shared hit=176947
+  ->  Nested Loop  (cost=0.85..83220.75 rows=8081 width=125) (actual time=112.117..112.118 rows=0.00 loops=1)
+        Buffers: shared hit=176947
+        ->  Subquery Scan on w  (cost=0.42..26920.90 rows=8081 width=54) (actual time=112.116..112.117 rows=0.00 loops=1)
+              Filter: ((w.name)::text ~~* '%pływacki%'::text)
+              Rows Removed by Filter: 200000
+              Buffers: shared hit=176947
+              ->  Limit  (cost=0.42..24420.90 rows=200000 width=54) (actual time=0.006..34.060 rows=200000.00 loops=1)
+                    Buffers: shared hit=176947
+                    ->  Index Only Scan using catalog_product_name_id_idx on catalog_product w0  (cost=0.42..122031.64 rows=999417 width=54) (actual time=0.006..26.805 rows=200000.00 loops=1)
+                          Heap Fetches: 6331
+                          Index Searches: 1
+                          Buffers: shared hit=176947
+        ->  Index Scan using catalog_product_pkey on catalog_product p  (cost=0.42..6.97 rows=1 width=71) (never executed)
+              Index Cond: (id = w.id)
+              Index Searches: 0
+Planning:
+  Buffers: shared hit=507
+Planning Time: 0.658 ms
+Execution Time: 112.150 ms

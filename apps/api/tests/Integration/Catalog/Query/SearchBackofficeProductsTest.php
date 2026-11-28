@@ -366,8 +366,9 @@ final class SearchBackofficeProductsTest extends KernelTestCase
         self::assertStringContainsString('gin_trgm_ops', $definition);
 
         $this->product($this->category(), 'Alfa');
-        // The other index on the name would also win over a sequential scan; DDL is rolled back with the test.
+        // The other indexes on the name would also win over a sequential scan; DDL is rolled back with the test.
         $connection->executeStatement('DROP INDEX catalog_product_name_id_idx');
+        $connection->executeStatement('DROP INDEX catalog_product_category_name_id_idx');
         $plan = $this->planWithoutSequentialScan($connection, "SELECT id FROM catalog_product WHERE name ILIKE '%alf%'");
         self::assertStringContainsString('catalog_product_name_trgm_idx', $plan);
     }

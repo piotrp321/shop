@@ -12,6 +12,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\Security\TestTokenFactory;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -32,6 +33,7 @@ final class SitemapEndpointsTest extends WebTestCase
     private KernelBrowser $client;
     private DoctrineProductRepository $products;
     private Category $category;
+    private Connection $connection;
 
     protected function setUp(): void
     {
@@ -39,8 +41,23 @@ final class SitemapEndpointsTest extends WebTestCase
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->products = new DoctrineProductRepository($entityManager);
+        // The DAMA transaction of the test is opened below DBAL, so the connection does not count it: the cut would try to
+        // open a transaction of its own and set its isolation level inside the DAMA one, which PostgreSQL refuses. A
+        // transaction of the caller makes the cut run as the keyset in it (the cut in a transaction of its own is
+        // DbalSitemapProductSourceCutTest); the kernel is not rebooted between requests, so that it stays the same connection.
+        $this->client->disableReboot();
+        $this->connection = $entityManager->getConnection();
+        $this->connection->beginTransaction();
         $this->category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($this->category);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->connection->isTransactionActive()) {
+            $this->connection->rollBack();
+        }
+        parent::tearDown();
     }
 
     public function testTheChunkListNeedsNoTokenAndHasTheDocumentedShape(): void

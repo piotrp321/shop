@@ -1,0 +1,16 @@
+-- all products, count of the first page
+-- page = 25
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p LIMIT 10001) bounded;
+
+Aggregate  (cost=351.97..351.98 rows=1 width=8) (actual time=1.462..1.468 rows=1.00 loops=1)
+  Buffers: shared hit=44
+  ->  Limit  (cost=0.42..226.96 rows=10001 width=4) (actual time=0.016..1.100 rows=10001.00 loops=1)
+        Buffers: shared hit=44
+        ->  Index Only Scan using catalog_product_primary_category_id_idx on catalog_product p  (cost=0.42..22666.08 rows=1000644 width=4) (actual time=0.015..0.595 rows=10001.00 loops=1)
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=44
+Planning:
+  Buffers: shared hit=245
+Planning Time: 0.473 ms
+Execution Time: 1.497 ms

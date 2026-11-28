@@ -33,8 +33,8 @@ final class SitemapProductChunksController
             .'not, belongs to exactly one chunk; the first chunk reaches back to the lowest id and the last to the highest, so a '
             .'product created after the chunks were cut is in one of them. The key of a chunk is opaque: pass it unchanged to '
             .'`getSitemapProducts`. An empty catalogue has one chunk. The chunks are cut from the ids of all the products and the cut '
-            .'is kept for an hour, so a new product can move the cut only after that. The response is public, kept for 60 s by '
-            .'a browser and for an hour by a shared cache, and tagged for purging.',
+            .'is kept for an hour, or for less when a chunk grows past the row limit, so a new product can move the cut only after that. '
+            .'The response is public, kept for 60 s by a browser and for an hour by a shared cache, and tagged for purging.',
         tags: ['Catalog'],
         responses: [
             new OA\Response(

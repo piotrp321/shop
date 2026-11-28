@@ -1,0 +1,28 @@
+-- customers, fragment punct-1 '#!#', page 1 by the bigrams
+-- hits = 0
+SELECT c.customer_id, c.email, c.full_name, c.order_count, c.paid_gross, c.last_order_at, lower(c.full_name) AS sort_name FROM ordering_customer c WHERE ((perf_bigrams(lower(c.email)) @> perf_bigrams(lower('#!#')) AND lower(c.email) LIKE '%' || lower('#!#') || '%') OR (perf_bigrams(lower(c.full_name)) @> perf_bigrams(lower('#!#')) AND lower(c.full_name) LIKE '%' || lower('#!#') || '%')) ORDER BY c.last_order_at DESC, c.customer_id LIMIT 26;
+
+Limit  (cost=59.88..59.88 rows=1 width=139) (actual time=0.036..0.037 rows=0.00 loops=1)
+  Buffers: shared hit=13
+  ->  Sort  (cost=59.88..59.88 rows=1 width=139) (actual time=0.036..0.036 rows=0.00 loops=1)
+        Sort Key: last_order_at DESC, customer_id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=13
+        ->  Bitmap Heap Scan on ordering_customer c  (cost=55.34..59.87 rows=1 width=139) (actual time=0.024..0.025 rows=0.00 loops=1)
+              Recheck Cond: ((perf_bigrams(lower((email)::text)) @> '{!#,#!}'::text[]) OR (perf_bigrams(lower((full_name)::text)) @> '{!#,#!}'::text[]))
+              Filter: (((perf_bigrams(lower((email)::text)) @> '{!#,#!}'::text[]) AND (lower((email)::text) ~~ '%#!#%'::text)) OR ((perf_bigrams(lower((full_name)::text)) @> '{!#,#!}'::text[]) AND (lower((full_name)::text) ~~ '%#!#%'::text)))
+              Buffers: shared hit=10
+              ->  BitmapOr  (cost=55.34..55.34 rows=1 width=0) (actual time=0.022..0.022 rows=0.00 loops=1)
+                    Buffers: shared hit=10
+                    ->  Bitmap Index Scan on proto_z1_customer_email  (cost=0.00..29.73 rows=1 width=0) (actual time=0.010..0.010 rows=0.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((email)::text)) @> '{!#,#!}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=5
+                    ->  Bitmap Index Scan on proto_z1_customer_name  (cost=0.00..25.61 rows=1 width=0) (actual time=0.012..0.012 rows=0.00 loops=1)
+                          Index Cond: (perf_bigrams(lower((full_name)::text)) @> '{!#,#!}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=497
+Planning Time: 1.180 ms
+Execution Time: 0.053 ms

@@ -1,0 +1,33 @@
+-- phrase brand-mid 'treningowe', sort name: the candidates from the trigrams
+-- hits = 17200
+WITH m AS MATERIALIZED (SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%treningowe%') SELECT * FROM m ORDER BY name ASC, id ASC LIMIT 26;
+
+Limit  (cost=65408.77..65408.84 rows=26 width=524) (actual time=123.893..123.902 rows=26.00 loops=1)
+  Buffers: shared hit=800 read=21537 written=2
+  I/O Timings: shared read=4.662 write=0.027
+  CTE m
+    ->  Bitmap Heap Scan on catalog_product p  (cost=789.43..64435.53 rows=20066 width=71) (actual time=22.663..115.355 rows=17200.00 loops=1)
+          Recheck Cond: ((name)::text ~~* '%treningowe%'::text)
+          Rows Removed by Index Recheck: 4354
+          Heap Blocks: exact=20723
+          Buffers: shared hit=794 read=21537 written=2
+          I/O Timings: shared read=4.662 write=0.027
+          ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..784.41 rows=20066 width=0) (actual time=20.106..20.106 rows=22398.00 loops=1)
+                Index Cond: ((name)::text ~~* '%treningowe%'::text)
+                Index Searches: 1
+                Buffers: shared hit=794 read=814
+                I/O Timings: shared read=2.800
+  ->  Sort  (cost=973.25..1023.41 rows=20066 width=524) (actual time=123.891..123.892 rows=26.00 loops=1)
+        Sort Key: m.name, m.id
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=800 read=21537 written=2
+        I/O Timings: shared read=4.662 write=0.027
+        ->  CTE Scan on m  (cost=0.00..401.32 rows=20066 width=524) (actual time=22.667..119.608 rows=17200.00 loops=1)
+              Storage: Memory  Maximum Storage: 1964kB
+              Buffers: shared hit=794 read=21537 written=2
+              I/O Timings: shared read=4.662 write=0.027
+Planning:
+  Buffers: shared hit=381 read=72
+  I/O Timings: shared read=0.369
+Planning Time: 1.511 ms
+Execution Time: 124.150 ms

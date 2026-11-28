@@ -1,0 +1,48 @@
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%pro%' LIMIT 10001) bounded
+
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=41.364..41.367 rows=1.00 loops=1)
+  Buffers: shared hit=67290 read=412
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.027..41.066 rows=10001.00 loops=1)
+        Buffers: shared hit=67290 read=412
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.026..40.659 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%pro%'::text)
+              Rows Removed by Filter: 66599
+              Heap Fetches: 2466
+              Index Searches: 1
+              Buffers: shared hit=67290 read=412
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.924 ms
+Execution Time: 41.394 ms
+
+=====
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=40.964..40.966 rows=1.00 loops=1)
+  Buffers: shared hit=67702
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.027..40.666 rows=10001.00 loops=1)
+        Buffers: shared hit=67702
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.026..40.268 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%pro%'::text)
+              Rows Removed by Filter: 66599
+              Heap Fetches: 2466
+              Index Searches: 1
+              Buffers: shared hit=67702
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.919 ms
+Execution Time: 40.990 ms
+
+=====
+Aggregate  (cost=9659.06..9659.07 rows=1 width=8) (actual time=39.927..39.931 rows=1.00 loops=1)
+  Buffers: shared hit=67702
+  ->  Limit  (cost=0.55..9534.05 rows=10001 width=4) (actual time=0.027..39.637 rows=10001.00 loops=1)
+        Buffers: shared hit=67702
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=121141 width=4) (actual time=0.026..39.240 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%pro%'::text)
+              Rows Removed by Filter: 66599
+              Heap Fetches: 2466
+              Index Searches: 1
+              Buffers: shared hit=67702
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.888 ms
+Execution Time: 39.956 ms

@@ -1,0 +1,2 @@
+proto_k1_name: built in 2.9 s, size 93 MB|97787904
+proto_k1_updated: built in 1.1 s, size 56 MB|58925056

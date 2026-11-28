@@ -448,7 +448,8 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection` (`tests/Support`; wyłączone
     `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`); id rozstrzyga remisy w kierunku sortu,
     więc oba kierunki czytają ten sam indeks;
-  - licznik wyników to `BoundedCounter` (`Shared\Infrastructure\Persistence`, najwyżej 10 001 wierszy): nowa lista
+  - licznik wyników to `BoundedCounter` (`Shared\Infrastructure\Persistence`, najwyżej 10 001 wierszy; wyjątek: licznik
+    frazy w nazwie produktu liczy `PhraseSearch::count` do tego samego limitu, tą drogą co strona): nowa lista
     dopisuje metodę `count(...)` do portu odczytu, składa warunki jednym helperem dla strony i licznika (jak `filter()`
     w `DbalBackofficeProductSource`), woła licznik tylko na pierwszej stronie (`after === null`), która ma następną;
     strona bez następnej daje `BoundedCount(count(items), false)` bez drugiego skanu. Liczniki nie zależą od sortu;
@@ -458,8 +459,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     w module, pole `null` według votera);
   - liczba produktów nigdy nie jest `count(*)`: to szacunek `pg_class.reltuples`, więc po masowym wstawieniu produktów
     trzeba `ANALYZE catalog_product`.
-- Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją).
-  Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
+- Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją)
+  i indeksu GIN bigramów na `catalog_name_bigrams(name)` (funkcja IMMUTABLE z migracji; jej treść nie zmienia się po
+  zbudowaniu indeksu). Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
+- Sterowanie planistą w kodzie produkcyjnym (`set_config` albo `SET LOCAL` na `enable_*`) tylko według D10 w
+  `docs/features/admin-queries/spec.md`: dwa zapytania kandydatów w `PhraseSearch`, lokalnie (transakcja albo savepoint
+  wycofany zawsze, także po wyjątku), bez zmiany konfiguracji serwera i limitów czasu. Każde inne miejsce wymaga
+  decyzji właściciela. Test planu odtwarza ustawienia, które kod faktycznie wysłał (`RecordingConnection`), nie własne.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
 - Obraz Docker (`apps/api/Dockerfile`): etap `prod` bez Composera, gita, SPX, pakietów dev i entrypointu instalującego

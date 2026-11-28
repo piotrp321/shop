@@ -1,0 +1,28 @@
+-- orders, fragment punct-2 '---', page 1
+-- hits = 0
+SELECT o.id, o.number, o.placed_at, o.status, o.email, o.full_name, o.total_gross, o.currency, (SELECT COALESCE(SUM(l.quantity), 0) FROM ordering_order_line l WHERE l.order_id = o.id) AS item_count, o.refund_amount, o.refund_due_at, o.refund_completed_at FROM ordering_order o WHERE lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE '%' || lower('---') || '%' ORDER BY o.placed_at DESC, o.id DESC LIMIT 26;
+
+Limit  (cost=1000.45..47588.54 rows=26 width=136) (actual time=309.438..314.052 rows=0.00 loops=1)
+  Buffers: shared hit=11777 read=64382 written=2
+  I/O Timings: shared read=170.567 write=0.047
+  ->  Gather Merge  (cost=1000.45..180185.41 rows=100 width=136) (actual time=309.437..314.050 rows=0.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=11777 read=64382 written=2
+        I/O Timings: shared read=170.567 write=0.047
+        ->  Parallel Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..178323.70 rows=42 width=128) (actual time=307.665..307.665 rows=0.00 loops=3)
+              Filter: (lower((((((number)::text || ''::text) || (email)::text) || ''::text) || (full_name)::text)) ~~ '%---%'::text)
+              Rows Removed by Filter: 333333
+              Index Searches: 1
+              Buffers: shared hit=11777 read=64382 written=2
+              I/O Timings: shared read=170.567 write=0.047
+        SubPlan 1
+          ->  Aggregate  (cost=8.49..8.50 rows=1 width=8) (never executed)
+                ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.48 rows=3 width=4) (never executed)
+                      Index Cond: (order_id = o.id)
+                      Index Searches: 0
+Planning:
+  Buffers: shared hit=365 read=72
+  I/O Timings: shared read=0.303
+Planning Time: 1.195 ms
+Execution Time: 314.118 ms

@@ -1,0 +1,5 @@
+== with the client that aborts after 1.0 s: curl exit 28 (000 1.009038)
+   backend 89350: active from t=0.32 s to t=8.13 s (the statement runs 8.1 s at the last look): SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE ( p.primary_ca
+   verdict: the statement was active until t=8.13 s; the client gave up at t=1.0 s -> it GOES ON after the abort (H2 confirmed)
+== control: the client waits: curl exit 0 (200 3.286992)
+   backend 89630: active from t=0.01 s to t=2.94 s (the statement runs 2.95 s at the last look): SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE ( p.primary_ca

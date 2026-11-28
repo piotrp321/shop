@@ -4,7 +4,7 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { useCustomerList } from "@/customers/useCustomerList";
-import type { WithOptionalTotal } from "./listPage";
+import { requestSignal, type WithOptionalTotal } from "./listPage";
 
 type CustomerList = WithOptionalTotal<components["schemas"]["BackofficeCustomerListResponse"]>;
 type CustomerListItem = components["schemas"]["BackofficeCustomerListItemResponse"];
@@ -80,7 +80,7 @@ describe("useCustomerList", () => {
   it("loads the first page without parameters and keeps the total of the first page while paging", async () => {
     const { list } = await start({ "": page(["c1", "c2"], "n1", { value: 42, capped: false }), n1: page(["c3"]) });
 
-    expect(mocks.get).toHaveBeenCalledWith(CUSTOMERS, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(CUSTOMERS, { params: { query: {} }, signal: expect.any(AbortSignal) });
     expect(list.items.value.map((item) => item.customerId)).toEqual(["c1", "c2"]);
     expect(list.total.value).toEqual({ value: 42, capped: false });
     expect(list.sort.value).toBe("-lastOrderAt");
@@ -270,5 +270,33 @@ describe("useCustomerList", () => {
     await flushPromises();
 
     expect(mounted.list.error.value).toBe("Nie udało się pobrać klientów. Sprawdź połączenie z API.");
+  });
+});
+
+describe("useCustomerList request abort", () => {
+  let wrapper: { unmount: () => void } | undefined;
+
+  beforeEach(() => {
+    mocks.get.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+  });
+
+  it("gives the request an abort signal and aborts it when the list is gone", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const mounted = await mountList();
+    wrapper = mounted.wrapper;
+    await flushPromises();
+
+    const signal = requestSignal(mocks.get, CUSTOMERS);
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal!.aborted).toBe(false);
+
+    wrapper.unmount();
+    wrapper = undefined;
+    expect(signal!.aborted).toBe(true);
   });
 });

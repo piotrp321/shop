@@ -54,7 +54,7 @@ export function usePromotionList() {
     } satisfies ListParam<number, number>,
   });
 
-  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<PromotionListItem>> {
+  async function fetchPage({ query, after, signal }: PageRequest<typeof url.query.value>): Promise<PageResult<PromotionListItem>> {
     const apiQuery: PromotionQuery = {};
     if (query.status !== null) {
       apiQuery.status = query.status;
@@ -66,7 +66,7 @@ export function usePromotionList() {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/promotions", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/promotions", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.next, total: result.data.total };
       }

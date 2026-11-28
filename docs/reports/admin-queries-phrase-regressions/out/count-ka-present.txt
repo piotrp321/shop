@@ -1,0 +1,48 @@
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%ka%' LIMIT 10001) bounded
+
+Aggregate  (cost=2915.85..2915.86 rows=1 width=8) (actual time=35.473..35.477 rows=1.00 loops=1)
+  Buffers: shared hit=58116
+  ->  Limit  (cost=0.55..2790.83 rows=10001 width=4) (actual time=0.050..35.173 rows=10001.00 loops=1)
+        Buffers: shared hit=58116
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=413900 width=4) (actual time=0.049..34.775 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 55708
+              Heap Fetches: 2120
+              Index Searches: 1
+              Buffers: shared hit=58116
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.875 ms
+Execution Time: 35.499 ms
+
+=====
+Aggregate  (cost=2915.85..2915.86 rows=1 width=8) (actual time=35.467..35.470 rows=1.00 loops=1)
+  Buffers: shared hit=58116
+  ->  Limit  (cost=0.55..2790.83 rows=10001 width=4) (actual time=0.049..35.163 rows=10001.00 loops=1)
+        Buffers: shared hit=58116
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=413900 width=4) (actual time=0.048..34.771 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 55708
+              Heap Fetches: 2120
+              Index Searches: 1
+              Buffers: shared hit=58116
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.869 ms
+Execution Time: 35.496 ms
+
+=====
+Aggregate  (cost=2915.85..2915.86 rows=1 width=8) (actual time=35.368..35.371 rows=1.00 loops=1)
+  Buffers: shared hit=58116
+  ->  Limit  (cost=0.55..2790.83 rows=10001 width=4) (actual time=0.053..35.080 rows=10001.00 loops=1)
+        Buffers: shared hit=58116
+        ->  Index Only Scan using proto_k1_name on catalog_product p  (cost=0.55..115478.80 rows=413900 width=4) (actual time=0.052..34.676 rows=10001.00 loops=1)
+              Filter: ((name)::text ~~* '%ka%'::text)
+              Rows Removed by Filter: 55708
+              Heap Fetches: 2120
+              Index Searches: 1
+              Buffers: shared hit=58116
+Planning:
+  Buffers: shared hit=460
+Planning Time: 0.868 ms
+Execution Time: 35.392 ms

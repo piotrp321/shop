@@ -1,0 +1,891 @@
+{
+ "db": "shop_proto",
+ "totals": {
+  "products": 1000191,
+  "orders": 1000000,
+  "customers": 98570,
+  "categories": 180,
+  "chosen_categories": [
+   {
+    "label": "small",
+    "id": "d947db5c-6f5f-5457-94f2-4b487d81a22e",
+    "name": "Piłka nożna",
+    "products": 15,
+    "leaf": true,
+    "additional_only": 0,
+    "root": false,
+    "why": "4-20 products"
+   },
+   {
+    "label": "mid",
+    "id": "c2a92470-bddd-5c3a-9b84-ed06bfd4caad",
+    "name": "Rolki do masażu",
+    "products": 10585,
+    "leaf": true,
+    "additional_only": 1884,
+    "root": false,
+    "why": "a middle category (1-5 thousand products on medium)"
+   },
+   {
+    "label": "big-early",
+    "id": "22652b43-0274-5fd4-b1b8-76cd4469ead0",
+    "name": "Atlasy i mapy szczegółowe",
+    "products": 15199,
+    "leaf": true,
+    "additional_only": 2275,
+    "root": false,
+    "first_name": "Atlas szlaków Alitar Jastrząb 400",
+    "alphabet": 2.4995225911850835e-05,
+    "why": "a big leaf whose first page ends at 0% of the names"
+   },
+   {
+    "label": "big-late",
+    "id": "c65841c4-e5f5-58f5-9451-5e985cfec063",
+    "name": "Stroje pływackie",
+    "products": 22829,
+    "leaf": true,
+    "additional_only": 1360,
+    "root": false,
+    "first_name": "Buty neoprenowe Corrovar Wydra 300",
+    "alphabet": 0.10597875805721108,
+    "why": "a big leaf whose first page ends at 11% of the names"
+   },
+   {
+    "label": "department",
+    "id": "d7c098d0-4bae-595e-a1e1-e4a923448956",
+    "name": "Turystyka",
+    "products": 206849,
+    "leaf": false,
+    "additional_only": 8,
+    "root": true,
+    "why": "the biggest department"
+   },
+   {
+    "label": "mostly-additional",
+    "id": "c57c017b-d6f7-5990-82bf-635533003629",
+    "name": "Lornetki",
+    "products": 6689,
+    "leaf": true,
+    "additional_only": 2424,
+    "root": false,
+    "why": "2424 of 6689 products only through an additional category"
+   }
+  ],
+  "phrases": [
+   {
+    "label": "none",
+    "term": "zzqqxx"
+   },
+   {
+    "label": "rare",
+    "term": "ravotar"
+   },
+   {
+    "label": "very-common-a",
+    "term": "pro"
+   },
+   {
+    "label": "very-common-b",
+    "term": "ka"
+   },
+   {
+    "label": "two-rare",
+    "term": "qx"
+   },
+   {
+    "label": "two-other",
+    "term": "zx"
+   },
+   {
+    "label": "two-common",
+    "term": "er"
+   },
+   {
+    "label": "punct-1",
+    "term": "#!#"
+   },
+   {
+    "label": "punct-2",
+    "term": "---"
+   },
+   {
+    "label": "punct-3",
+    "term": "a.b"
+   },
+   {
+    "label": "punct-4",
+    "term": "ab-cd"
+   },
+   {
+    "label": "type-early",
+    "term": "bagażnik"
+   },
+   {
+    "label": "type-late",
+    "term": "zupa"
+   },
+   {
+    "label": "brand-common",
+    "term": "rowerowa"
+   },
+   {
+    "label": "brand-mid",
+    "term": "treningowe"
+   },
+   {
+    "label": "polish-lower",
+    "term": "skała"
+   },
+   {
+    "label": "polish-upper",
+    "term": "SKAŁA"
+   },
+   {
+    "label": "polish-title",
+    "term": "Skała"
+   }
+  ],
+  "variant": "K0",
+  "budget": 20000
+ },
+ "cases": [
+  {
+   "id": "K0.small.cat.p1.name",
+   "group": "category",
+   "title": "category small (15 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category small (15 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat.count",
+   "group": "category",
+   "title": "category small (15 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+brand.p1.name",
+   "group": "category",
+   "title": "category small + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category small + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+brand.count",
+   "group": "category",
+   "title": "category small + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category small + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category small + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+drafts.count",
+   "group": "category",
+   "title": "category small + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category small + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category small + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.small.cat+noimages.count",
+   "group": "category",
+   "title": "category small + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/8c10569a-2f29-539a-b2ec-ae97f68410a7/592d133b-169f-5d84-b197-b877925beda1/d947db5c-6f5f-5457-94f2-4b487d81a22e/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat.p1.name",
+   "group": "category",
+   "title": "category mid (10585 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat.p2.name",
+   "group": "category",
+   "title": "category mid (10585 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND (p.name, p.id) > ('Buty na bieżnię Elkos Pustułka 900', CAST('e28cb68a-b4c3-5c37-8c2f-72ad52c2d90e' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category mid (10585 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat.p2.-updatedAt",
+   "group": "category",
+   "title": "category mid (10585 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND (p.updated_at, p.id) < (CAST('2026-11-09 21:24:07+00' AS timestamptz), CAST('8700e4e3-d98b-5cd3-ad22-aae0fe0bc065' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat.count",
+   "group": "category",
+   "title": "category mid (10585 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+brand.p1.name",
+   "group": "category",
+   "title": "category mid + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category mid + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+brand.count",
+   "group": "category",
+   "title": "category mid + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category mid + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category mid + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+drafts.count",
+   "group": "category",
+   "title": "category mid + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category mid + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category mid + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mid.cat+noimages.count",
+   "group": "category",
+   "title": "category mid + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/492f4a2e-2d1b-5ea7-ae33-c0101cd720ea/b24e7921-99db-51d6-b6cf-382103f299df/c2a92470-bddd-5c3a-9b84-ed06bfd4caad/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 10585,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat.p1.name",
+   "group": "category",
+   "title": "category big-early (15199 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat.p2.name",
+   "group": "category",
+   "title": "category big-early (15199 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-early (15199 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat.p2.-updatedAt",
+   "group": "category",
+   "title": "category big-early (15199 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND (p.updated_at, p.id) < (CAST('2026-11-11 09:19:32+00' AS timestamptz), CAST('d08c7304-d537-50c2-9b35-5dd4c7998989' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat.count",
+   "group": "category",
+   "title": "category big-early (15199 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+brand.p1.name",
+   "group": "category",
+   "title": "category big-early + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-early + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+brand.count",
+   "group": "category",
+   "title": "category big-early + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category big-early + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-early + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+drafts.count",
+   "group": "category",
+   "title": "category big-early + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category big-early + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-early + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-early.cat+noimages.count",
+   "group": "category",
+   "title": "category big-early + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/a58050fa-627a-5c6f-aa94-3f392baa4385/22652b43-0274-5fd4-b1b8-76cd4469ead0/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 15199,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat.p1.name",
+   "group": "category",
+   "title": "category big-late (22829 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat.p2.name",
+   "group": "category",
+   "title": "category big-late (22829 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND (p.name, p.id) > ('Buty neoprenowe Corrovar Trawers 350 Plus', CAST('20a7b18f-6140-58a5-9ae6-aa762444c6ca' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-late (22829 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat.p2.-updatedAt",
+   "group": "category",
+   "title": "category big-late (22829 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND (p.updated_at, p.id) < (CAST('2026-11-12 04:46:13+00' AS timestamptz), CAST('affdd904-f20a-5809-960e-ae6986ef922b' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat.count",
+   "group": "category",
+   "title": "category big-late (22829 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+brand.p1.name",
+   "group": "category",
+   "title": "category big-late + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-late + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+brand.count",
+   "group": "category",
+   "title": "category big-late + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category big-late + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-late + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+drafts.count",
+   "group": "category",
+   "title": "category big-late + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category big-late + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category big-late + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.big-late.cat+noimages.count",
+   "group": "category",
+   "title": "category big-late + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/6f62a979-6012-5f5a-a39b-13948746e108/4465893d-be57-5bbf-a8f9-b09bcb2de278/c65841c4-e5f5-58f5-9451-5e985cfec063/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 22829,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat.p1.name",
+   "group": "category",
+   "title": "category department (206849 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat.p2.name",
+   "group": "category",
+   "title": "category department (206849 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND (p.name, p.id) > ('Atlas szlaków Alitar Jastrząb 100', CAST('eadda1d7-d96d-569e-83b9-ce65403f3b6d' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category department (206849 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat.p2.-updatedAt",
+   "group": "category",
+   "title": "category department (206849 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND (p.updated_at, p.id) < (CAST('2026-11-27 12:59:11+00' AS timestamptz), CAST('874b932f-5196-5088-a9b2-ab5d518bb6ae' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat.count",
+   "group": "category",
+   "title": "category department (206849 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+brand.p1.name",
+   "group": "category",
+   "title": "category department + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category department + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+brand.count",
+   "group": "category",
+   "title": "category department + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category department + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category department + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+drafts.count",
+   "group": "category",
+   "title": "category department + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category department + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category department + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.department.cat+noimages.count",
+   "group": "category",
+   "title": "category department + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 206849,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat.p1.name",
+   "group": "category",
+   "title": "category mostly-additional (6689 products), page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat.p2.name",
+   "group": "category",
+   "title": "category mostly-additional (6689 products), page 2, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND (p.name, p.id) > ('Atlas szlaków Melvivin Kopa 300', CAST('4b91d6e2-7079-57e9-b445-422ed2f5028c' AS uuid)) ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat.p1.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional (6689 products), page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat.p2.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional (6689 products), page 2, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND (p.updated_at, p.id) < (CAST('2026-11-08 00:23:38+00' AS timestamptz), CAST('198bc48c-5196-5ced-b528-18064684dec2' AS uuid)) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat.count",
+   "group": "category",
+   "title": "category mostly-additional (6689 products), count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+brand.p1.name",
+   "group": "category",
+   "title": "category mostly-additional + common phrase, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+brand.p1.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional + common phrase, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.name ILIKE '%pro%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+brand.count",
+   "group": "category",
+   "title": "category mostly-additional + common phrase, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.name ILIKE '%pro%' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+drafts.p1.name",
+   "group": "category",
+   "title": "category mostly-additional + drafts, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.status = 'draft' ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+drafts.p1.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional + drafts, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.status = 'draft' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+drafts.count",
+   "group": "category",
+   "title": "category mostly-additional + drafts, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.status = 'draft' LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+noimages.p1.name",
+   "group": "category",
+   "title": "category mostly-additional + without images, page 1, sort name",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.images = '[]'::jsonb ORDER BY p.name ASC, p.id ASC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+noimages.p1.-updatedAt",
+   "group": "category",
+   "title": "category mostly-additional + without images, page 1, sort -updatedAt",
+   "sql": "SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.images = '[]'::jsonb ORDER BY p.updated_at DESC, p.id DESC LIMIT 26",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  },
+  {
+   "id": "K0.mostly-additional.cat+noimages.count",
+   "group": "category",
+   "title": "category mostly-additional + without images, count",
+   "sql": "SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.id IN (SELECT id FROM catalog_product WHERE primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%') UNION SELECT product_id FROM catalog_product_category WHERE category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/1eca62e7-3a2e-526f-b689-4d43a343b30d/c57c017b-d6f7-5990-82bf-635533003629/%')) AND p.images = '[]'::jsonb LIMIT 10001) bounded",
+   "variable": "products in the subtree",
+   "value": 6689,
+   "scale": "products"
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+-- phrase none 'zzqqxx', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%zzqqxx%' LIMIT 10001) bounded;
+
+Aggregate  (cost=741.82..741.83 rows=1 width=8) (actual time=0.031..0.033 rows=1.00 loops=1)
+  Buffers: shared hit=13
+  ->  Limit  (cost=344.63..740.57 rows=100 width=4) (actual time=0.029..0.030 rows=0.00 loops=1)
+        Buffers: shared hit=13
+        ->  Bitmap Heap Scan on catalog_product p  (cost=344.63..740.57 rows=100 width=4) (actual time=0.029..0.029 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zzqqxx%'::text)
+              Buffers: shared hit=13
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..344.61 rows=100 width=0) (actual time=0.026..0.026 rows=0.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zzqqxx%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=13
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.750 ms
+Execution Time: 0.082 ms

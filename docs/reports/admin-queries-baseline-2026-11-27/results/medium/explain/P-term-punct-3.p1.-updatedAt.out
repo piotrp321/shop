@@ -1,0 +1,28 @@
+-- phrase punct-3 'a.b', page 1, sort -updatedAt
+-- hits = 0
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%a.b%' ORDER BY p.updated_at DESC, p.id DESC LIMIT 26;
+
+Limit  (cost=486.37..486.43 rows=26 width=71) (actual time=664.822..664.831 rows=0.00 loops=1)
+  Buffers: shared hit=7 read=157658 written=2
+  I/O Timings: shared read=5.618 write=0.048
+  ->  Sort  (cost=486.37..486.62 rows=100 width=71) (actual time=664.818..664.818 rows=0.00 loops=1)
+        Sort Key: updated_at DESC, id DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=7 read=157658 written=2
+        I/O Timings: shared read=5.618 write=0.048
+        ->  Bitmap Heap Scan on catalog_product p  (cost=87.58..483.52 rows=100 width=71) (actual time=664.795..664.796 rows=0.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%a.b%'::text)
+              Rows Removed by Index Recheck: 660920
+              Heap Blocks: exact=58037 lossy=99433
+              Buffers: shared hit=1 read=157658 written=2
+              I/O Timings: shared read=5.618 write=0.048
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..87.56 rows=100 width=0) (actual time=30.739..30.739 rows=311167.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%a.b%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=1 read=188
+                    I/O Timings: shared read=0.850
+Planning:
+  Buffers: shared hit=219 read=59
+  I/O Timings: shared read=0.281
+Planning Time: 1.079 ms
+Execution Time: 665.633 ms

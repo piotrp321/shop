@@ -1,0 +1,39 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%ze%' ORDER BY p.name ASC, p.id ASC LIMIT 26
+
+Limit  (cost=0.42..289.92 rows=26 width=71) (actual time=0.020..1.878 rows=26.00 loops=1)
+  Buffers: shared hit=297 read=370
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=121141 width=71) (actual time=0.020..1.874 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%ze%'::text)
+        Rows Removed by Filter: 624
+        Index Searches: 1
+        Buffers: shared hit=297 read=370
+Planning:
+  Buffers: shared hit=482
+Planning Time: 0.873 ms
+Execution Time: 1.891 ms
+
+=====
+Limit  (cost=0.42..289.92 rows=26 width=71) (actual time=0.020..0.970 rows=26.00 loops=1)
+  Buffers: shared hit=667
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=121141 width=71) (actual time=0.020..0.965 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%ze%'::text)
+        Rows Removed by Filter: 624
+        Index Searches: 1
+        Buffers: shared hit=667
+Planning:
+  Buffers: shared hit=482
+Planning Time: 0.871 ms
+Execution Time: 0.982 ms
+
+=====
+Limit  (cost=0.42..289.92 rows=26 width=71) (actual time=0.022..1.014 rows=26.00 loops=1)
+  Buffers: shared hit=667
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348829.12 rows=121141 width=71) (actual time=0.021..1.010 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%ze%'::text)
+        Rows Removed by Filter: 624
+        Index Searches: 1
+        Buffers: shared hit=667
+Planning:
+  Buffers: shared hit=482
+Planning Time: 0.875 ms
+Execution Time: 1.026 ms

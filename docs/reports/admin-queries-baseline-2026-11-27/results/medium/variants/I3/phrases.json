@@ -1,0 +1,32 @@
+[
+ {
+  "label": "punct-rare",
+  "term": "#!#",
+  "hits": 250,
+  "show_trgm": "{}"
+ },
+ {
+  "label": "punct-medium",
+  "term": "a.b",
+  "hits": 12000,
+  "show_trgm": "{\"  a\",\"  b\",\" a \",\" b \"}"
+ },
+ {
+  "label": "two-rare",
+  "term": "qx",
+  "hits": 250,
+  "show_trgm": "{\"  q\",\" qx\",\"qx \"}"
+ },
+ {
+  "label": "two-medium",
+  "term": "gg",
+  "hits": 12828,
+  "show_trgm": "{\"  g\",\" gg\",\"gg \"}"
+ },
+ {
+  "label": "two-common",
+  "term": "ze",
+  "hits": 155298,
+  "show_trgm": "{\"  z\",\" ze\",\"ze \"}"
+ }
+]

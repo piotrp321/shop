@@ -1,0 +1,3 @@
+present statement|206850
+K1 old formula (join)|206851
+K1 final formula (semi-join)|206850

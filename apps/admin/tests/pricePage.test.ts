@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 
 const PRICES = "/api/v1/admin/prices";
+const signal = new AbortController().signal;
 
 const price = { gross: 5490, net: 5229, vat: 261, vatRate: 500, currency: "PLN", version: 1, updatedAt: "2026-11-01T12:30:00+00:00", vatRateOutdated: false };
 
@@ -26,19 +27,28 @@ describe("fetchPricePage", () => {
   it("always sends the page size, and the search, the category and the cursor only when they are set", async () => {
     mocks.get.mockResolvedValue({ data: { items: [], next: null }, response: { status: 200 } });
 
-    await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null });
-    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } } });
+    await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal });
+    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } }, signal });
 
     mocks.get.mockClear();
-    await fetchPricePage({ query: { q: "hantle", category: "c-1", perPage: 25 }, after: "cursor" });
+    await fetchPricePage({ query: { q: "hantle", category: "c-1", perPage: 25 }, after: "cursor", signal });
     expect(queryOfCall()).toEqual({ q: "hantle", category: "c-1", perPage: 25, after: "cursor" });
+  });
+
+  it("hands the abort signal of the request to the client", async () => {
+    mocks.get.mockResolvedValue({ data: { items: [], next: null }, response: { status: 200 } });
+    const controller = new AbortController();
+
+    await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal: controller.signal });
+
+    expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 10 } }, signal: controller.signal });
   });
 
   it("returns the products and the cursor of the next page", async () => {
     const items = [item("A", [{ variantId: "v", label: "", price }])];
     mocks.get.mockResolvedValue({ data: { items, next: "c1" }, response: { status: 200 } });
 
-    expect(await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null })).toEqual({ items, next: "c1" });
+    expect(await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal })).toEqual({ items, next: "c1" });
   });
 
   it.each([
@@ -49,7 +59,7 @@ describe("fetchPricePage", () => {
   ])("answers a %i with its message, forbidden only for a 403", async (status, message, forbidden) => {
     mocks.get.mockResolvedValue({ data: undefined, response: { status } });
 
-    const result = await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null });
+    const result = await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal });
 
     expect(result).toEqual({ error: message, forbidden });
   });
@@ -57,7 +67,7 @@ describe("fetchPricePage", () => {
   it("says the connection failed when the request itself fails", async () => {
     mocks.get.mockRejectedValue(new TypeError("network down"));
 
-    expect(await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null })).toEqual({
+    expect(await fetchPricePage({ query: { q: null, category: null, perPage: 10 }, after: null, signal })).toEqual({
       error: "Nie udało się pobrać cen. Sprawdź połączenie z API.",
     });
   });

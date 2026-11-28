@@ -1,0 +1,60 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%' ORDER BY p.updated_at ASC, p.id ASC LIMIT 26
+
+Limit  (cost=2358.43..2358.49 rows=26 width=71) (actual time=13.581..13.585 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  ->  Sort  (cost=2358.43..2358.68 rows=100 width=71) (actual time=13.579..13.580 rows=26.00 loops=1)
+        Sort Key: updated_at, id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=9165
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=2.736..12.979 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9159
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.156..2.156 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.829 ms
+Execution Time: 13.659 ms
+
+=====
+Limit  (cost=2358.43..2358.49 rows=26 width=71) (actual time=13.773..13.778 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  ->  Sort  (cost=2358.43..2358.68 rows=100 width=71) (actual time=13.769..13.771 rows=26.00 loops=1)
+        Sort Key: updated_at, id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=9165
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=2.971..13.196 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9159
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.366..2.366 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.830 ms
+Execution Time: 13.854 ms
+
+=====
+Limit  (cost=2358.43..2358.49 rows=26 width=71) (actual time=13.615..13.619 rows=26.00 loops=1)
+  Buffers: shared hit=9165
+  ->  Sort  (cost=2358.43..2358.68 rows=100 width=71) (actual time=13.614..13.615 rows=26.00 loops=1)
+        Sort Key: updated_at, id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=9165
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1959.64..2355.58 rows=100 width=71) (actual time=2.776..13.038 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9159
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.201..2.201 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+Planning:
+  Buffers: shared hit=498
+Planning Time: 0.788 ms
+Execution Time: 13.694 ms

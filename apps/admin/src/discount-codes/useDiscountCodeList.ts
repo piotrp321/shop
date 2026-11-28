@@ -85,7 +85,7 @@ export function useDiscountCodeList() {
     } satisfies ListParam<number, number>,
   });
 
-  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<DiscountCodeListItem>> {
+  async function fetchPage({ query, after, signal }: PageRequest<typeof url.query.value>): Promise<PageResult<DiscountCodeListItem>> {
     const apiQuery: CodeQuery = {};
     if (query.status !== null) {
       apiQuery.status = query.status;
@@ -100,7 +100,7 @@ export function useDiscountCodeList() {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/discount-codes", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/discount-codes", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.next, total: result.data.total };
       }

@@ -57,7 +57,7 @@ function failureMessage(status: number): string {
  * products. The page size is always sent: the default of the API is 25, the lists of the panel start at 10. It is the
  * page source of `useCursorPager` for the stock list.
  */
-export async function fetchStockPage({ query, after }: PageRequest<StockQuery>): Promise<PageResult<StockListItem>> {
+export async function fetchStockPage({ query, after, signal }: PageRequest<StockQuery>): Promise<PageResult<StockListItem>> {
   const apiQuery: { q?: string; category?: string; sort?: ProductSort; level?: StockLevelFilter; after?: string; perPage: number } = { perPage: query.perPage };
   if (query.level) {
     apiQuery.level = query.level;
@@ -76,7 +76,7 @@ export async function fetchStockPage({ query, after }: PageRequest<StockQuery>):
     apiQuery.after = after;
   }
   try {
-    const result = await getApiClient().GET("/api/v1/admin/stock", { params: { query: apiQuery } });
+    const result = await getApiClient().GET("/api/v1/admin/stock", { params: { query: apiQuery }, signal });
     if (result.data) {
       return { items: result.data.items, next: result.data.next, total: result.data.total };
     }

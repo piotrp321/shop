@@ -1,0 +1,194 @@
+1795808472
+pg active - 1
+pg idle Client 2
+ct perf7-postgres-1 65.42% 172.6MiB / 31.29GiB
+ct perf7-api-1 89.56% 274.8MiB / 31.29GiB
+ct perf7-elasticsearch-1 6.93% 2.522GiB / 31.29GiB
+1795808480
+pg active - 7
+pg active IO 3
+pg idle Client 5
+ct perf7-postgres-1 1162.08% 387.1MiB / 31.29GiB
+ct perf7-api-1 63.78% 279.9MiB / 31.29GiB
+ct perf7-elasticsearch-1 88.72% 2.524GiB / 31.29GiB
+1795808487
+pg active - 10
+pg active IO 2
+pg idle Client 3
+pg idle in transaction Client 1
+ct perf7-postgres-1 1088.79% 438.3MiB / 31.29GiB
+ct perf7-api-1 57.39% 280.3MiB / 31.29GiB
+ct perf7-elasticsearch-1 16.56% 2.523GiB / 31.29GiB
+1795808494
+pg active - 9
+pg active IO 2
+pg idle Client 2
+ct perf7-postgres-1 1064.99% 375.8MiB / 31.29GiB
+ct perf7-api-1 56.81% 283.9MiB / 31.29GiB
+ct perf7-elasticsearch-1 43.68% 2.523GiB / 31.29GiB
+1795808501
+pg active - 4
+pg active IO 5
+pg active LWLock 1
+pg idle Client 2
+ct perf7-postgres-1 1078.09% 322.4MiB / 31.29GiB
+ct perf7-api-1 64.79% 280.9MiB / 31.29GiB
+ct perf7-elasticsearch-1 67.15% 2.524GiB / 31.29GiB
+1795808508
+pg active - 8
+pg active IO 2
+pg idle Client 2
+ct perf7-postgres-1 1075.10% 379MiB / 31.29GiB
+ct perf7-api-1 67.07% 286.6MiB / 31.29GiB
+ct perf7-elasticsearch-1 43.36% 2.524GiB / 31.29GiB
+1795808515
+pg active - 8
+pg active IO 1
+pg active LWLock 1
+pg idle Client 2
+ct perf7-postgres-1 940.98% 393.4MiB / 31.29GiB
+ct perf7-api-1 55.83% 283.4MiB / 31.29GiB
+ct perf7-elasticsearch-1 57.71% 2.523GiB / 31.29GiB
+1795808523
+pg active - 5
+pg active IO 6
+pg active LWLock 3
+pg idle Client 3
+ct perf7-postgres-1 1134.81% 320.8MiB / 31.29GiB
+ct perf7-api-1 61.00% 283.6MiB / 31.29GiB
+ct perf7-elasticsearch-1 31.10% 2.522GiB / 31.29GiB
+1795808530
+pg active - 6
+pg active IO 5
+pg idle Client 2
+ct perf7-postgres-1 826.61% 351.2MiB / 31.29GiB
+ct perf7-api-1 53.23% 283.3MiB / 31.29GiB
+ct perf7-elasticsearch-1 38.41% 2.523GiB / 31.29GiB
+1795808538
+pg active - 7
+pg active IO 3
+pg idle Client 4
+ct perf7-postgres-1 1135.82% 444.6MiB / 31.29GiB
+ct perf7-api-1 67.86% 283.6MiB / 31.29GiB
+ct perf7-elasticsearch-1 97.19% 2.523GiB / 31.29GiB
+1795808545
+pg active - 8
+pg active IO 2
+pg idle Client 3
+ct perf7-postgres-1 991.08% 407.4MiB / 31.29GiB
+ct perf7-api-1 60.36% 284.2MiB / 31.29GiB
+ct perf7-elasticsearch-1 34.60% 2.524GiB / 31.29GiB
+1795808551
+pg active - 7
+pg active IO 4
+pg idle Client 2
+ct perf7-postgres-1 994.60% 386.8MiB / 31.29GiB
+ct perf7-api-1 62.93% 283.8MiB / 31.29GiB
+ct perf7-elasticsearch-1 62.10% 2.524GiB / 31.29GiB
+1795808559
+pg active - 8
+pg active IO 2
+pg idle Client 2
+pg idle in transaction - 1
+ct perf7-postgres-1 1052.73% 396.3MiB / 31.29GiB
+ct perf7-api-1 60.38% 286MiB / 31.29GiB
+ct perf7-elasticsearch-1 36.94% 2.524GiB / 31.29GiB
+1795808566
+pg active - 11
+pg active LWLock 1
+pg idle Client 3
+ct perf7-postgres-1 1141.83% 425.6MiB / 31.29GiB
+ct perf7-api-1 73.53% 287.1MiB / 31.29GiB
+ct perf7-elasticsearch-1 64.67% 2.523GiB / 31.29GiB
+1795808574
+pg active - 8
+pg active IO 1
+pg active LWLock 2
+pg idle Client 3
+ct perf7-postgres-1 1131.94% 392.5MiB / 31.29GiB
+ct perf7-api-1 64.76% 285.2MiB / 31.29GiB
+ct perf7-elasticsearch-1 83.52% 2.523GiB / 31.29GiB
+1795808581
+pg active - 8
+pg active IO 3
+pg idle Client 3
+ct perf7-postgres-1 1107.21% 403.2MiB / 31.29GiB
+ct perf7-api-1 58.79% 284.9MiB / 31.29GiB
+ct perf7-elasticsearch-1 47.90% 2.522GiB / 31.29GiB
+1795808588
+pg active - 9
+pg active IO 1
+pg idle Client 3
+ct perf7-postgres-1 963.39% 349MiB / 31.29GiB
+ct perf7-api-1 61.53% 286.5MiB / 31.29GiB
+ct perf7-elasticsearch-1 20.47% 2.523GiB / 31.29GiB
+1795808596
+pg active - 8
+pg active IO 3
+pg idle Client 3
+pg idle in transaction - 1
+ct perf7-postgres-1 1131.16% 357.6MiB / 31.29GiB
+ct perf7-api-1 69.05% 284.4MiB / 31.29GiB
+ct perf7-elasticsearch-1 29.80% 2.524GiB / 31.29GiB
+1795808603
+pg active - 8
+pg active IO 4
+pg idle Client 2
+ct perf7-postgres-1 899.25% 435.2MiB / 31.29GiB
+ct perf7-api-1 58.36% 286.1MiB / 31.29GiB
+ct perf7-elasticsearch-1 25.26% 2.523GiB / 31.29GiB
+1795808611
+pg active - 8
+pg active IO 3
+pg active LWLock 1
+pg idle Client 2
+ct perf7-postgres-1 1161.98% 454.3MiB / 31.29GiB
+ct perf7-api-1 67.11% 287.2MiB / 31.29GiB
+ct perf7-elasticsearch-1 36.24% 2.524GiB / 31.29GiB
+1795808617
+pg active - 9
+pg active IO 7
+pg active IPC 1
+pg active LWLock 4
+pg idle Client 3
+ct perf7-postgres-1 1176.29% 376.5MiB / 31.29GiB
+ct perf7-api-1 60.39% 285MiB / 31.29GiB
+ct perf7-elasticsearch-1 36.71% 2.522GiB / 31.29GiB
+1795808625
+pg active - 12
+pg active IO 1
+pg idle Client 2
+ct perf7-postgres-1 1024.37% 406.5MiB / 31.29GiB
+ct perf7-api-1 56.75% 285.2MiB / 31.29GiB
+ct perf7-elasticsearch-1 61.07% 2.523GiB / 31.29GiB
+1795808632
+pg active - 5
+pg active IO 4
+pg idle Client 2
+ct perf7-postgres-1 1042.79% 393.4MiB / 31.29GiB
+ct perf7-api-1 58.11% 283.8MiB / 31.29GiB
+ct perf7-elasticsearch-1 39.54% 2.523GiB / 31.29GiB
+1795808639
+pg active - 8
+pg active IO 7
+pg idle Client 3
+ct perf7-postgres-1 944.22% 321.3MiB / 31.29GiB
+ct perf7-api-1 58.74% 287.3MiB / 31.29GiB
+ct perf7-elasticsearch-1 24.34% 2.524GiB / 31.29GiB
+1795808647
+pg active - 3
+pg active IO 1
+pg active LWLock 6
+pg active Timeout 1
+pg idle Client 3
+ct perf7-postgres-1 1131.24% 384.6MiB / 31.29GiB
+ct perf7-api-1 64.09% 285.6MiB / 31.29GiB
+ct perf7-elasticsearch-1 88.24% 2.523GiB / 31.29GiB
+1795808654
+pg active - 8
+pg active IO 4
+pg active LWLock 3
+pg idle Client 3
+ct perf7-postgres-1 245.88% 298MiB / 31.29GiB
+ct perf7-api-1 0.76% 282.8MiB / 31.29GiB
+ct perf7-elasticsearch-1 10.63% 2.522GiB / 31.29GiB

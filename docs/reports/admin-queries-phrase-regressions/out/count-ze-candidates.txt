@@ -1,0 +1,100 @@
+WITH m AS MATERIALIZED (SELECT 1 FROM catalog_product p WHERE catalog_name_bigrams(p.name) @> catalog_name_bigrams('ze') AND (p.name || '') ILIKE '%ze%') SELECT count(*) FROM (SELECT * FROM m LIMIT 10001) bounded
+
+Aggregate  (cost=356290.25..356290.26 rows=1 width=8) (actual time=267.858..272.271 rows=1.00 loops=1)
+  Buffers: shared hit=1824 read=7163 written=1777
+  CTE m
+    ->  Gather  (cost=2019.35..355965.21 rows=30883 width=4) (actual time=19.871..267.226 rows=10001.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=1824 read=7163 written=1777
+          ->  Parallel Bitmap Heap Scan on catalog_product p  (cost=1019.35..351876.91 rows=12868 width=4) (actual time=14.019..256.241 rows=3564.00 loops=3)
+                Recheck Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                Rows Removed by Index Recheck: 7012
+                Filter: (((name)::text || ''::text) ~~* '%ze%'::text)
+                Heap Blocks: exact=408 lossy=2297
+                Buffers: shared hit=1824 read=7163 written=1777
+                Worker 0:  Heap Blocks: exact=432 lossy=2304
+                Worker 1:  Heap Blocks: exact=440 lossy=2332
+                ->  Bitmap Index Scan on catalog_product_name_bigrams_idx  (cost=0.00..1011.63 rows=154417 width=0) (actual time=15.634..15.634 rows=155298.00 loops=1)
+                      Index Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                      Index Searches: 1
+                      Buffers: shared hit=39
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=22.697..267.396 rows=10001.00 loops=1)
+        Buffers: shared hit=408 read=2371 written=596
+        ->  CTE Scan on m  (cost=0.00..617.66 rows=30883 width=4) (actual time=19.875..264.052 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=408 read=2371 written=596
+Planning:
+  Buffers: shared hit=517
+Planning Time: 0.833 ms
+JIT:
+  Functions: 20
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.547 ms (Deform 0.112 ms), Inlining 0.000 ms, Optimization 0.434 ms, Emission 6.257 ms, Total 7.238 ms
+Execution Time: 283.634 ms
+=====
+Aggregate  (cost=356290.25..356290.26 rows=1 width=8) (actual time=241.231..245.248 rows=1.00 loops=1)
+  Buffers: shared hit=7727 read=1007 written=652
+  CTE m
+    ->  Gather  (cost=2019.35..355965.21 rows=30883 width=4) (actual time=18.598..241.074 rows=10001.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=7727 read=1007 written=652
+          ->  Parallel Bitmap Heap Scan on catalog_product p  (cost=1019.35..351876.91 rows=12868 width=4) (actual time=13.801..231.630 rows=3480.33 loops=3)
+                Recheck Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                Rows Removed by Index Recheck: 6802
+                Filter: (((name)::text || ''::text) ~~* '%ze%'::text)
+                Heap Blocks: exact=408 lossy=2215
+                Buffers: shared hit=7727 read=1007 written=652
+                Worker 0:  Heap Blocks: exact=454 lossy=2287
+                Worker 1:  Heap Blocks: exact=388 lossy=2282
+                ->  Bitmap Index Scan on catalog_product_name_bigrams_idx  (cost=0.00..1011.63 rows=154417 width=0) (actual time=14.532..14.533 rows=155298.00 loops=1)
+                      Index Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                      Index Searches: 1
+                      Buffers: shared hit=39
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=20.751..240.821 rows=10001.00 loops=1)
+        Buffers: shared hit=2321 read=342 written=211
+        ->  CTE Scan on m  (cost=0.00..617.66 rows=30883 width=4) (actual time=18.601..238.214 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=2321 read=342 written=211
+Planning:
+  Buffers: shared hit=516 read=1
+Planning Time: 0.635 ms
+JIT:
+  Functions: 20
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.467 ms (Deform 0.131 ms), Inlining 0.000 ms, Optimization 0.359 ms, Emission 5.495 ms, Total 6.321 ms
+Execution Time: 253.333 ms
+=====
+Aggregate  (cost=356290.25..356290.26 rows=1 width=8) (actual time=232.068..235.485 rows=1.00 loops=1)
+  Buffers: shared hit=8879
+  CTE m
+    ->  Gather  (cost=2019.35..355965.21 rows=30883 width=4) (actual time=18.166..231.512 rows=10001.00 loops=1)
+          Workers Planned: 2
+          Workers Launched: 2
+          Buffers: shared hit=8879
+          ->  Parallel Bitmap Heap Scan on catalog_product p  (cost=1019.35..351876.91 rows=12868 width=4) (actual time=12.939..222.182 rows=3548.00 loops=3)
+                Recheck Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                Rows Removed by Index Recheck: 6973
+                Filter: (((name)::text || ''::text) ~~* '%ze%'::text)
+                Heap Blocks: exact=427 lossy=2270
+                Buffers: shared hit=8879
+                Worker 0:  Heap Blocks: exact=416 lossy=2315
+                Worker 1:  Heap Blocks: exact=430 lossy=2321
+                ->  Bitmap Index Scan on catalog_product_name_bigrams_idx  (cost=0.00..1011.63 rows=154417 width=0) (actual time=14.466..14.466 rows=155298.00 loops=1)
+                      Index Cond: (catalog_name_bigrams((name)::text) @> '{ze}'::text[])
+                      Index Searches: 1
+                      Buffers: shared hit=39
+  ->  Limit  (cost=0.00..200.02 rows=10001 width=4) (actual time=20.234..231.642 rows=10001.00 loops=1)
+        Buffers: shared hit=2737
+        ->  CTE Scan on m  (cost=0.00..617.66 rows=30883 width=4) (actual time=18.169..229.138 rows=10001.00 loops=1)
+              Storage: Memory  Maximum Storage: 441kB
+              Buffers: shared hit=2737
+Planning:
+  Buffers: shared hit=517
+Planning Time: 0.615 ms
+JIT:
+  Functions: 20
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 0.445 ms (Deform 0.109 ms), Inlining 0.000 ms, Optimization 0.352 ms, Emission 5.393 ms, Total 6.190 ms
+Execution Time: 243.540 ms

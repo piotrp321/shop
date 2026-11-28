@@ -1,10 +1,14 @@
 import { computed, onUnmounted, type Ref, ref, shallowRef, watch } from "vue";
 import type { components } from "@/api/schema";
 
-/** What a list asks of its page source: the query it shows and the cursor of the page (`after`, null for the first). */
+/**
+ * What a list asks of its page source: the query it shows, the cursor of the page (`after`, null for the first) and the
+ * `signal` that the pager aborts when the request is replaced or the list is gone; the source hands it to the API client.
+ */
 export interface PageRequest<Q> {
   query: Q;
   after: string | null;
+  signal: AbortSignal;
 }
 
 /** How many rows a list matches, counted by the API up to a limit: with `capped` there are more than `value`. */
@@ -42,7 +46,10 @@ type Kind = "query" | "page";
  *   first page is loaded again. A new query drops it at once, so the total of another query is never shown beside its
  *   rows, and a failed answer to the new query leaves none.
  * - A failed change of the page, or of a refresh of the current page, keeps the page that is shown and its pager.
- * - Only the newest request may change the state; an older one that finishes late is ignored (`latest`).
+ * - Only the newest request may change the state; an older one that finishes late is ignored (`latest`). Every request
+ *   has its own `AbortController`: a new query, another page, a retry, a refresh and the unmounting of the list abort the
+ *   request in flight, so the browser drops it. The aborted request changes no state and shows no error: its answer,
+ *   usually the failure of an aborted `fetch`, is ignored like any other late one.
  * - `retry` repeats the request that failed; `refresh` loads the current page again (after a write that moved it).
  */
 export function useCursorPager<Row, Q extends { perPage: number }>(
@@ -65,6 +72,8 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
 
   let attempted: { stack: (string | null)[]; kind: Kind } = { stack: [null], kind: "query" };
   let latest = 0;
+  // The controller of the request in flight; null once it has been answered, so that only a request still running is aborted.
+  let inFlight: AbortController | null = null;
 
   // True also while the pager waits for `ready` before its first answer, so the list shows its skeleton, not an empty card.
   const loading = computed(() => requesting.value || (!ready.value && !loaded.value && error.value === null));
@@ -81,6 +90,9 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
 
   async function load(stack: (string | null)[], kind: Kind, fresh = false): Promise<void> {
     const request = ++latest;
+    inFlight?.abort();
+    const own = new AbortController();
+    inFlight = own;
     attempted = { stack, kind };
     requesting.value = true;
     if (kind === "query") {
@@ -99,13 +111,14 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     const current = query.value;
     let result: PageResult<Row>;
     try {
-      result = await fetchPage({ query: current, after: stack[stack.length - 1] ?? null });
+      result = await fetchPage({ query: current, after: stack[stack.length - 1] ?? null, signal: own.signal });
     } catch {
       result = { error: FALLBACK_MESSAGE };
     }
-    if (request !== latest) {
+    if (request !== latest || own.signal.aborted) {
       return;
     }
+    inFlight = null;
     requesting.value = false;
     if ("error" in result) {
       error.value = result.error;
@@ -160,6 +173,8 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
 
   onUnmounted(() => {
     latest++;
+    inFlight?.abort();
+    inFlight = null;
   });
 
   return { items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, goNext, goPrevious, retry, refresh };

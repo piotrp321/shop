@@ -1,0 +1,93 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%snowboardowe%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26
+
+Limit  (cost=7.76..43448.63 rows=26 width=71) (actual time=1538.150..1538.160 rows=0.00 loops=1)
+  Buffers: shared hit=801114 read=233896 dirtied=5335 written=4592
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=7.76..12649653.96 rows=7571 width=71) (actual time=1538.148..1538.151 rows=0.00 loops=1)
+        Filter: (((name)::text ~~* '%snowboardowe%'::text) AND ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1))))
+        Rows Removed by Filter: 1000191
+        Index Searches: 1
+        Buffers: shared hit=801114 read=233896 dirtied=5335 written=4592
+        SubPlan 1
+          ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.011..0.071 rows=34.00 loops=1)
+                Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                Rows Removed by Filter: 146
+                Buffers: shared hit=4 read=1
+        SubPlan 3
+          ->  Hash Join  (cost=7.69..4021.48 rows=38926 width=16) (actual time=0.031..16.228 rows=41770.00 loops=1)
+                Hash Cond: (pc.category_id = c_1.id)
+                Buffers: shared hit=1479
+                ->  Seq Scan on catalog_product_category pc  (cost=0.00..3475.92 rows=200192 width=32) (actual time=0.002..5.981 rows=200192.00 loops=1)
+                      Buffers: shared hit=1474
+                ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.018..0.019 rows=34.00 loops=1)
+                      Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                      Buffers: shared hit=5
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.008..0.015 rows=34.00 loops=1)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=723 read=1
+Planning Time: 1.391 ms
+Execution Time: 1538.379 ms
+
+=====
+Limit  (cost=7.76..43448.63 rows=26 width=71) (actual time=979.700..979.710 rows=0.00 loops=1)
+  Buffers: shared hit=782138 read=223796 written=178
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=7.76..12649653.96 rows=7571 width=71) (actual time=979.699..979.701 rows=0.00 loops=1)
+        Filter: (((name)::text ~~* '%snowboardowe%'::text) AND ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1))))
+        Rows Removed by Filter: 1000191
+        Index Searches: 1
+        Buffers: shared hit=782138 read=223796 written=178
+        SubPlan 1
+          ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.048..0.071 rows=34.00 loops=1)
+                Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                Rows Removed by Filter: 146
+                Buffers: shared hit=2 read=3
+        SubPlan 3
+          ->  Hash Join  (cost=7.69..4021.48 rows=38926 width=16) (actual time=0.047..17.048 rows=41770.00 loops=1)
+                Hash Cond: (pc.category_id = c_1.id)
+                Buffers: shared hit=5 read=1474
+                ->  Seq Scan on catalog_product_category pc  (cost=0.00..3475.92 rows=200192 width=32) (actual time=0.024..7.389 rows=200192.00 loops=1)
+                      Buffers: shared read=1474
+                ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.014..0.015 rows=34.00 loops=1)
+                      Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                      Buffers: shared hit=5
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.002..0.009 rows=34.00 loops=1)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=597 read=127
+Planning Time: 1.723 ms
+Execution Time: 979.908 ms
+
+=====
+Limit  (cost=7.76..43448.63 rows=26 width=71) (actual time=1009.262..1009.269 rows=0.00 loops=1)
+  Buffers: shared hit=782140 read=223794
+  ->  Index Scan Backward using catalog_product_updated_at_id_idx on catalog_product p  (cost=7.76..12649653.96 rows=7571 width=71) (actual time=1009.261..1009.263 rows=0.00 loops=1)
+        Filter: (((name)::text ~~* '%snowboardowe%'::text) AND ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1))))
+        Rows Removed by Filter: 1000191
+        Index Searches: 1
+        Buffers: shared hit=782140 read=223794
+        SubPlan 1
+          ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.061..0.117 rows=34.00 loops=1)
+                Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                Rows Removed by Filter: 146
+                Buffers: shared hit=2 read=3
+        SubPlan 3
+          ->  Hash Join  (cost=7.69..4021.48 rows=38926 width=16) (actual time=0.082..17.204 rows=41770.00 loops=1)
+                Hash Cond: (pc.category_id = c_1.id)
+                Buffers: shared hit=5 read=1474
+                ->  Seq Scan on catalog_product_category pc  (cost=0.00..3475.92 rows=200192 width=32) (actual time=0.049..7.502 rows=200192.00 loops=1)
+                      Buffers: shared read=1474
+                ->  Hash  (cost=7.25..7.25 rows=35 width=16) (actual time=0.017..0.017 rows=34.00 loops=1)
+                      Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                      Buffers: shared hit=5
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (actual time=0.005..0.012 rows=34.00 loops=1)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                            Rows Removed by Filter: 146
+                            Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=597 read=127
+Planning Time: 1.714 ms
+Execution Time: 1009.453 ms

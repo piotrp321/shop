@@ -1,0 +1,108 @@
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%zupa%' AND (p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%') OR EXISTS (SELECT 1 FROM catalog_product_category pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'))) ORDER BY p.updated_at DESC, p.id DESC LIMIT 26
+
+Limit  (cost=3544.48..3544.55 rows=26 width=71) (actual time=16.277..16.284 rows=26.00 loops=1)
+  Buffers: shared hit=9170
+  ->  Sort  (cost=3544.48..3544.67 rows=75 width=71) (actual time=16.275..16.278 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9170
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1966.97..3542.34 rows=75 width=71) (actual time=3.199..15.592 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9164
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.475..2.475 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.005..0.015 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (never executed)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (never executed)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (never executed)
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (never executed)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 0
+Planning:
+  Buffers: shared hit=724
+Planning Time: 1.377 ms
+Execution Time: 16.391 ms
+
+=====
+Limit  (cost=3544.48..3544.55 rows=26 width=71) (actual time=16.473..16.481 rows=26.00 loops=1)
+  Buffers: shared hit=9170
+  ->  Sort  (cost=3544.48..3544.67 rows=75 width=71) (actual time=16.472..16.475 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9170
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1966.97..3542.34 rows=75 width=71) (actual time=3.177..15.745 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9164
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.438..2.438 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.004..0.013 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (never executed)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (never executed)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (never executed)
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (never executed)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 0
+Planning:
+  Buffers: shared hit=724
+Planning Time: 1.336 ms
+Execution Time: 16.590 ms
+
+=====
+Limit  (cost=3544.48..3544.55 rows=26 width=71) (actual time=16.485..16.492 rows=26.00 loops=1)
+  Buffers: shared hit=9170
+  ->  Sort  (cost=3544.48..3544.67 rows=75 width=71) (actual time=16.484..16.486 rows=26.00 loops=1)
+        Sort Key: p.updated_at DESC, p.id DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=9170
+        ->  Bitmap Heap Scan on catalog_product p  (cost=1966.97..3542.34 rows=75 width=71) (actual time=3.234..15.789 rows=8584.00 loops=1)
+              Recheck Cond: ((name)::text ~~* '%zupa%'::text)
+              Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR EXISTS(SubPlan 2))
+              Heap Blocks: exact=8707
+              Buffers: shared hit=9164
+              ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..1959.61 rows=100 width=0) (actual time=2.452..2.453 rows=9162.00 loops=1)
+                    Index Cond: ((name)::text ~~* '%zupa%'::text)
+                    Index Searches: 1
+                    Buffers: shared hit=452
+              SubPlan 1
+                ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.005..0.015 rows=34.00 loops=1)
+                      Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      Rows Removed by Filter: 146
+                      Buffers: shared hit=5
+              SubPlan 2
+                ->  Hash Join  (cost=4.45..11.79 rows=1 width=0) (never executed)
+                      Hash Cond: (c_1.id = pc.category_id)
+                      ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (never executed)
+                            Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                      ->  Hash  (cost=4.44..4.44 rows=1 width=16) (never executed)
+                            ->  Index Only Scan using catalog_product_category_pkey on catalog_product_category pc  (cost=0.42..4.44 rows=1 width=16) (never executed)
+                                  Index Cond: (product_id = p.id)
+                                  Heap Fetches: 0
+                                  Index Searches: 0
+Planning:
+  Buffers: shared hit=724
+Planning Time: 1.354 ms
+Execution Time: 16.594 ms

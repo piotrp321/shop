@@ -1,0 +1,15 @@
+-- phrase very-common-a 'pro', page 1, sort name
+-- hits = 119269
+SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p WHERE p.name ILIKE '%pro%' ORDER BY p.name ASC, p.id ASC LIMIT 26;
+
+Limit  (cost=0.42..231.73 rows=26 width=71) (actual time=0.041..0.579 rows=26.00 loops=1)
+  Buffers: shared hit=281
+  ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..1348815.69 rows=151613 width=71) (actual time=0.040..0.574 rows=26.00 loops=1)
+        Filter: ((name)::text ~~* '%pro%'::text)
+        Rows Removed by Filter: 249
+        Index Searches: 1
+        Buffers: shared hit=281
+Planning:
+  Buffers: shared hit=277
+Planning Time: 0.817 ms
+Execution Time: 0.602 ms

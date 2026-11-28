@@ -51,7 +51,12 @@ jak `DbalProductDetailsSource`; kontrolery `SitemapProductChunksController` i `S
 `DbalSitemapProductSource`):
 
 - `GET /api/v1/sitemap/product-chunks` → `{ chunks: [{ key }] }`: porcje w kolejności `id`. Granice to `id` produktów
-  na pozycjach N+1, 2N+1, … (od 1) w kolejności `id` wszystkich produktów (`row_number()` po kluczu głównym). Porcja
+  na pozycjach N+1, 2N+1, … (od 1) w kolejności `id` wszystkich produktów, liczonych keysetem po kluczu głównym: jedno
+  krótkie zapytanie na porcję (`id > poprzednia granica ORDER BY id OFFSET N-1 LIMIT 1`), wszystkie w jednej własnej
+  transakcji tylko do odczytu na poziomie `REPEATABLE READ`, więc widzą ten sam stan danych mimo wstawień i usunięć
+  w trakcie cięcia (wywołujący, który już trzyma transakcję, dostaje cięcie w niej: jeden stan danych przy równoległych
+  zapisach wymaga wtedy `REPEATABLE READ` tej transakcji; jedyny wywołujący, `ListSitemapProductChunksHandler` na
+  `query.bus`, nie otwiera transakcji). Porcja
   `i` obejmuje `id` od granicy `i` włącznie (pierwsza: od początku) do granicy `i + 1` wyłącznie (ostatnia: do końca).
   Przykład: N = 3 i 7 produktów → porcje z produktami 1–3, 4–6 i 7; dokładnie N produktów → jedna porcja. `key` koduje
   oba końce (`SitemapChunkKey`: base64url bez dopełnienia z JSON `{"f": id|null, "t": id|null}`, wzorzec
@@ -63,12 +68,17 @@ jak `DbalProductDetailsSource`; kontrolery `SitemapProductChunksController` i `S
   dłuższy niż 200 znaków) → 400 z problem details. Zakres bez opublikowanych → `items: []`.
 
 Rozmiar porcji N (10 000) i limit wierszy (50 000) to parametry kontenera `app.sitemap.chunk_size` i
-`app.sitemap.row_limit` w `apps/api/config/services.yaml` (testy ustawiają 3 i 10). Zapytanie granic to skan klucza
-głównego (bez tabeli); jego wynik trzyma pula `cache.sitemap` (jak `cache.oidc` w `config/packages/framework.yaml`,
+`app.sitemap.row_limit` w `apps/api/config/services.yaml` (testy ustawiają 3 i 10). Zapytania granic to skan klucza
+głównego (bez tabeli, bez statystyk); porcja ma w chwili cięcia dokładnie N produktów, a N powyżej limitu wierszy jest
+obniżane do limitu; wynik trzyma pula `cache.sitemap` (jak `cache.oidc` w `config/packages/framework.yaml`,
 w testach `cache.adapter.array`) z TTL 1 h przez dekorator portu `SitemapProductSource` w Infrastructure
 (`CachingSitemapProductSource`, `CacheInterface::get`, z ochroną przed równoczesnym przeliczaniem), więc skan wykonuje
 się najwyżej raz na godzinę na instancję API. `make seed` nie czyści puli: nieaktualne granice dają poprawne porcje (otwarte końce), najwyżej
-o nierównych rozmiarach do wygaśnięcia. Zapytanie porcji to zakres klucza głównego z limitem.
+o nierównych rozmiarach do wygaśnięcia. Porcja zapisanego cięcia (jej `f` i `t` to kolejne wpisy zapisanych granic albo otwarte końce), która od cięcia urosła
+ponad limit wierszy (odczyt obcina ją i zapisuje ostrzeżenie), usuwa wpis granic z puli, więc następne pobranie listy
+porcji tnie od nowa (odpowiedź z granicami trzyma też Varnish do godziny). Tylko taka porcja unieważnia granice: klucz
+zrobiony ręcznie albo wydany przez starsze cięcie ich nie usuwa, a odczyt porcji nigdy nie liczy granic, więc skan
+dalej wykonuje się najwyżej raz na godzinę na instancję. Zapytanie porcji to zakres klucza głównego z limitem.
 
 Dostęp: oba endpointy bez tokena, reguła `PUBLIC_ACCESS` (`GET`, `HEAD`) dla `^/api/v1/sitemap/(product-chunks|products)$`
 w `access_control` (`config/packages/security.yaml`), przed regułą `ROLE_CUSTOMER`; niepoprawny token daje 401 jak

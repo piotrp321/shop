@@ -154,7 +154,7 @@ export function useOrderList() {
     }),
   );
 
-  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<OrderListItem>> {
+  async function fetchPage({ query, after, signal }: PageRequest<typeof url.query.value>): Promise<PageResult<OrderListItem>> {
     const apiQuery: OrderQuery = {};
     if (query.status !== null) {
       apiQuery.status = query.status;
@@ -183,7 +183,7 @@ export function useOrderList() {
       apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/orders", { params: { query: apiQuery } });
+      const result = await getApiClient().GET("/api/v1/admin/orders", { params: { query: apiQuery }, signal });
       if (result.data) {
         return { items: result.data.items, next: result.data.nextCursor, total: result.data.total };
       }

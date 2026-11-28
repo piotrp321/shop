@@ -19,6 +19,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\StatementCounter;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
@@ -37,6 +38,7 @@ final class SitemapProductQueriesTest extends KernelTestCase
     private MessageBusInterface $queryBus;
     private DoctrineProductRepository $products;
     private Category $category;
+    private Connection $connection;
 
     protected function setUp(): void
     {
@@ -46,8 +48,22 @@ final class SitemapProductQueriesTest extends KernelTestCase
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->products = new DoctrineProductRepository($entityManager);
+        // The DAMA transaction of the test is opened below DBAL, so the connection does not count it: the cut would try to
+        // open a transaction of its own and set its isolation level inside the DAMA one, which PostgreSQL refuses. A
+        // transaction of the caller makes the cut run as the keyset in it, the very statements of the production cut.
+        // The cut in a transaction of its own is DbalSitemapProductSourceCutTest.
+        $this->connection = $entityManager->getConnection();
+        $this->connection->beginTransaction();
         $this->category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($this->category);
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->connection->isTransactionActive()) {
+            $this->connection->rollBack();
+        }
+        parent::tearDown();
     }
 
     public function testSevenProductsGiveChunksOfProductsOneToThreeFourToSixAndSeven(): void
@@ -177,6 +193,45 @@ final class SitemapProductQueriesTest extends KernelTestCase
             ['product-1', 'product-2', 'product-4', 'product-5', 'product-6', 'product-7', 'product-8', 'product-9', 'product-10'],
             array_column($this->itemRows($items), 'slug'),
         );
+    }
+
+    public function testAChunkThatOutgrewTheRowLimitAfterTheCutMakesTheNextChunkListCutAgainWithoutGaps(): void
+    {
+        $this->createProducts(7);
+        self::assertCount(3, $this->chunkKeys());
+        // 12 products arrive in the last chunk (open end): 13 products, the test limit is 10.
+        for ($number = 8; $number <= 19; ++$number) {
+            $this->createProduct($number);
+        }
+        // The cut is kept until a chunk is read past the limit.
+        $keys = $this->chunkKeys();
+        self::assertCount(3, $keys);
+
+        self::assertCount(10, $this->items($keys[2])->items);
+
+        self::assertCount(7, $this->chunkKeys());
+        $slugs = [];
+        foreach ($this->chunkKeys() as $key) {
+            foreach ($this->items($key)->items as $item) {
+                $slugs[] = $item->slug;
+            }
+        }
+        self::assertSame(array_map(static fn (int $n): string => 'product-'.$n, range(1, 19)), $slugs);
+    }
+
+    public function testAKeyMadeByHandThatReadsPastTheRowLimitDoesNotMakeTheNextChunkListCutAgain(): void
+    {
+        $this->createProducts(19);
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+        $this->chunkKeys();
+
+        // The whole range is 19 rows, past the test limit of 10, but it is not a chunk of the cut.
+        self::assertCount(10, $this->items(SitemapChunkKey::between(null, null))->items);
+
+        $before = $counter->count();
+        self::assertCount(7, $this->chunkKeys());
+        self::assertSame(0, $counter->count() - $before);
     }
 
     public function testTheBoundariesAreNotReadAgainWithinTheirTimeToLive(): void

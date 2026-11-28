@@ -15,7 +15,6 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'catalog_product')]
 #[ORM\UniqueConstraint(name: self::SLUG_CONSTRAINT, columns: ['slug'])]
-#[ORM\Index(name: 'catalog_product_primary_category_id_idx', columns: ['primary_category_id'])]
 // The migration makes this one a GIN index with gin_trgm_ops (pg_trgm) for substring search of the name; the mapping
 // cannot express an access method or operator class.
 #[ORM\Index(name: 'catalog_product_name_trgm_idx', columns: ['name'])]
@@ -27,6 +26,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'catalog_product_updated_at_id_idx', columns: ['updated_at', 'id'])]
 #[ORM\Index(name: 'catalog_product_draft_updated_at_id_idx', columns: ['updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
 #[ORM\Index(name: 'catalog_product_without_images_idx', columns: ['id'], options: ['where' => "(images = '[]'::jsonb)"])]
+// The products of a category in the order of both sorts, whole, the drafts and the ones without images (the migration builds them
+// CONCURRENTLY; the mapping only has to equal the schema).
+#[ORM\Index(name: 'catalog_product_category_name_id_idx', columns: ['primary_category_id', 'name', 'id'])]
+#[ORM\Index(name: 'catalog_product_category_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'])]
+#[ORM\Index(name: 'catalog_product_category_draft_name_id_idx', columns: ['primary_category_id', 'name', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+#[ORM\Index(name: 'catalog_product_category_draft_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+#[ORM\Index(name: 'catalog_product_category_without_images_name_id_idx', columns: ['primary_category_id', 'name', 'id'], options: ['where' => "(images = '[]'::jsonb)"])]
+#[ORM\Index(name: 'catalog_product_category_without_images_updated_at_id_idx', columns: ['primary_category_id', 'updated_at', 'id'], options: ['where' => "(images = '[]'::jsonb)"])]
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';

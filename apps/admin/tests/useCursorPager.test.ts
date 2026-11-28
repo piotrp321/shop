@@ -53,7 +53,7 @@ describe("useCursorPager", () => {
     const { pager } = await start(fetchPage);
 
     expect(fetchPage).toHaveBeenCalledTimes(1);
-    expect(fetchPage).toHaveBeenCalledWith({ query: { q: "", perPage: 25 }, after: null });
+    expect(fetchPage).toHaveBeenCalledWith({ query: { q: "", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
     expect(names(pager)).toEqual(["A", "B"]);
     expect(pager.loaded.value).toBe(true);
     expect(pager.loading.value).toBe(false);
@@ -127,7 +127,7 @@ describe("useCursorPager", () => {
     await flushPromises();
 
     expect(fetchPage).toHaveBeenCalledTimes(3);
-    expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "x", perPage: 25 }, after: null });
+    expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "x", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
     expect(pager.hasPrevious.value).toBe(false);
     expect(pager.pageNumber.value).toBe(1);
     expect(names(pager)).toEqual(["A"]);
@@ -151,7 +151,7 @@ describe("useCursorPager", () => {
 
     query.value = { q: "", perPage: 10 };
     await flushPromises();
-    expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "", perPage: 10 }, after: null });
+    expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "", perPage: 10 }, after: null, signal: expect.any(AbortSignal) });
     expect(pager.range.value).toEqual({ from: 1, to: 2 });
   });
 
@@ -213,7 +213,7 @@ describe("useCursorPager", () => {
       expect(pager.error.value).toBeNull();
       expect(names(pager)).toEqual(["Nowy"]);
       expect(pager.loaded.value).toBe(true);
-      expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "x", perPage: 25 }, after: null });
+      expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "x", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
     });
 
     it("also hides the rows when the very first load fails", async () => {
@@ -297,7 +297,7 @@ describe("useCursorPager", () => {
       await pager.refresh();
       expect(names(pager)).toEqual(["B", "B2"]);
       expect(pager.pageNumber.value).toBe(2);
-      expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "", perPage: 25 }, after: "c1" });
+      expect(fetchPage).toHaveBeenLastCalledWith({ query: { q: "", perPage: 25 }, after: "c1", signal: expect.any(AbortSignal) });
 
       pages.c1 = { error: "Nie udało się." };
       await pager.refresh();
@@ -440,7 +440,7 @@ describe("useCursorPager", () => {
       ready.value = true;
       await flushPromises();
       expect(fetchPage).toHaveBeenCalledTimes(1);
-      expect(fetchPage).toHaveBeenCalledWith({ query: { q: "x", perPage: 25 }, after: null });
+      expect(fetchPage).toHaveBeenCalledWith({ query: { q: "x", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
     });
   });
 
@@ -558,6 +558,183 @@ describe("useCursorPager", () => {
       const { pager } = await start(serve({ "": { items: rows("A"), next: null } }));
 
       expect(pager.total.value).toBeNull();
+    });
+  });
+
+  describe("aborting the requests that are no longer wanted", () => {
+    /** A page source that, like `fetch`, settles an aborted request (the lists turn that failure into an error result). */
+    function abortable() {
+      const requests: { request: PageRequest<Query>; finish: (value: PageResult<Row>) => void }[] = [];
+      const fetchPage = vi.fn(
+        (request: PageRequest<Query>) =>
+          new Promise<PageResult<Row>>((resolve) => {
+            requests.push({ request, finish: resolve });
+            request.signal.addEventListener("abort", () => resolve({ error: "Nie udało się pobrać danych." }));
+          }),
+      );
+      return { fetchPage, requests };
+    }
+
+    const signalOf = (requests: { request: PageRequest<Query> }[], index: number) => requests[index]!.request.signal;
+
+    it("gives every request its own signal, not aborted while the request is the wanted one", async () => {
+      const { fetchPage, requests } = abortable();
+      await start(fetchPage);
+
+      expect(signalOf(requests, 0)).toBeInstanceOf(AbortSignal);
+      expect(signalOf(requests, 0).aborted).toBe(false);
+    });
+
+    it("aborts the request that a new query replaces, and only that one", async () => {
+      const { fetchPage, requests } = abortable();
+      const { query } = await start(fetchPage);
+
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+
+      expect(signalOf(requests, 0).aborted).toBe(true);
+      expect(signalOf(requests, 1).aborted).toBe(false);
+      expect(signalOf(requests, 1)).not.toBe(signalOf(requests, 0));
+    });
+
+    it("aborts a change of the page that another change of the page replaces", async () => {
+      const { fetchPage, requests } = abortable();
+      const { pager } = await start(fetchPage);
+      requests[0]!.finish({ items: rows("A"), next: "c1" });
+      await flushPromises();
+      void pager.goNext();
+      await flushPromises();
+      requests[1]!.finish({ items: rows("B"), next: "c2" });
+      await flushPromises();
+
+      void pager.goNext();
+      await flushPromises();
+      expect(requests).toHaveLength(3);
+      void pager.goPrevious();
+      await flushPromises();
+
+      expect(signalOf(requests, 2).aborted).toBe(true);
+      expect(signalOf(requests, 3).aborted).toBe(false);
+    });
+
+    it("aborts the page that a new query replaces during a change of the page", async () => {
+      const { fetchPage, requests } = abortable();
+      const { pager, query } = await start(fetchPage);
+      requests[0]!.finish({ items: rows("A"), next: "c1" });
+      await flushPromises();
+      void pager.goNext();
+      await flushPromises();
+
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+
+      expect(signalOf(requests, 1).aborted).toBe(true);
+      expect(signalOf(requests, 2).aborted).toBe(false);
+    });
+
+    it("aborts the request that a retry or a refresh replaces", async () => {
+      const { fetchPage, requests } = abortable();
+      const { pager } = await start(fetchPage);
+
+      void pager.retry();
+      await flushPromises();
+      expect(signalOf(requests, 0).aborted).toBe(true);
+      expect(signalOf(requests, 1).aborted).toBe(false);
+
+      void pager.refresh();
+      await flushPromises();
+      expect(signalOf(requests, 1).aborted).toBe(true);
+      expect(signalOf(requests, 2).aborted).toBe(false);
+    });
+
+    it("leaves the signal of a request that has been answered alone", async () => {
+      const { fetchPage, requests } = abortable();
+      const { query } = await start(fetchPage);
+      requests[0]!.finish({ items: rows("A"), next: null });
+      await flushPromises();
+
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+
+      expect(signalOf(requests, 0).aborted).toBe(false);
+    });
+
+    it("shows no error and changes nothing when a replaced request ends as aborted", async () => {
+      const { fetchPage, requests } = abortable();
+      const { pager, query } = await start(fetchPage);
+      requests[0]!.finish({ items: rows("A"), next: null });
+      await flushPromises();
+
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      void pager.refresh();
+      await flushPromises();
+
+      // The request of the query was aborted by the refresh and answered with a failure: that failure is not shown.
+      expect(signalOf(requests, 1).aborted).toBe(true);
+      expect(pager.error.value).toBeNull();
+      expect(pager.forbidden.value).toBe(false);
+      expect(pager.loading.value).toBe(true);
+      expect(names(pager)).toEqual(["A"]);
+
+      requests[2]!.finish({ items: rows("B"), next: null });
+      await flushPromises();
+      expect(pager.error.value).toBeNull();
+      expect(names(pager)).toEqual(["B"]);
+      expect(pager.loading.value).toBe(false);
+    });
+
+    it("aborts the request in flight when the pager is gone, and shows no error for it", async () => {
+      const { fetchPage, requests } = abortable();
+      const mounted = mountPager(fetchPage);
+      wrapper = mounted.wrapper;
+      await flushPromises();
+
+      mounted.wrapper.unmount();
+      wrapper = undefined;
+      await flushPromises();
+
+      expect(signalOf(requests, 0).aborted).toBe(true);
+      expect(mounted.pager.error.value).toBeNull();
+      expect(mounted.pager.loaded.value).toBe(false);
+    });
+
+    it("does not abort an answered request when the pager is gone", async () => {
+      const { fetchPage, requests } = abortable();
+      const mounted = mountPager(fetchPage);
+      wrapper = mounted.wrapper;
+      await flushPromises();
+      requests[0]!.finish({ items: rows("A"), next: null });
+      await flushPromises();
+
+      mounted.wrapper.unmount();
+      wrapper = undefined;
+
+      expect(signalOf(requests, 0).aborted).toBe(false);
+    });
+
+    it("still retries a failed request, with a fresh signal, after other requests were aborted", async () => {
+      const { fetchPage, requests } = abortable();
+      const { pager, query } = await start(fetchPage);
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      requests[1]!.finish({ error: "Nie udało się." });
+      await flushPromises();
+      expect(pager.error.value).toBe("Nie udało się.");
+
+      void pager.retry();
+      await flushPromises();
+
+      expect(requests).toHaveLength(3);
+      expect(requests[2]!.request.query).toEqual({ q: "x", perPage: 25 });
+      expect(signalOf(requests, 2).aborted).toBe(false);
+      expect(pager.error.value).toBe("Nie udało się.");
+      expect(pager.loading.value).toBe(true);
+
+      requests[2]!.finish({ items: rows("Nowy"), next: null });
+      await flushPromises();
+      expect(pager.error.value).toBeNull();
+      expect(names(pager)).toEqual(["Nowy"]);
     });
   });
 

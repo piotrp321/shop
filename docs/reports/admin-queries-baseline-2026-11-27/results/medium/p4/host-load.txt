@@ -1,0 +1,31 @@
+19:34:24 before: agent-observability-epics-exporter-1 13.38%; 
+19:34:28 run: 
+19:35:25 run: 
+19:36:21 run: 
+19:37:18 run: 
+19:38:15 run: 
+19:39:13 run: 
+19:40:10 run: 
+19:41:07 run: async-idx-m1-api-1 5.54%; 
+19:42:04 run: 
+19:43:01 run: agent-observability-epics-exporter-1 13.67%; 
+19:43:58 run: 
+19:44:56 run: async-idx-m1-rabbitmq-1 39.54%; 
+19:45:53 run: 
+19:46:50 run: async-idx-m1-rabbitmq-1 60.17%; 
+19:47:47 run: 
+19:48:44 run: 
+19:49:42 run: 
+19:50:39 run: 
+19:51:36 run: async-idx-m1-api-1 5.60%; 
+19:52:33 run: 
+19:53:31 run: agent-observability-epics-exporter-1 12.22%; 
+19:54:28 run: 
+19:55:25 run: 
+19:56:22 run: 
+19:57:18 run: 
+19:58:15 run: 
+19:59:13 after: async-idx-m1-rabbitmq-1 17.00%; 
+# the third run with the panel, a separate invocation (addresses ran out):
+19:59:46 extra before: 
+20:07:39 extra after: 

@@ -1,0 +1,22 @@
+-- phrase two-rare 'qx', count of the first page
+-- hits = 0
+SELECT count(*) FROM (SELECT 1 FROM catalog_product p WHERE p.name ILIKE '%qx%' LIMIT 10001) bounded;
+
+Aggregate  (cost=67998.58..67998.59 rows=1 width=8) (actual time=235.782..240.206 rows=1.00 loops=1)
+  Buffers: shared hit=847308
+  ->  Limit  (cost=1000.42..67997.33 rows=100 width=4) (actual time=235.779..240.203 rows=0.00 loops=1)
+        Buffers: shared hit=847308
+        ->  Gather  (cost=1000.42..67997.33 rows=100 width=4) (actual time=235.778..240.202 rows=0.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=847308
+              ->  Parallel Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..66987.33 rows=42 width=4) (actual time=234.314..234.314 rows=0.00 loops=3)
+                    Filter: ((name)::text ~~* '%qx%'::text)
+                    Rows Removed by Filter: 333397
+                    Heap Fetches: 12
+                    Index Searches: 1
+                    Buffers: shared hit=847308
+Planning:
+  Buffers: shared hit=236
+Planning Time: 0.714 ms
+Execution Time: 240.242 ms

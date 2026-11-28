@@ -250,7 +250,7 @@ describe("useListUrlState", () => {
 
       expect(m.list.query.value).toEqual({ q: "buty", category: "c-tents", status: null, perPage: 50 });
       expect(m.fetchPage).toHaveBeenCalledTimes(1);
-      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: "buty", category: "c-tents", status: null, perPage: 50 }, after: null });
+      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: "buty", category: "c-tents", status: null, perPage: 50 }, after: null, signal: expect.any(AbortSignal) });
       expect(m.pager.hasPrevious.value).toBe(false);
     });
 
@@ -295,7 +295,7 @@ describe("useListUrlState", () => {
 
       // One request, from the first page: the page change before it is not asked for again by the echo of the address.
       expect(m.fetchPage).toHaveBeenCalledTimes(1);
-      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null });
+      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
     });
 
     it("tells its own write from a change from outside: the echo leaves `address` alone, a change from outside sets it", async () => {
@@ -327,7 +327,7 @@ describe("useListUrlState", () => {
       expect(m.list.query.value).toEqual({ q: null, category: null, status: "draft", perPage: 25 });
       expect(m.list.address.value.status).toBe("draft");
       expect(m.fetchPage).toHaveBeenCalledTimes(1);
-      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null });
+      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null, signal: expect.any(AbortSignal) });
       expect(m.pager.hasPrevious.value).toBe(false);
     });
   });
