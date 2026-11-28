@@ -36,6 +36,17 @@ def page(prefix, sort, where):
     )
 
 
+def walk(prefix, sort, where):
+    """The first step of CategoryList::page: the walk of the global index (budget 2 000) with the membership checked."""
+    column, direction = pr.sort_parts(sort)
+    inner = where.replace("p.", "w0.")
+    extra = ", w0.updated_at" if column == "updated_at" else ""
+    return (
+        f"SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name{extra} FROM catalog_product w0{' WHERE ' + inner[5:] if inner else ''} ORDER BY w0.{column} {direction}, w0.id {direction} LIMIT 2000) w "
+        f"JOIN catalog_product p ON p.id = w.id WHERE {category(prefix)} ORDER BY w.{column} {direction}, w.id {direction} LIMIT {LIMIT}"
+    )
+
+
 def count(prefix, where):
     counted = " ORDER BY p.name, p.id" if where else ""
     return (
@@ -82,8 +93,17 @@ def main():
             for sort in ("name", "-updatedAt"):
                 tag = f"k1-{name}-{flabel}-{sort}".replace(" ", "_")
                 old = pr.median(pr.explain(db, present_page(prefix, sort, where), False, tag + "-present", args.out))
-                new = pr.median(pr.explain(db, page(prefix, sort, where), False, tag, args.out))
-                same = [r.split("|")[0] for r in pr.value(db, present_page(prefix, sort, where))] == [r.split("|")[0] for r in pr.value(db, page(prefix, sort, where))]
+                walked = []
+                w = (0.0, 0)
+                if not where:
+                    w = pr.median(pr.explain(db, walk(prefix, sort, where), False, tag + "-walk", args.out))
+                    walked = pr.value(db, walk(prefix, sort, where))
+                if len(walked) >= LIMIT:
+                    new, rows = w, walked
+                else:
+                    k = pr.median(pr.explain(db, page(prefix, sort, where), False, tag, args.out))
+                    new, rows = (w[0] + k[0], w[1] + k[1]), pr.value(db, page(prefix, sort, where))
+                same = [r.split("|")[0] for r in pr.value(db, present_page(prefix, sort, where))] == [r.split("|")[0] for r in rows]
                 table.append(f"| {name} | {flabel or 'brak'} | str. 1 {sort} | {old[0]:.1f} / {old[1]} | {new[0]:.1f} / {new[1]} | {'tak' if same else 'NIE'} |")
             tag = f"k1-{name}-{flabel}-count".replace(" ", "_")
             old = pr.median(pr.explain(db, present_count(prefix, where), False, tag + "-present", args.out))

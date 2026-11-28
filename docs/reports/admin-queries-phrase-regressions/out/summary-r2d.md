@@ -8,3 +8,5 @@
 | `rowerowa` (60168 / 0) | -updatedAt | 996.1 / 1005934 | 348.5 / 106496 | L0 walk B=20000: 30.6 / 29502; L0 candidates cap=10000: 317.8 / 76994 | tak |
 | `zupa` (8584 / 8584) | name | 18.2 / 9170 | 33.4 / 26923 | L0 walk B=20000: 12.3 / 17753; L0 candidates cap=10000: 21.2 / 9170 | tak |
 | `zupa` (8584 / 8584) | -updatedAt | 16.6 / 9170 | 4.8 / 3459 | L0 walk B=20000: 4.8 / 3459 | tak |
+
+Ekstrapolacja do `server` (SZACUNEK, koszt kandydatów liniowy w trafieniach katalogu, 10x): `snowboardowe` ok. 1,1 s (name) i 1,4 s (-updatedAt), mieści się w 2000 ms; `rowerowa` (60 168 trafień w katalogu, 0 w dziale) 394 ms (name) i 349 ms (-updatedAt) na `medium`, czyli ok. 3,9 s i 3,5 s na `server`, łamie P2. To klasa zasady 5 (rzadkie przecięcie: fraza bardzo częsta w katalogu, nieobecna w dziale); decyzja właściciela i pomiar na `server` w PERF-7-7.

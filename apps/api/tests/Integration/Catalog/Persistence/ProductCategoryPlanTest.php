@@ -38,6 +38,8 @@ final class ProductCategoryPlanTest extends KernelTestCase
     private const int PAGE = 26;
     private const int COUNT_LIMIT = 10_000;
     private const int SLACK = 300;
+    /** The first walk of a category when the budget is not given: a tenth of the first walk of a phrase. */
+    private const int DEFAULT_BUDGET = 2_000;
     /** The products of a leaf of the department (a sixth of the table over 20 leaves), rounded up. */
     private const int LEAF = 1_000;
     /** The department and its 20 leaves. */
@@ -143,10 +145,11 @@ final class ProductCategoryPlanTest extends KernelTestCase
     {
         $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording));
         $path = CategoryPath::fromString('/'.$category.'/');
-        // A branch per category of the subtree (a page and one more row each). The products that are in the subtree only by an additional
+        // The walk of the budget (the rows of the global index and the lookup of each of them to check the membership) that comes first and fills
+        // the page of a dense category, then a branch per category of the subtree (a page and one more row each). The products that are in the subtree only by an additional
         // category are a set of their own (the CTE `additional`), linear in the memberships of the subtree (or in the table when the
         // planner hash joins it): the cost of K1 that the specification accepts, measured on `medium` in the report, not bounded here.
-        $bound = $categories * (self::PAGE + 1) + self::SLACK;
+        $bound = 2 * self::DEFAULT_BUDGET + $categories * (self::PAGE + 1) + self::SLACK;
 
         foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
             $this->recording->forget();
@@ -185,27 +188,28 @@ final class ProductCategoryPlanTest extends KernelTestCase
      * A department is a part of the table that is dense in the order of the sorts (the products of its categories, a sixth by the main one and
      * a part by the additional ones), so its page is found in the first rows of the global index of the sort: the walk of the budget, with the
      * membership of the subtree checked, fills it, and the products that are in the subtree only by additional categories are not read at all
-     * (they cost the memberships of the subtree, or the table). The count of such a department reaches the limit in its branches.
+     * (they cost the memberships of the subtree, or the table). The count of such a department reaches the limit in its branches. The drafts and
+     * the products without images are not walked: their partial indexes of the category hold only them.
      */
     public function testThePagesOfADenseCategoryReadTheWalkOfTheBudgetNotTheAdditionalMembers(): void
     {
         $budget = 5_000;
+        // The walk of a category is a tenth of the budget of a phrase; it reads the rows of the index and the lookup of each of them.
+        $bound = 2 * intdiv($budget, 10) + self::SLACK;
         $source = new DbalBackofficeProductSource($this->recording, new BoundedCounter($this->recording), phraseBudget: $budget);
         $path = CategoryPath::fromString('/'.self::DEPARTMENT.'/');
 
-        foreach ([[null, false], [ProductStatus::Published, false], [ProductStatus::Draft, false], [null, true]] as [$status, $withoutImages]) {
-            foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
-                $this->recording->forget();
-                $first = $source->page(null, $path, $status, null, $sort, self::PAGE, $withoutImages);
-                $read = $this->rowsRead();
-                self::assertCount(self::PAGE, $first);
-                self::assertLessThanOrEqual($budget + self::SLACK, $read, \sprintf("first page by %s (%s) read %d rows of %d (budget %d)\n%s", $sort->value, $status?->value ?? 'any', $read, self::PRODUCTS, $budget, $this->plans()));
+        foreach ([ProductSort::Name, ProductSort::NameDescending, ProductSort::UpdatedAtDescending, ProductSort::UpdatedAtAscending] as $sort) {
+            $this->recording->forget();
+            $first = $source->page(null, $path, null, null, $sort, self::PAGE);
+            $read = $this->rowsRead();
+            self::assertCount(self::PAGE, $first);
+            self::assertLessThanOrEqual($bound, $read, \sprintf("first page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
 
-                $this->recording->forget();
-                $source->page(null, $path, $status, ProductCursor::after($first[self::PAGE - 1], $sort), $sort, self::PAGE, $withoutImages);
-                $read = $this->rowsRead();
-                self::assertLessThanOrEqual($budget + self::SLACK, $read, \sprintf("second page by %s (%s) read %d rows of %d (budget %d)\n%s", $sort->value, $status?->value ?? 'any', $read, self::PRODUCTS, $budget, $this->plans()));
-            }
+            $this->recording->forget();
+            $source->page(null, $path, null, ProductCursor::after($first[self::PAGE - 1], $sort), $sort, self::PAGE);
+            $read = $this->rowsRead();
+            self::assertLessThanOrEqual($bound, $read, \sprintf("second page by %s read %d rows of %d (bound %d)\n%s", $sort->value, $read, self::PRODUCTS, $bound, $this->plans()));
         }
     }
 

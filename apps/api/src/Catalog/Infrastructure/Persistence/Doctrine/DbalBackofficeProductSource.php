@@ -45,26 +45,18 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // The exact predicate of the partial index catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb, which keeps
     // the few products without images cheap to find, count and page among millions.
     private const string WITHOUT_IMAGES = "p.images = '[]'::jsonb";
-    private const string CATEGORY = <<<'SQL'
-        (
-            p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
-            OR EXISTS (
-                SELECT 1 FROM catalog_product_category pc
-                WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
-            )
-        )
-        SQL;
 
     private PhraseSearch $phrases;
     private CategoryList $categories;
 
     /**
-     * @param int $phraseBudget the rows of the index of the sort that the first walk of a phrase reads (each step after it reads ten times more)
+     * @param int $phraseBudget the rows of the index of the sort that the first walk of a phrase reads (each step after it reads ten times more); a tenth of it is the walk
+     *                          of a category, which pays for the lookup of the membership of every row it reads (a miss is the walk and those lookups)
      */
     public function __construct(private Connection $connection, private BoundedCounter $counter, int $phraseBudget = PhraseSearch::FIRST_BUDGET)
     {
         $this->phrases = new PhraseSearch($connection, $phraseBudget);
-        $this->categories = new CategoryList($connection);
+        $this->categories = new CategoryList($connection, max(1, intdiv($phraseBudget, 10)));
     }
 
     public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array
@@ -203,7 +195,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         $conditions = [];
         $parameters = [];
         if (null !== $category) {
-            $conditions[] = self::CATEGORY;
+            $conditions[] = CategoryList::MEMBERSHIP;
             $parameters['prefix'] = Like::escape($category->toString()).'%';
         }
         if (null !== $status) {

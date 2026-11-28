@@ -30,8 +30,22 @@ use Doctrine\DBAL\Connection;
  */
 final readonly class CategoryList
 {
-    public function __construct(private Connection $connection)
+    /** A product is in the subtree of the category when its main category or one of its additional categories is; `:prefix` is the path of the category. */
+    public const string MEMBERSHIP = <<<'SQL'
+        (
+            p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
+            OR EXISTS (
+                SELECT 1 FROM catalog_product_category pc
+                WHERE pc.product_id = p.id AND pc.category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
+            )
+        )
+        SQL;
+
+    public function __construct(private Connection $connection, private int $walkBudget)
     {
+        if ($walkBudget < 1) {
+            throw new \InvalidArgumentException('The budget of the walk must be at least 1.');
+        }
     }
 
     /**
@@ -43,6 +57,17 @@ final readonly class CategoryList
      */
     public function page(string $prefix, array $conditions, array $parameters, ?ProductCursor $after, ProductSort $sort, int $limit): array
     {
+        // A category that is a good part of the table (a department) has its page in the first rows of the global index of the sort, and the
+        // walk of them is the cheapest way; the branches below cost the products that are in the category only by additional categories.
+        // Only without the status and without images: those have a partial index of the category (the branches read only those products), and
+        // the walk of the global index with them would read the whole index when they are fewer than the budget.
+        if ([] === $conditions) {
+            $products = $this->walk($prefix, $conditions, $parameters, $after, $sort, $limit);
+            if (\count($products) >= $limit) {
+                return $products;
+            }
+        }
+
         $column = $sort->byUpdatedAt() ? 'updated_at' : 'name';
         $direction = $sort->isDescending() ? 'DESC' : 'ASC';
         $values = $parameters + ['prefix' => $prefix];
@@ -62,6 +87,40 @@ final readonly class CategoryList
             .'UNION ALL '
             ."SELECT a.id, a.name, a.tax_class, a.updated_at FROM (SELECT * FROM additional {$order}) a"
             .") u ORDER BY u.{$column} {$direction}, u.id {$direction} LIMIT {$limit}";
+
+        return array_map(static function (array $row): BackofficeProduct {
+            \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
+
+            return new BackofficeProduct($row['id'], $row['name'], $row['tax_class'], new \DateTimeImmutable($row['updated_at']));
+        }, $this->connection->fetchAllAssociative($sql, $values));
+    }
+
+    /**
+     * The first rows of the order of the sort (the budget of them, after the cursor, with the status or without images done by the index
+     * that holds only those products) that are in the subtree, as the statement before the branches had them: the membership is the
+     * condition of that statement. It reads the budget at most, and stops at the page.
+     *
+     * @param list<string>         $conditions
+     * @param array<string, mixed> $parameters
+     *
+     * @return list<BackofficeProduct> the page if the walk filled it, else its part
+     */
+    private function walk(string $prefix, array $conditions, array $parameters, ?ProductCursor $after, ProductSort $sort, int $limit): array
+    {
+        $column = $sort->byUpdatedAt() ? 'updated_at' : 'name';
+        $direction = $sort->isDescending() ? 'DESC' : 'ASC';
+        $values = $parameters + ['prefix' => $prefix];
+        // The conditions are on `p` in the statement of the branches; here they are on the walk, `w0`.
+        $inner = array_map(static fn (string $condition): string => (string) preg_replace('/\bp\./', 'w0.', $condition), $conditions);
+        if (null !== $after) {
+            [$cursor, $cursorValues] = Keyset::after('w0', $sort, $after);
+            $inner[] = $cursor;
+            $values += $cursorValues;
+        }
+        $sql = 'SELECT p.id, p.name, p.tax_class, p.updated_at FROM (SELECT w0.id, w0.name'.($sort->byUpdatedAt() ? ', w0.updated_at' : '').' FROM catalog_product w0'
+            .([] === $inner ? '' : ' WHERE '.implode(' AND ', $inner))
+            ." ORDER BY w0.{$column} {$direction}, w0.id {$direction} LIMIT {$this->walkBudget}) w JOIN catalog_product p ON p.id = w.id WHERE ".self::MEMBERSHIP
+            ." ORDER BY w.{$column} {$direction}, w.id {$direction} LIMIT {$limit}";
 
         return array_map(static function (array $row): BackofficeProduct {
             \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
