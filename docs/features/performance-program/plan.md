@@ -18,7 +18,7 @@ i specyfikacjach funkcji.
 | PERF-1 | w toku (#975, status w `docs/features/runtime-config/plan.md`) |
 | PERF-7 | w toku (#973, status w `docs/features/admin-queries/plan.md`) |
 | PERF-3, PERF-6 | specyfikacja w przygotowaniu, bez implementacji; PERF-6: zasadność przyspieszenia do oceny |
-| PERF-4 | analiza trybu uruchomienia API (kompatybilność Symfony, zmierzona korzyść, koszt, ryzyko stanu między żądaniami); tryb worker nie jest przesądzony ani obowiązkowy |
+| PERF-4 | analiza trybu uruchomienia API gotowa (bez specyfikacji): raport [`perf-4-api-runtime-mode-2026-11-28.md`](../../reports/perf-4-api-runtime-mode-2026-11-28.md); tryb worker nie jest przesądzony ani obowiązkowy; czeka na decyzję właściciela o wariancie |
 | PERF-5, PERF-8, PERF-9 | nie rozpoczęte |
 | Pozostałe epiki | ich konieczność i kolejność właściciel ocenia po wynikach PERF-2B, PERF-1 i PERF-7; do tej oceny bez implementacji |
 

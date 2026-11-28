@@ -1,0 +1,5 @@
+predis	cart_write	N=16	req/s=471.8	p50=23.1	p95=100.5	fails=2	cpu_api_ms=5.86	cpu_pg_ms=1.21	cpu_es_ms=0.01	n=14414
+predis	product	N=16	req/s=1969.8	p50=7.7	p95=14.0	fails=0	cpu_api_ms=1.77	cpu_pg_ms=0.34	cpu_es_ms=0.00	n=59101
+persistent	product	N=16	req/s=2057.2	p50=6.9	p95=13.7	fails=0	cpu_api_ms=1.72	cpu_pg_ms=0.33	cpu_es_ms=0.00	n=61746
+persistent	cart_write	N=16	req/s=361.7	p50=33.7	p95=121.2	fails=8	cpu_api_ms=6.55	cpu_pg_ms=1.33	cpu_es_ms=0.02	n=11008
+predis	cart_write	N=16	req/s=373.2	p50=32.1	p95=120.1	fails=3	cpu_api_ms=6.42	cpu_pg_ms=1.31	cpu_es_ms=0.02	n=11320

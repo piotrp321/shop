@@ -1,0 +1,58 @@
+{
+	admin off
+	auto_https off
+	frankenphp {
+		num_threads 16
+		worker {
+			file /app/public/index.php
+			num 16
+		}
+	}
+
+	# Slow requests must not hold PHP threads (docs/features/abuse-limits/spec.md, L8 and D10): php_server gives a thread
+	# to the request after the headers, and the thread waits for the body. read_body bounds the whole request read (the
+	# body included); the deadline is enforced by FrankenPHP 1.13.5 and later (GHSA-j45x-h238-h4xx), the version of the
+	# Dockerfile.
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 60s
+		}
+	}
+}
+
+:80 {
+	root * /app/public
+	encode zstd gzip
+
+	# The product photo upload is the only route with a large body: POST on this exact path, 71 MiB, which is above
+	# post_max_size (70M of app.ini), so a photo that is too large still gets the 422 of the controller. Every other
+	# request, any method, is limited to 1 MiB (JSON is read by PHP whole). The path is compared as sent, with the
+	# case: unlike the path matcher, which cleans the path (//, /./, /../) and ignores the case, so that it would
+	# also give the large limit to requests that the application does not route to the upload.
+	@upload expression `{http.request.method} == 'POST' && {http.request.orig_uri.path} == '/api/v1/admin/product-images'`
+
+	handle @upload {
+		request_body {
+			max_size 71MiB
+		}
+		php_server
+	}
+
+	handle {
+		request_body {
+			max_size 1MiB
+		}
+		php_server
+	}
+
+	# A body over the limit (Content-Length or chunked) is answered here, before PHP, with a problem document in the
+	# format of the API. No CORS headers: no browser client sends such a body.
+	handle_errors {
+		@tooLarge `{err.status_code} == 413`
+		handle @tooLarge {
+			header Content-Type application/problem+json
+			respond `{"type":"about:blank","title":"Payload Too Large","status":413,"detail":"Treść żądania jest za duża."}` 413
+		}
+	}
+}

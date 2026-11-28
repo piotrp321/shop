@@ -1,0 +1,4 @@
+doctrine:
+    dbal:
+        options:
+            12: true # PDO::ATTR_PERSISTENT
